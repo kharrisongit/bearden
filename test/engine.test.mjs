@@ -22,3 +22,26 @@ test('debt-free estimate includes payoff by minimums and extra payments, and sta
  s.debts[0].balance=90000000;assert.equal(forecast(s,start,365).debtFreeDate,null);
  s.debts[0].balance=0;assert.equal(forecast(s,start,30).debtFreeDate,start);
 });
+test('one paycheck income and bill edits do not change recurring defaults',()=>{
+ const s=setup();s.bills=[{id:'food',name:'Food',amount:10000,date:'2026-10-07',repeat:'biweekly'}];s.checkEdits={'2026-10-05':{income:150000,bills:{'food:2026-10-07':20000}}};
+ const p=forecast(validate(s),start,40);assert.equal(p.checks[0].income,150000);assert.equal(p.checks[1].income,100000);assert.equal(p.rows.find(r=>r.id==='food:2026-10-07').amount,-20000);assert.equal(p.rows.find(r=>r.id==='food:2026-10-21').amount,-10000);assert.equal(s.income[0].amount,100000);assert.equal(s.bills[0].amount,10000);
+});
+test('explicit extra payments and savings edits persist and recalculate future balances',()=>{
+ const s=setup();s.debts=[{id:'debt',name:'Debt',balance:500000,minimum:0,apr:0,date:'2026-10-25'}];s.goals=[{id:'fund',name:'Fund',target:500000,saved:0,contribution:10000}];s.checkEdits={'2026-10-05':{debt:{debt:20000},savings:{fund:5000}}};
+ const p=forecast(validate(s),start,30);assert.equal(p.checks[0].debt[0],20000);assert.equal(p.checks[0].save[0],5000);assert.equal(p.checks[0].balances[0],480000);assert.equal(p.checks[1].save[0],10000);assert.ok(p.checks[1].balances[0]<480000);
+ s.checkEdits['2026-10-05'].debt.debt=0;assert.equal(forecast(s,start,30).checks[0].debt[0],0);
+});
+test('one-time expenses are reserved once on their own check and never the preceding check',()=>{
+ const s=setup();s.checkEdits={'2026-10-19':{expenses:[{id:'repair',name:'Repair',amount:30000}]}};const p=forecast(validate(s),start,45);
+ assert.equal(p.checks[0].reserve,0);assert.equal(p.checks[1].reserve,30000);assert.equal(p.rows.filter(r=>r.type==='expense').length,1);assert.equal(p.rows.find(r=>r.type==='expense').amount,-30000);
+});
+test('edited debt payments cannot overpay balances or consume protected cash',()=>{
+ const s=setup();s.debts=[{id:'d',name:'Debt',balance:1000000,minimum:0,apr:0,date:'2026-10-25'}];s.checkEdits={'2026-10-05':{debt:{d:99999999}}};const p=forecast(validate(s),start,30);assert.equal(p.checks[0].left,25000);assert.ok(p.checks[0].capped);assert.ok(p.checks[0].balances[0]>=0);
+});
+test('invalid paycheck override payloads are rejected and legacy plans still validate',()=>{
+ const s=setup();assert.doesNotThrow(()=>validate(s));s.checkEdits={'2026-10-05':{income:-1}};assert.throws(()=>validate(s));s.checkEdits={'2026-02-30':{income:10}};assert.throws(()=>validate(s));s.checkEdits={'2026-10-05':{expenses:[{id:'x',name:'Test',amount:1.5}]}};assert.throws(()=>validate(s));
+});
+test('per-paycheck budgets are allocated after their own deposit and editable on that check',()=>{
+ const s=setup();s.accounts[0].balance=0;s.bills=[{id:'food',name:'Food',amount:10000,date:'2026-10-05',repeat:'biweekly',source:'budget'}];s.checkEdits={'2026-10-05':{bills:{'food:2026-10-05':12000}}};const p=forecast(validate(s),start,30);
+ assert.equal(p.firstShortfall,null);assert.equal(p.checks[0].reserve,12000);assert.equal(p.checks[0].obligations[0].id,'food:2026-10-05');assert.equal(p.checks[1].reserve,10000);assert.equal(p.rows.find(r=>r.id==='food:2026-10-05').amount,-12000);
+});
