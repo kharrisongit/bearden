@@ -2,11 +2,31 @@
   "name": "bearden",
   "main": "cloudflare/worker.mjs",
   "compatibility_date": "2026-10-01",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "workers_dev": true,
-  "assets": {"directory": "./public", "binding": "ASSETS", "run_worker_first": true},
-  "triggers": {"crons": ["*/15 * * * *"]},
-  "d1_databases": [{"binding": "DB", "database_name": "bearden", "database_id": "ac251775-4b06-486e-aada-bcd4fce5097d"}],
-  "vars": {"PLAID_ENV": "sandbox"},
-  "observability": {"enabled": false}
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "triggers": {
+    "crons": [
+      "*/15 * * * *"
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bearden",
+      "database_id": "ac251775-4b06-486e-aada-bcd4fce5097d"
+    }
+  ],
+  "vars": {
+    "PLAID_ENV": "production"
+  },
+  "observability": {
+    "enabled": false
+  }
 }
