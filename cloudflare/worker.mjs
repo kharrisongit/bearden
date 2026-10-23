@@ -1,7 +1,7 @@
 // Serverless adapter. No persistent process, local disk, or paid Worker features.
 import {randomBytes,createHash,createCipheriv,createDecipheriv} from 'node:crypto';
 import {Buffer} from 'node:buffer';
-import {babyBearDebts,importBabyBear} from '../baby-bear.mjs';
+import {babyBearPreset,importBabyBear} from '../baby-bear.mjs';
 import {blank,validate,cents} from '../public/engine.mjs';
 import {classifyBillEmail,billMailQuery,messageText,applyTransactions} from '../providers.mjs';
 
@@ -90,14 +90,14 @@ export function runtime(env,fetcher=fetch){
   }
   if(path.startsWith('/api/')){
    if(!await authorized(req))return json({error:'Sign in to access private data.'},401);
-   if(req.method==='GET'&&path==='/api/import/baby-bear')return json({debts:babyBearDebts});
+   if(req.method==='GET'&&path==='/api/import/baby-bear')return json(babyBearPreset);
    if(req.method==='GET'&&path==='/api/state')return json({...await plan(),connections:publicConnections(await connections())});
    if(req.method!=='POST')return json({error:'Method not allowed'},405);if(req.headers.get('origin')!==origin)return json({error:'Request origin does not match this server'},403);const b=await body(req);
    if(path==='/api/logout'){await run('DELETE FROM sessions WHERE hash=?',hash(cookies(req).bearden));const response=json({ok:true});response.headers.append('Set-Cookie',cookie('bearden','',0));return response;}
    if(path==='/api/sync')return json(await sync(true));
    if(path==='/api/plaid/link'){const d=await plaid('/link/token/create',{user:{client_user_id:hash(owner)},client_name:'BearDen',products:['transactions'],transactions:{days_requested:30},country_codes:['US'],language:'en',...(env.PLAID_REDIRECT_URI?{redirect_uri:env.PLAID_REDIRECT_URI}:{})});return json({link_token:d.link_token});}
    return locked(async()=>{
-    if(path==='/api/import/baby-bear'){const p=await plan();if(p.revision!==b.revision)return json({error:'Your plan changed. Close the import, reload, and try again.'},409);const result=importBabyBear(p.state,b.date);if(result.added){p.revision++;await write('plan',p);}return json({...result,revision:p.revision});}
+    if(path==='/api/import/baby-bear'){const p=await plan();if(p.revision!==b.revision)return json({error:'Your plan changed. Close the import, reload, and try again.'},409);const result=importBabyBear(p.state,b.date,b.takeHome);if(result.changed){p.revision++;await write('plan',p);}return json({...result,revision:p.revision});}
     if(path==='/api/state'){const state=validate(b.state);if(state.emailSenders.length>20||state.emailSenders.some(s=>!/^[-\w.+]+@[\w.-]+\.[a-z]{2,}$/i.test(s)))throw Error('Use up to 20 full sender email addresses');const current=await plan();if(current.revision!==b.revision)return json({error:'Plan changed during sync or in another tab. Export edits and reload before saving.'},409);await write('plan',{state,revision:current.revision+1});const c=await connections(),accepted=new Set(state.bills.map(b=>b.sourceId).filter(Boolean));if(c.candidates.some(x=>accepted.has(x.id))){c.candidates=c.candidates.filter(x=>!accepted.has(x.id));await write('connections',c);}return json({revision:current.revision+1});}
     if(path==='/api/plaid/exchange'){if(typeof b.public_token!=='string')throw Error('Missing public token');const c=await connections();if(c.items.length>=10)throw Error('This personal setup supports up to 10 bank connections');const d=await plaid('/item/public_token/exchange',{public_token:b.public_token});let item=c.items.find(i=>i.id===d.item_id);if(!item){item={id:d.item_id,token:d.access_token,name:String(b.name||'Bank').slice(0,150),cursor:''};c.items.push(item);}
      // Persist the exchanged token before fetching balances so a provider failure is recoverable.

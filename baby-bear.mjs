@@ -59,13 +59,24 @@ export const babyBearDebts = [
   }
 ];
 
-export function importBabyBear(state,date){
+export const babyBearIncome={name:'Paycheck',hourlyRate:28.85,hoursPerCheck:80,gross:230800,amount:183371,repeat:'biweekly',estimated:true};
+export const babyBearBudget=[{name:'Fixed bills',amount:72500},{name:'Medications',amount:30000},{name:'Food',amount:10000},{name:'Gas',amount:5000},{name:'Personal spending',amount:5000}];
+export const babyBearPreset={debts:babyBearDebts,income:babyBearIncome,budgetItems:babyBearBudget};
+export function importBabyBear(state,date,takeHome=babyBearIncome.amount){
  if(typeof date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(date)||day(date)!==date)throw Error('Choose a valid first payment date');
+ if(!Number.isSafeInteger(takeHome)||takeHome<=0||takeHome>1e12)throw Error('Enter a valid take-home paycheck amount');
+ let incomeAdded=0,budgetAdded=0;
  let added=0;const names=new Set(state.debts.map(d=>d.name.trim().toLowerCase()));
  for(const [i,debt] of babyBearDebts.entries()){
   const id='baby-bear-'+i;
   if(names.has(debt.name.toLowerCase())||state.debts.some(d=>d.id===id))continue;
   state.debts.push({...debt,id,date,minimumRepeat:'biweekly',source:'baby-bear'});names.add(debt.name.toLowerCase());added++;
  }
- validate(state);return {added,skipped:babyBearDebts.length-added};
+ if(!state.income.length){state.income.push({...babyBearIncome,id:'baby-bear-income',date,amount:takeHome,estimated:takeHome===babyBearIncome.amount,source:'baby-bear'});incomeAdded=1;}
+ const billNames=new Set(state.bills.map(b=>b.name.trim().toLowerCase()));
+ for(const [i,item] of babyBearBudget.entries()){
+  const id='baby-bear-budget-'+i;if(state.bills.some(b=>b.id===id)||billNames.has(item.name.toLowerCase()))continue;
+  state.bills.push({...item,id,date,repeat:'biweekly',source:'baby-bear-budget'});billNames.add(item.name.toLowerCase());budgetAdded++;
+ }
+ validate(state);return {added,skipped:babyBearDebts.length-added,incomeAdded,budgetAdded,changed:added+incomeAdded+budgetAdded>0};
 }

@@ -47,3 +47,7 @@ test('Baby Bear import preserves existing data, skips duplicate debts and reject
  const p=f.get('plan');assert.deepEqual(p.state.accounts,s.accounts);assert.equal(p.state.debts[0].balance,100);assert.equal(p.state.debts[1].minimumRepeat,'biweekly');
  const again=await (await f.app.handle(f.req('/api/import/baby-bear',{date:'2026-11-01',revision:p.revision}))).json();assert.equal(again.added,0);assert.equal(f.get('plan').state.debts.length,8);f.db.close();
 });
+test('rerunning a debt-only import persists the missing income and budget',async()=>{
+ const f=fixture();await f.app.handle(f.req('/api/import/baby-bear',{date:'2026-11-06',revision:0}));const p=f.get('plan');p.state.income=[];p.state.bills=[];f.set('plan',p);
+ const result=await (await f.app.handle(f.req('/api/import/baby-bear',{date:'2026-11-20',takeHome:190000,revision:p.revision}))).json();assert.equal(result.added,0);assert.equal(result.incomeAdded,1);assert.equal(result.budgetAdded,5);assert.equal(f.get('plan').state.income[0].amount,190000);assert.equal(f.get('plan').revision,p.revision+1);f.db.close();
+});
