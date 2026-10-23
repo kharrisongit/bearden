@@ -15,3 +15,10 @@ test('bonuses do not recur and same-day income produces one allocation',()=>{con
 test('Squasher regular targets smaller debts; bonus targets largest three',()=>{const s=setup();s.settings.method='squasher';s.debts=[10000,20000,30000,40000].map((balance,i)=>({id:'d'+i,name:'Debt '+i,balance,minimum:0,apr:0,date:'2026-10-25'}));let p=forecast(s,start,30);assert.deepEqual(p.checks[0].debt,[5000,0,0,0]);s.bonuses=[{id:'b',name:'Bonus',date:'2026-10-05',amount:10000}];p=forecast(s,start,30);assert.deepEqual(p.checks[0].debt,[0,10000,15000,20000]);s.squash=['2026-10-05'];assert.deepEqual(forecast(s,start,30).checks[0].debt,[10000,20000,30000,40000]);});
 test('cascade retains requested bonus portion',()=>{const s=setup();s.settings.method='cushionCascade';s.settings.bonusMode='retain';s.bonuses=[{id:'b',name:'Bonus',date:'2026-10-05',amount:50000}];s.debts=[{id:'d',name:'Debt',balance:900000,minimum:0,apr:0,date:'2026-10-25'}];assert.equal(forecast(s,start,30).checks[0].left,75000);});
 test('invalid backups rejected and overdraft accepted',()=>{const s=setup();s.accounts[0].balance=-100;assert.doesNotThrow(()=>validate(s));s.bills=[{id:'bad',name:'Bad',amount:100,date:'2026-02-30',repeat:'once'}];assert.throws(()=>validate(s));});
+test('debt-free estimate includes payoff by minimums and extra payments, and stays unknown outside forecast',()=>{
+ const s=setup();s.debts=[{id:'d',name:'Debt',balance:5000,minimum:5000,apr:0,date:'2026-10-03'}];
+ assert.equal(forecast(s,start,30).debtFreeDate,'2026-10-03');
+ s.debts[0].minimum=0;assert.equal(forecast(s,start,30).debtFreeDate,'2026-10-05');
+ s.debts[0].balance=90000000;assert.equal(forecast(s,start,365).debtFreeDate,null);
+ s.debts[0].balance=0;assert.equal(forecast(s,start,30).debtFreeDate,start);
+});

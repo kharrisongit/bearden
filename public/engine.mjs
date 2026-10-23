@@ -22,6 +22,7 @@ export function forecast(s,start=today(),length=s.settings.horizon){
  const priority={bill:0,minimum:1,income:2,bonus:2};events.sort((a,b)=>a.date.localeCompare(b.date)||priority[a.type]-priority[b.type]);
  let cash=s.accounts.filter(a=>a.include).reduce((n,a)=>n+a.balance,0), low=cash,firstShortfall=cash<0?start:null,interest=0,lastDate=start;
  const rows=[],checks=[];
+ let debtFreeDate=balances.every(b=>b===0)?start:null;
  for(let idx=0;idx<events.length;idx++){
   const e=events[idx],elapsed=Math.round((new Date(e.date)-new Date(lastDate))/86400000);
   if(elapsed>0){balances.forEach((b,i)=>{const add=Math.round(b*s.debts[i].apr/100*elapsed/365);balances[i]+=add;interest+=add;});lastDate=e.date;}
@@ -45,6 +46,7 @@ export function forecast(s,start=today(),length=s.settings.horizon){
    checks.push({date:e.date,next,reserve,bonus,debt,save,left:cash,shortfall:Math.max(0,reserve+baseCushion-cash),income:events.filter(x=>x.date===e.date&&['income','bonus'].includes(x.type)).reduce((n,x)=>n+x.amount,0)});
    low=Math.min(low,cash);
   }
+  if(!debtFreeDate&&balances.every(b=>b===0))debtFreeDate=e.date;
  }
- return {rows,checks,low,firstShortfall,endBalance:cash,balances,savings,interest,end};
+ return {debtFreeDate,rows,checks,low,firstShortfall,endBalance:cash,balances,savings,interest,end};
 }
