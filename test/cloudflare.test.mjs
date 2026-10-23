@@ -51,3 +51,22 @@ test('rerunning a debt-only import persists the missing income and budget',async
  const f=fixture();await f.app.handle(f.req('/api/import/baby-bear',{date:'2026-11-06',revision:0}));const p=f.get('plan');p.state.income=[];p.state.bills=[];f.set('plan',p);
  const result=await (await f.app.handle(f.req('/api/import/baby-bear',{date:'2026-11-20',takeHome:190000,revision:p.revision}))).json();assert.equal(result.added,0);assert.equal(result.incomeAdded,1);assert.equal(result.budgetAdded,5);assert.equal(f.get('plan').state.income[0].amount,190000);assert.equal(f.get('plan').revision,p.revision+1);f.db.close();
 });
+test('original tracker storage is private, encrypted, revision checked, and independent of bank sync',async()=>{
+ const f=fixture();const state={version:1,values:{'app-state':JSON.stringify({cards:[{id:1,name:'Private card',balance:123}],budgetItems:[],savingsGoals:[]}),notes:'[{"text":"Private note"}]'}};
+ assert.equal((await f.app.handle(new Request('https://bearden.example/api/classic'))).status,401);
+ assert.equal((await f.app.handle(f.req('/api/classic',{state,revision:0},'https://evil.example'))).status,403);
+ assert.equal((await f.app.handle(f.req('/api/classic',{state,revision:0}))).status,200);
+ assert.equal((await f.app.handle(f.req('/api/classic',{state,revision:0}))).status,409);
+ const saved=await (await f.app.handle(f.req('/api/classic'))).json();assert.deepEqual(saved.state,state);assert.equal(saved.revision,1);
+ assert.ok(!f.db.prepare('SELECT value FROM vault WHERE id=?').get('classic').value.includes('Private card'));
+ f.set('plan',{state:blank(),revision:8});assert.deepEqual((await (await f.app.handle(f.req('/api/classic'))).json()).state,state);
+ await assert.rejects(()=>f.app.handle(f.req('/api/classic',{state:{version:1,values:{unexpected:'secret'}},revision:1})),/Invalid tracker/);f.db.close();
+});
+
+test('all scripts and styles used by the original tracker are publicly served with strict script CSP',async()=>{
+ const f=fixture(),html=readFileSync('public/index.html','utf8');
+ const urls=[...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css)(?:\?[^"]*)?)"/g)].map(m=>m[1]);
+ urls.push('classic-migrate.mjs');
+ for(const url of urls){const r=await f.app.handle(new Request(f.env.APP_URL+'/'+url));assert.equal(r.status,200,url);assert.match(r.headers.get('Content-Security-Policy'),/script-src 'self' https:\/\/cdn.plaid.com;/);}
+ f.db.close();
+});

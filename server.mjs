@@ -1,3 +1,4 @@
+import {validateClassic} from './classic-state.mjs';
 import http from 'node:http';
 import {babyBearPreset,importBabyBear} from './baby-bear.mjs';
 import {readFileSync,mkdirSync,existsSync} from 'node:fs';
@@ -58,10 +59,10 @@ async function doSync(){
  c.status=errors.length?'Sync needs attention — '+errors.join(' · '):'Last sync: '+now;c.lastAttempt=now;write('connections',c);return c;
 }
 async function sync(){if(!syncing)syncing=doSync().finally(()=>syncing=null);return syncing;}
-const staticFiles={'/setup-key.html':['setup-key.html','text/html'],'/setup-key.mjs':['setup-key.mjs','text/javascript'],'/':['index.html','text/html'],'/plaid-return':['index.html','text/html'],'/index.html':['index.html','text/html'],'/style.css':['style.css','text/css'],'/app.mjs':['app.mjs','text/javascript'],'/engine.mjs':['engine.mjs','text/javascript']};
+const staticFiles={'/classic.js':['classic.js','text/javascript'],'/classic.css':['classic.css','text/css'],'/classic-theme.js':['classic-theme.js','text/javascript'],'/classic-events.js':['classic-events.js','text/javascript'],'/classic-migrate.mjs':['classic-migrate.mjs','text/javascript'],'/connections.js':['connections.js','text/javascript'],'/connections.css':['connections.css','text/css'],'/purify.min.js':['purify.min.js','text/javascript'],'/setup-key.html':['setup-key.html','text/html'],'/setup-key.mjs':['setup-key.mjs','text/javascript'],'/':['index.html','text/html'],'/plaid-return':['index.html','text/html'],'/index.html':['index.html','text/html'],'/style.css':['style.css','text/css'],'/app.mjs':['app.mjs','text/javascript'],'/engine.mjs':['engine.mjs','text/javascript']};
 const server=http.createServer(async(req,res)=>{
  res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Frame-Options','DENY');res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
- res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self' https://cdn.plaid.com; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.plaid.com; frame-src https://*.plaid.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+ res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self' https://cdn.plaid.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.plaid.com; frame-src https://*.plaid.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
  try{const u=new URL(req.url,origin),path=u.pathname;if(req.method==='GET'&&path==='/health')return json(res,200,{ok:true});
   if(req.method==='GET'&&path==='/api/config')return json(res,200,{authenticated:authenticated(req),googleConfigured,plaidConfigured:!!(process.env.PLAID_CLIENT_ID&&process.env.PLAID_SECRET),plaidEnvironment:process.env.PLAID_ENV||'sandbox'});
   if(req.method==='GET'&&path==='/auth/google'){
@@ -79,9 +80,11 @@ const server=http.createServer(async(req,res)=>{
   if(path.startsWith('/api/')){
    if(!authenticated(req))return json(res,401,{error:'Sign in to access private data.'});if(req.method==='POST'&&req.headers.origin!==origin)return json(res,403,{error:'Request origin does not match this server.'});
    if(req.method==='GET'&&path==='/api/import/baby-bear')return json(res,200,babyBearPreset);
+   if(req.method==='GET'&&path==='/api/classic')return json(res,200,read('classic',{state:{version:1,values:{}},revision:0}));
    if(req.method==='GET'&&path==='/api/state')return json(res,200,{...getPlan(),connections:publicConnections(connections())});
    if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});const b=await body(req);
    if(path==='/api/import/baby-bear'){if(syncing)await syncing;const p=getPlan();if(p.revision!==b.revision)return json(res,409,{error:'Your plan changed. Close the import, reload, and try again.'});const result=importBabyBear(p.state,b.date,b.takeHome);if(result.changed){p.revision++;write('plan',p);}return json(res,200,{...result,revision:p.revision});}
+   if(path==='/api/classic'){const state=validateClassic(b.state),current=read('classic',{revision:0});if(current.revision!==b.revision)return json(res,409,{error:'The tracker changed in another tab. Export your edits and reload.'});write('classic',{state,revision:current.revision+1});return json(res,200,{revision:current.revision+1});}
    if(path==='/api/state'){const s=validate(b.state),p=getPlan();if(p.revision!==b.revision)return json(res,409,{error:'This plan changed during sync or in another tab. Export your edits, then reload before saving again.'});if(s.emailSenders.some(x=>!/^[-\w.+]+@[\w.-]+\.[a-z]{2,}$/i.test(x)))throw Error('Use full sender email addresses');write('plan',{state:s,revision:p.revision+1});return json(res,200,{revision:p.revision+1});}
    if(path==='/api/logout'){db.prepare('DELETE FROM sessions WHERE hash=?').run(hash(cookies(req).bearden));res.setHeader('Set-Cookie',cookie('bearden','',0));return json(res,200,{ok:true});}
    if(path==='/api/sync'){const c=await sync();return json(res,200,{status:c.status});}

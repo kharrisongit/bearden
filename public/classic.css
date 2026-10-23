@@ -1,0 +1,3153 @@
+
+  :root{
+    --ink:#3d2b22;
+    --ink-fixed:#4a3626;
+    --paper:#f2eee6;
+    --card:#ffffff;
+    --line:#ded2c0;
+    --accent:#c96f4a;
+    --accent-soft:#f6e3d8;
+    --warn:#a8452e;
+    --warn-soft:#fbe4da;
+    --muted:#7d6a58;
+    color-scheme:light;
+  }
+  [data-theme="dark"]{
+    --ink:#e7ebf1;
+    --paper:#12161d;
+    --card:#1c222c;
+    --line:#333c49;
+    --accent:#4aa88f;
+    --accent-soft:#1c3630;
+    --warn:#e07a5a;
+    --warn-soft:#3a2620;
+    --muted:#9aa4b2;
+    color-scheme:dark;
+  }
+  html{background:var(--paper);}
+  /* The hero cards, app title box, and milestone banners below use their
+     own fixed decorative gradients rather than the theme variables — they
+     were designed to always look bold regardless of theme, so they don't
+     just inherit whatever light-mode redesign happens above. The app title
+     box and milestone banners are restored to their pre-redesign look here;
+     the debt and savings hero cards instead get their own dark-mode
+     treatment (matching the dark paycheck cards) rather than a restore. */
+  [data-theme="dark"] .app-title-box{
+    background:linear-gradient(135deg, var(--accent), #5b3a8a);
+    box-shadow:0 8px 22px rgba(47,111,94,0.32);
+  }
+  [data-theme="dark"] .hero.debt-hero{
+    background:linear-gradient(135deg, #2b2f42, #3d4160);
+  }
+  [data-theme="dark"] .hero.savings-hero{
+    background:linear-gradient(135deg, #2b2f42, #3d4160);
+  }
+  [data-theme="dark"] .debt-hero .hero-pie-hole-sm{background:#242838;}
+  [data-theme="dark"] .savings-hero .icon-btn,
+  [data-theme="dark"] .savings-hero .day-counter,
+  [data-theme="dark"] .savings-hero .paycheck-counter,
+  [data-theme="dark"] .savings-hero .hero-date-banner{
+    background:rgba(255,255,255,0.1);
+    border-color:rgba(255,255,255,0.18);
+  }
+  [data-theme="dark"] .savings-hero .hero-pie-hole-sm{background:#242838;}
+  [data-theme="dark"] .milestone-banner-debt{
+    background:linear-gradient(135deg, #2f6f5e, #48a184);
+  }
+  [data-theme="dark"] .milestone-both{
+    background:linear-gradient(135deg, #2f6f5e, #c8a15a);
+  }
+  [data-theme="dark"] .milestone-banner-account{
+    background:linear-gradient(135deg, #3a8f76, #5cb89b);
+  }
+  [data-theme="dark"] .paycheck.milestone-debt{
+    border-color:#2f6f5e;
+    box-shadow:0 4px 18px rgba(47,111,94,0.25);
+  }
+  [data-theme="dark"] .paycheck.milestone-account{border-left-color:#3a8f76;}
+  [data-theme="dark"] .paycheck.milestone-debt.milestone-savings{
+    border-image:linear-gradient(135deg, #2f6f5e, #c8a15a) 1;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  .wrap{max-width:520px;margin:0 auto;padding:20px 16px 60px;}
+  h1{
+    font-size:2.1rem;
+    font-weight:900;
+    letter-spacing:-0.02em;
+    margin:0;
+    text-align:center;
+    background:linear-gradient(135deg, #fff3d6, #ffffff);
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+    filter:drop-shadow(0 2px 6px rgba(0,0,0,0.25));
+  }
+  .app-title-box{
+    background:linear-gradient(135deg, #c96f4a, #e8a868);
+    border-radius:18px;
+    padding:18px 20px;
+    margin:0 0 34px;
+    box-shadow:0 8px 22px rgba(201,111,74,0.32);
+  }
+  .subtitle{color:var(--muted);font-size:0.85rem;margin:0 0 20px;}
+
+  .hero{
+    position:relative;
+    z-index:1;
+    background:var(--ink-fixed);
+    color:#fff;
+    border-radius:16px;
+    padding:20px;
+    margin-bottom:20px;
+  }
+  /* A bear that pops up from behind the top edge of each hero card, waves,
+     then ducks back down out of sight. This needs to be a real sibling
+     element rather than a pseudo-element of .hero itself — the whole trick
+     is that .hero-peek-wrap stacks the bear (z-index:0) BEHIND the hero
+     card (z-index:1, opaque background), so when the bear rises, the card's
+     own background naturally clips off its lower half, leaving only the
+     top (ears + upper face) visible above the edge. When "hidden," the
+     bear is simply translated down far enough to sit entirely behind the
+     card, fully covered — no opacity/visibility toggling needed. The paw
+     is a separate child so it can rotate independently of the body's
+     up/down motion, timed to only swing while the bear is actually up. */
+  .hero-peek-wrap{position:relative;margin-bottom:28px;}
+  .hero-peek-wrap .hero{margin-bottom:0;}
+  /* The bear's face used to be .hero-bear's own background, which meant
+     nothing (like the Halloween wings) could ever be layered behind it —
+     an element's own background always paints under every child, even
+     ones given a negative z-index. Pulling the face out into its own
+     child fixes that: it shares .hero-bear-wings' z-index of -1, and
+     comes after it in the markup, so within that shared layer it paints
+     on top of the wings while everything else (paw, hat, fangs, blink/
+     angry overlays, bubble) — all z-index 0 or higher — still paints
+     above both, exactly as before. */
+  .hero-bear-face{
+    position:absolute;
+    inset:0;
+    z-index:-1;
+    background-size:contain;
+    background-repeat:no-repeat;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='25' cy='22' r='14' fill='%238a5a34'/%3E%3Ccircle cx='75' cy='22' r='14' fill='%238a5a34'/%3E%3Ccircle cx='25' cy='23' r='7' fill='%23e8c9a0'/%3E%3Ccircle cx='75' cy='23' r='7' fill='%23e8c9a0'/%3E%3Ccircle cx='50' cy='48' r='32' fill='%23c9955f'/%3E%3Cellipse cx='50' cy='60' rx='16' ry='12' fill='%23f0dcc0'/%3E%3Cellipse cx='50' cy='54' rx='4' ry='3' fill='%234a3020'/%3E%3Cpath d='M40 61 Q50 68 60 61' stroke='%234a3020' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='38' cy='42' r='3.5' fill='%232a1c10'/%3E%3Ccircle cx='62' cy='42' r='3.5' fill='%232a1c10'/%3E%3C/svg%3E");
+    /* Tilts in sync with .hero-bear-wings below (same animation + origin)
+       so the whole head reads as one rigid unit turning together, rather
+       than a static face with wings swinging independently behind it. */
+    transform-origin:center;
+    animation:bearHeadTilt 4.4s ease-in-out infinite;
+  }
+  .hero-bear{
+    position:absolute;
+    z-index:0;
+    top:-42px;
+    left:60%;
+    width:64px;
+    height:64px;
+    cursor:pointer;
+    animation:bearPopUpDown 18s ease-in-out infinite;
+    /* Same reasoning as .paycheck-bear below: the cream/tan fur can wash
+       out against the light-mode page background once the bear rises
+       above the card edge, so a soft dark outline keeps it readable. */
+    filter:
+      drop-shadow(1px 0 0 rgba(58,38,22,0.4))
+      drop-shadow(-1px 0 0 rgba(58,38,22,0.4))
+      drop-shadow(0 1px 0 rgba(58,38,22,0.4))
+      drop-shadow(0 -1px 0 rgba(58,38,22,0.4));
+  }
+  /* Tapping the bear plays a sharp angry shake instead of the slow
+     pop-up-down cycle (the class has higher specificity than .hero-bear
+     alone, so it overrides that animation while active), plus furrowed
+     brows and a "Grrr" speech bubble. JS removes the class once the
+     shake finishes, handing control back to the normal cycle — so he
+     ducks back down and pops up fresh afterward. */
+  @keyframes bearAngryShake{
+    0%, 100%{transform:translateY(0) rotate(0deg);}
+    10%, 30%, 50%, 70%, 90%{transform:translateY(0) rotate(-12deg);}
+    20%, 40%, 60%, 80%{transform:translateY(0) rotate(12deg);}
+  }
+  .hero-bear.angry{
+    animation:bearAngryShake 0.5s ease-in-out;
+  }
+  /* Furrowed brows + frown overlay, hidden until the angry state is
+     active. The mouth is redrawn in two strokes: a thick cream stroke
+     over the original smile path to erase it, then a thinner dark
+     stroke tracing an upside-down curve on top for the frown. */
+  .hero-bear::before{
+    content:'';
+    position:absolute;
+    inset:0;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cline x1='28' y1='27' x2='45' y2='36' stroke='%232a1c10' stroke-width='4.5' stroke-linecap='round'/%3E%3Cline x1='72' y1='27' x2='55' y2='36' stroke='%232a1c10' stroke-width='4.5' stroke-linecap='round'/%3E%3Cpath d='M40 61 Q50 68 60 61' stroke='%23f0dcc0' stroke-width='7' fill='none' stroke-linecap='round'/%3E%3Cpath d='M40 63 Q50 59 60 63' stroke='%232a1c10' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-size:contain;
+    background-repeat:no-repeat;
+    pointer-events:none;
+    opacity:0;
+    transform-origin:center;
+    animation:bearHeadTilt 4.4s ease-in-out infinite;
+  }
+  .hero-bear.angry::before{
+    opacity:1;
+  }
+  .hero-bear-bubble{
+    position:absolute;
+    top:-24px;
+    left:50%;
+    transform:translateX(-50%) scale(0.6);
+    background:#a8452e;
+    color:#fff;
+    font-size:0.68rem;
+    font-weight:800;
+    padding:3px 9px;
+    border-radius:12px;
+    white-space:nowrap;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.15s ease, transform 0.15s ease;
+    box-shadow:0 2px 6px rgba(0,0,0,0.18);
+  }
+  .hero-bear-bubble::after{
+    content:'';
+    position:absolute;
+    bottom:-4px;
+    left:50%;
+    transform:translateX(-50%);
+    border-width:4px 4px 0;
+    border-style:solid;
+    border-color:#a8452e transparent transparent;
+  }
+  .hero-bear.angry .hero-bear-bubble{
+    opacity:1;
+    transform:translateX(-50%) scale(1);
+  }
+  [data-theme="dark"] .hero-bear{filter:none;}
+  /* Forces him fully hidden and frozen — used for the cooldown after an
+     angry outburst, so he doesn't just pick back up mid pop-up cycle. */
+  .hero-bear.resting{
+    animation:none;
+    transform:translateY(60px);
+  }
+  /* Same blink trick as the paycheck bear: fur-colored ellipses over the
+     eyes, invisible except for a brief flash, reading as a closed eye. */
+  .hero-bear::after{
+    content:'';
+    position:absolute;
+    inset:0;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cellipse cx='38' cy='42' rx='4.6' ry='4' fill='%23c9955f'/%3E%3Cellipse cx='62' cy='42' rx='4.6' ry='4' fill='%23c9955f'/%3E%3C/svg%3E");
+    background-size:contain;
+    background-repeat:no-repeat;
+    pointer-events:none;
+    opacity:0;
+    transform-origin:center;
+    animation:bearBlink 6.5s ease-in-out infinite, bearHeadTilt 4.4s ease-in-out infinite;
+    animation-delay:1.6s, 0s;
+  }
+  .hero-bear-paw{
+    position:absolute;
+    top:-4px;
+    right:-18px;
+    bottom:-16px;
+    left:6px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='78' cy='50' r='16' fill='%23c9955f'/%3E%3Cellipse cx='78' cy='54' rx='9' ry='7.5' fill='%23e8c9a0'/%3E%3C/svg%3E");
+    background-size:contain;
+    background-repeat:no-repeat;
+    transform-origin:58% 60%;
+    /* Now that the bear stays up much longer, the paw waves on its own
+       short independent loop instead of being timed to specific points
+       in the (now very long) pop-up cycle — it just waves continuously
+       whenever he's visible, and idles unseen behind the card the rest
+       of the time. */
+    animation:pawWaveBig 3.6s ease-in-out infinite;
+    transition:opacity 0.15s ease;
+    /* The parent's outline only traces the outer silhouette of the whole
+       peeking bear, so wherever the paw overlaps the head it blended
+       right in with no edge of its own — give it its own outline too. */
+    filter:
+      drop-shadow(1px 0 0 rgba(58,38,22,0.5))
+      drop-shadow(-1px 0 0 rgba(58,38,22,0.5))
+      drop-shadow(0 1px 0 rgba(58,38,22,0.5))
+      drop-shadow(0 -1px 0 rgba(58,38,22,0.5));
+  }
+  [data-theme="dark"] .hero-bear-paw{filter:none;}
+  /* No friendly wave while he's angry — the arm just disappears rather
+     than waving mid-glare. */
+  .hero-bear.angry .hero-bear-paw{
+    opacity:0;
+  }
+  @keyframes bearPopUpDown{
+    0%, 5%{transform:translateY(60px);}
+    12%{transform:translateY(0);}
+    78%{transform:translateY(0);}
+    85%, 100%{transform:translateY(60px);}
+  }
+  /* Swing trimmed back further, to -25deg at the top of the arc — still
+     reads as a wave, but doesn't sweep in over the face at the peak. */
+  @keyframes pawWaveBig{
+    0%, 100%{transform:rotate(0deg);}
+    15%{transform:rotate(-25deg);}
+    35%{transform:rotate(15deg);}
+    55%{transform:rotate(-25deg);}
+    75%{transform:rotate(15deg);}
+    90%{transform:rotate(0deg);}
+  }
+  .hero-title{font-size:1.15rem;font-weight:800;color:#fff;margin-bottom:10px;letter-spacing:-0.01em;}
+  .hero-link-btn{
+    background:rgba(255,255,255,0.18);
+    border:none;
+    border-radius:20px;
+    padding:6px 13px;
+    color:#fff;
+    font-size:0.72rem;
+    font-weight:700;
+    cursor:pointer;
+    white-space:nowrap;
+    flex-shrink:0;
+  }
+  .hero-link-btn:active{opacity:0.7;}
+  .savings-save-btn{
+    display:inline-block;
+    background:rgba(255,255,255,0.14);
+    border:1.5px solid rgba(255,255,255,0.55);
+    border-radius:10px;
+    padding:8px 22px;
+    color:#fff;
+    font-size:0.85rem;
+    font-weight:700;
+    cursor:pointer;
+  }
+  .savings-save-btn:active{opacity:0.7;}
+  .payoff-method-toggle{
+    display:inline-flex;
+    gap:3px;
+    flex-shrink:0;
+  }
+  .pm-btn{
+    padding:3px 7px;
+    border:1px solid rgba(255,255,255,0.2);
+    border-radius:7px;
+    background:transparent;
+    color:rgba(255,255,255,0.65);
+    font-size:0.62rem;
+    font-weight:600;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .pm-btn.active{
+    background:rgba(255,255,255,0.22);
+    color:#fff;
+    border-color:rgba(255,255,255,0.35);
+  }
+  .pm-btn:active{opacity:0.7;}
+  .hero-date-banner{
+    background:rgba(255,255,255,0.13);
+    border:1px solid rgba(255,255,255,0.2);
+    border-radius:14px;
+    padding:12px 14px 10px;
+  }
+  .hero .label{font-size:1.1rem;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;color:#f0f3f5;}
+  .hero .big{font-size:2.05rem;font-weight:800;margin:3px 0 8px;letter-spacing:-0.02em;text-shadow:0 2px 10px rgba(0,0,0,0.18);}
+  .day-counter{
+    display:inline-block;
+    font-size:0.85rem;
+    font-weight:700;
+    background:rgba(255,255,255,0.22);
+    padding:5px 14px;
+    border-radius:20px;
+    margin-bottom:12px;
+    margin-right:6px;
+    letter-spacing:0.01em;
+  }
+  .paycheck-counter{
+    display:inline-block;
+    font-size:0.85rem;
+    font-weight:700;
+    background:rgba(255,255,255,0.13);
+    border:1px solid rgba(255,255,255,0.22);
+    padding:5px 14px;
+    border-radius:20px;
+    margin-bottom:12px;
+    letter-spacing:0.01em;
+  }
+  .hero .row{display:flex;justify-content:space-between;font-size:0.85rem;padding:6px 0;border-top:1px solid rgba(255,255,255,0.12);}
+  .hero .row span:last-child{font-weight:600;}
+  .hero.savings-hero{
+    background:
+      radial-gradient(circle at 14% 8%, rgba(255,255,255,0.28), transparent 45%),
+      linear-gradient(135deg, #a8752e 0%, #c99548 48%, #e8bd75 100%);
+    margin-bottom:14px;
+  }
+  /* Slight honey-tinted variation on the translucent overlay pieces within
+     the savings hero specifically, so its "chrome" (icon buttons, pills,
+     panel) reads as part of the same warm family rather than the neutral
+     white-on-dark treatment shared with other hero cards. */
+  .savings-hero .icon-btn{background:rgba(255,224,180,0.24);}
+  .savings-hero .day-counter{background:rgba(255,224,180,0.28);}
+  .savings-hero .paycheck-counter{background:rgba(255,224,180,0.17);border-color:rgba(255,224,180,0.32);}
+  .savings-hero .hero-date-banner{background:rgba(255,224,180,0.16);border-color:rgba(255,224,180,0.27);}
+  .hero-controls{display:flex;gap:6px;flex-shrink:0;}
+  .icon-btn{
+    background:rgba(255,255,255,0.18);
+    border:none;
+    border-radius:8px;
+    width:30px;
+    height:30px;
+    font-size:0.95rem;
+    font-weight:800;
+    line-height:1;
+    cursor:pointer;
+    color:#fff;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0;
+  }
+  .icon-btn:active{opacity:0.7;}
+  .icon-btn.active{
+    background:linear-gradient(135deg, #ffd166, #e8a020);
+    color:#3a2400;
+    box-shadow:0 0 8px 2px rgba(255,209,102,0.7), inset 0 0 4px rgba(0,0,0,0.25);
+    transform:scale(0.94);
+  }
+  .savings-hero-edit{
+    display:none;
+    max-height:0;
+    opacity:0;
+    overflow:hidden;
+    margin-top:0;
+    padding-top:0;
+    border-top:1px solid transparent;
+    transition:max-height 0.7s ease, opacity 0.6s ease, margin-top 0.7s ease, padding-top 0.7s ease, border-top-color 0.6s ease;
+  }
+  .savings-hero-edit.open{
+    display:block;
+    max-height:900px;
+    opacity:1;
+    margin-top:12px;
+    padding-top:12px;
+    border-top-color:rgba(255,255,255,0.18);
+  }
+  @keyframes savingsCardEnter{
+    0%{ opacity:0; transform:scale(0.85) translateY(-16px); }
+    60%{ opacity:1; transform:scale(1.02) translateY(2px); }
+    100%{ opacity:1; transform:scale(1) translateY(0); }
+  }
+  .savings-card-entering{
+    animation:savingsCardEnter 1.1s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes savingsCardLeave{
+    0%{ opacity:1; transform:scale(1) rotate(0deg); }
+    30%{ opacity:1; transform:scale(1.03) rotate(-1.5deg); }
+    100%{ opacity:0; transform:scale(0.6) rotate(6deg) translateY(-16px); }
+  }
+  .savings-card-leaving{
+    animation:savingsCardLeave 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    pointer-events:none;
+  }
+  .field-row-dark{
+    display:flex;
+    gap:8px;
+    align-items:center;
+    padding:6px 0;
+  }
+  .field-name-dark{
+    flex:1;
+    font-size:0.8rem;
+    color:#e8ecef;
+  }
+  .field-name-dark small{display:block;color:#c9d2d8;font-size:0.68rem;}
+  .field-row-dark input{
+    width:92px;
+    text-align:right;
+    padding:6px 8px;
+    border:1px solid rgba(255,255,255,0.3);
+    border-radius:8px;
+    font-size:0.85rem;
+    font-family:inherit;
+    background:rgba(255,255,255,0.92);
+    /* This background is always light regardless of theme, but with no
+       explicit color here the input falls back to the browser's default
+       text color — which under dark mode's color-scheme:dark is itself
+       light, making typed digits/letters vanish against the light
+       background. Pin it to a fixed dark color so it's always readable. */
+    color:#2a2a2a;
+  }
+  .field-row-dark input[type="text"]{text-align:left;width:130px;}
+  .field-row-dark input.amt-text{text-align:right;width:92px;}
+  .savings-withdraw-section{
+    margin-top:14px;
+    padding-top:12px;
+    border-top:1px solid rgba(255,255,255,0.18);
+  }
+  .savings-withdraw-label{
+    font-size:0.8rem;
+    font-weight:700;
+    color:#e8ecef;
+    margin-bottom:2px;
+  }
+  .savings-withdraw-hint{
+    font-size:0.68rem;
+    color:#c9d2d8;
+    margin-bottom:8px;
+    line-height:1.35;
+  }
+  .withdraw-btn{
+    background:rgba(255,255,255,0.16);
+    border:1px solid rgba(255,255,255,0.3);
+    color:#fff;
+    font-size:0.78rem;
+    font-weight:700;
+    padding:6px 12px;
+    border-radius:8px;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .withdraw-btn:active{opacity:0.7;}
+  .withdrawal-history-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:8px;
+    font-size:0.75rem;
+    color:#e8ecef;
+    padding:5px 0;
+    border-top:1px solid rgba(255,255,255,0.1);
+  }
+
+  details{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    margin-bottom:14px;
+    overflow:hidden;
+  }
+  summary{
+    padding:14px 16px;
+    font-weight:600;
+    font-size:0.95rem;
+    cursor:pointer;
+    list-style:none;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+  summary::-webkit-details-marker{display:none;}
+  summary::after{content:"▾";color:var(--muted);transition:transform .15s;}
+  details[open] summary::after{transform:rotate(180deg);}
+  .panel{padding:0 16px 16px;}
+  .nested-details{margin-top:12px;}
+  .nested-details:first-of-type{margin-top:16px;}
+  .setup-panel-wrap{
+    display:none;
+    background:var(--card);
+    color:var(--ink);
+    border:1px solid transparent;
+    border-radius:14px;
+    padding:16px 16px 8px;
+    margin-bottom:0;
+    margin-top:0;
+    max-height:0;
+    opacity:0;
+    overflow:hidden;
+    transition:max-height 0.6s ease, opacity 0.5s ease, margin 0.6s ease, border-color 0.5s ease;
+  }
+  .setup-panel-wrap.open{
+    display:block;
+    max-height:900px;
+    opacity:1;
+    margin-top:16px;
+    margin-bottom:14px;
+    border-color:var(--line);
+  }
+  #incomeDropdown{
+    padding-bottom:16px;
+  }
+  .hero-pie-dropdown{
+    display:none;
+    max-height:0;
+    opacity:0;
+    overflow:hidden;
+    margin-top:0;
+    padding-top:0;
+    border-top:1px solid transparent;
+    transition:max-height 0.6s ease, opacity 0.5s ease, margin-top 0.6s ease, padding-top 0.6s ease, border-top-color 0.5s ease;
+  }
+  .hero-pie-dropdown.open{
+    display:block;
+    max-height:900px;
+    opacity:1;
+    margin-top:16px;
+    padding-top:10px;
+    border-top-color:rgba(255,255,255,0.12);
+  }
+  .setup-panel-wrap p{
+    font-size:0.85rem;
+    line-height:1.5;
+    margin:0 0 10px;
+  }
+  .setup-panel-wrap p:last-child{margin-bottom:0;}
+  .setup-panel-wrap strong{color:var(--accent);}
+  /* Notes and Games share this same slide-open pattern as the Income/
+     Budget/Accounts dropdowns above — a max-height/opacity transition
+     driven by an .open class, rather than snapping open instantly. */
+  .bonus-section-slide{
+    display:none;
+    max-height:0;
+    opacity:0;
+    overflow:hidden;
+    transition:max-height 0.6s ease, opacity 0.5s ease, margin-bottom 0.6s ease;
+  }
+  .bonus-section-slide.open{
+    display:block;
+    max-height:3000px;
+    opacity:1;
+  }
+  #notesSection.open{margin-bottom:16px;}
+
+  .field-row{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);}
+  .field-row:last-child{border-bottom:none;}
+  .field-name{flex:1;font-size:0.85rem;}
+  .field-name small{display:block;color:var(--muted);font-size:0.72rem;}
+  input{
+    width:92px;
+    text-align:right;
+    padding:8px 10px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    font-size:0.9rem;
+    font-family:inherit;
+    background:var(--card);
+    color:var(--ink);
+  }
+  input:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  input[type="text"]{text-align:left;}
+
+  .setup-prominent{
+    background:var(--accent-soft);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:14px;
+    margin:12px 0;
+  }
+  .setup-prominent select{
+    font-weight:600;
+    padding:9px 10px;
+    border:1px solid var(--accent);
+  }
+  .setup-discreet{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:wrap;
+    padding:8px 2px;
+    margin:10px 0;
+    font-size:0.75rem;
+    color:var(--muted);
+  }
+  .setup-discreet label{
+    display:flex;
+    align-items:center;
+    gap:5px;
+    cursor:pointer;
+  }
+  .setup-discreet input[type="checkbox"]{
+    width:14px;
+    height:14px;
+    accent-color:var(--muted);
+    margin:0;
+  }
+  .setup-discreet-note{
+    font-size:0.72rem;
+    color:var(--muted);
+  }
+  .card-group-title{
+    font-size:0.72rem;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    color:var(--muted);
+    margin:14px 0 4px;
+  }
+  .history-section-title{
+    font-size:0.95rem;
+    font-weight:800;
+    color:var(--accent);
+    margin:0 0 8px;
+  }
+  .account-history-content{
+    display:none;
+    max-height:0;
+    opacity:0;
+    overflow:hidden;
+    transition:max-height 0.6s ease, opacity 0.5s ease;
+  }
+  .account-history-content.open{
+    display:block;
+    max-height:2000px;
+    opacity:1;
+  }
+  #spendingTrackerContent{
+    transition:opacity 0.28s ease;
+  }
+  @keyframes scheduleResetSwap{
+    0%{ opacity:1; transform:scale(1) translateY(0); }
+    45%{ opacity:0; transform:scale(0.93) translateY(-12px); }
+    55%{ opacity:0; transform:scale(0.93) translateY(12px); }
+    100%{ opacity:1; transform:scale(1) translateY(0); }
+  }
+  .schedule-resetting{
+    animation:scheduleResetSwap 1s ease;
+  }
+  .history-section-divider{
+    border:none;
+    border-top:2px solid var(--line);
+    margin:18px 0;
+  }
+  .account-input-card{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:4px 14px 6px;
+    margin-bottom:12px;
+  }
+  .account-input-card-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:10px 0 6px;
+    border-bottom:1px solid var(--line);
+    margin-bottom:2px;
+  }
+  .account-input-card-name{
+    font-size:0.92rem;
+    font-weight:700;
+    color:var(--ink);
+  }
+  .howto-title{
+    font-size:1.05rem;
+    font-weight:700;
+    color:var(--ink);
+    margin:0 0 8px;
+  }
+  .back-to-spending-btn{
+    background:none;
+    border:none;
+    color:var(--accent);
+    font-size:0.82rem;
+    font-weight:600;
+    padding:0 0 12px;
+    margin:0;
+    cursor:pointer;
+    display:block;
+  }
+  .back-to-spending-btn:active{opacity:0.7;}
+  .howto-subtitle{
+    font-size:0.72rem;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    color:var(--accent);
+    margin:18px 0 8px;
+    padding-top:14px;
+    border-top:1px solid var(--line);
+  }
+  .howto-subtitle:first-of-type{margin-top:14px;padding-top:0;border-top:none;}
+
+  button.recalc{
+    width:100%;
+    padding:13px;
+    border:none;
+    border-radius:10px;
+    background:var(--accent);
+    color:#fff;
+    font-size:0.95rem;
+    font-weight:600;
+    margin-top:16px;
+    cursor:pointer;
+  }
+  button.recalc:active{opacity:0.85;}
+
+  .income-estimate{
+    display:none;
+    background:var(--accent-soft);
+    color:var(--accent);
+    border-radius:8px;
+    padding:8px 10px;
+    font-size:0.8rem;
+    margin:8px 0;
+  }
+  .add-item-box{
+    display:none;
+    background:#f6f5f1;
+    border:1px dashed transparent;
+    border-radius:10px;
+    padding:0 12px;
+    margin:0;
+    max-height:0;
+    opacity:0;
+    overflow:hidden;
+    transition:max-height 0.5s ease, opacity 0.4s ease, margin 0.5s ease, padding 0.5s ease, border-color 0.4s ease;
+  }
+  .add-item-box.open{
+    display:block;
+    max-height:700px;
+    opacity:1;
+    padding:4px 12px 12px;
+    margin:8px 0 12px;
+    border-color:var(--line);
+  }
+  .add-toggle-btn{
+    width:100%;
+    padding:10px;
+    border:1px dashed #9ba3ac;
+    border-radius:10px;
+    background:transparent;
+    color:var(--muted);
+    font-size:0.82rem;
+    font-weight:600;
+    margin-top:6px;
+    cursor:pointer;
+  }
+  .add-toggle-btn:active{opacity:0.7;}
+  /* The games entry point is deliberately styled apart from every other
+     toggle/utility button on the page (all muted, dashed, or text-sized) —
+     it's a playful, bigger "destination" button, not a settings toggle,
+     so it gets its own bold gradient, pill shape, and lift/glow states. */
+  .games-toggle-btn{
+    display:inline-block;
+    width:260px;
+    text-align:center;
+    padding:20px 12px;
+    border:none;
+    border-radius:999px;
+    background:linear-gradient(135deg, #c96f4a, #e8a868 55%, #f0c987);
+    color:#fff;
+    font-size:1.2rem;
+    font-weight:800;
+    letter-spacing:-0.01em;
+    box-shadow:0 12px 28px rgba(201,111,74,0.4), inset 0 1px 0 rgba(255,255,255,0.35);
+    cursor:pointer;
+    transition:transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .games-toggle-btn:active{
+    transform:scale(0.97);
+    box-shadow:0 6px 14px rgba(201,111,74,0.32), inset 0 1px 0 rgba(255,255,255,0.3);
+  }
+  [data-theme="dark"] .games-toggle-btn{
+    background:linear-gradient(135deg, #4aa88f, #5b3a8a 65%, #7a5ac2);
+    box-shadow:0 10px 24px rgba(74,168,143,0.32), inset 0 1px 0 rgba(255,255,255,0.15);
+  }
+  .howto-toggle-small{
+    width:fit-content;
+    text-align:left;
+    padding:5px 10px;
+    font-size:0.68rem;
+    margin:0;
+  }
+  .footer-btn-row{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+  }
+  .theme-toggle-btn{
+    width:32px;
+    height:32px;
+    border-radius:50%;
+    border:1px dashed #9ba3ac;
+    background:transparent;
+    color:var(--muted);
+    font-size:0.95rem;
+    line-height:1;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0;
+    flex-shrink:0;
+  }
+  .theme-toggle-btn:active{opacity:0.7;}
+  .page-footer{
+    margin:140px 0 12px;
+    text-align:center;
+  }
+  .page-footer-status{
+    font-size:0.66rem;
+    color:var(--muted);
+    margin-top:4px;
+  }
+  button.add-btn{
+    background:var(--ink-fixed);
+    margin-top:10px;
+  }
+  .remove{
+    color:var(--warn);
+    font-size:0.72rem;
+    font-weight:600;
+    cursor:pointer;
+  }
+
+  .bonus-inline-btn{
+    width:auto;
+    padding:5px 10px;
+    border:1.5px dashed #c8a15a;
+    border-radius:7px;
+    background:#fdf7ea;
+    color:#8a6a1f;
+    font-size:0.68rem;
+    font-weight:700;
+    cursor:pointer;
+    margin:6px 0;
+  }
+  .bonus-inline-btn:active{opacity:0.8;}
+  .bonus-inline-input{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:#fdf7ea;
+    border:1px solid #e9d7a8;
+    border-radius:8px;
+    padding:8px 10px;
+    margin:6px 0;
+    color:#5c4a1a;
+  }
+  .bonus-inline-input input{
+    flex:1;
+    width:auto;
+    min-width:0;
+    box-sizing:border-box;
+  }
+  .bonus-inline-input button{
+    background:#c8a15a;
+    color:#fff;
+    border:none;
+    border-radius:6px;
+    padding:8px 12px;
+    font-size:0.78rem;
+    font-weight:700;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .extra-expense-input{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    background:#fdf1e6;
+    border:1px solid #f0d9bb;
+    border-radius:8px;
+    padding:10px;
+    margin:6px 0;
+    color:#7a4a22;
+  }
+  .extra-expense-input input[type="text"]{
+    width:100%;
+    min-width:0;
+    box-sizing:border-box;
+  }
+  .extra-expense-input .ee-amount-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .extra-expense-input input[type="number"]{
+    flex:1;
+    width:auto;
+    min-width:0;
+    box-sizing:border-box;
+  }
+  .extra-expense-input button{
+    background:#c97b3f;
+    color:#fff;
+    border:none;
+    border-radius:6px;
+    padding:8px 12px;
+    font-size:0.78rem;
+    font-weight:700;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+
+  .spending-summary-quicklinks{
+    display:flex;
+    gap:8px;
+  }
+  .spending-summary-link{
+    flex:1;
+    padding:9px 4px;
+    border:1px solid rgba(255,255,255,0.25);
+    border-radius:10px;
+    background:rgba(255,255,255,0.12);
+    color:#fff;
+    font-size:0.72rem;
+    font-weight:700;
+    cursor:pointer;
+  }
+  .spending-summary-link:active{opacity:0.7;}
+  .spending-summary-stat-row{
+    display:flex;
+    justify-content:space-between;
+    font-size:0.8rem;
+    padding:5px 0;
+    color:rgba(255,255,255,0.85);
+    border-top:1px solid rgba(255,255,255,0.15);
+  }
+  .spending-summary-stat-row span:last-child{font-weight:700;color:#fff;}
+
+  .spend-section{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:4px 12px 12px;
+    margin-bottom:12px;
+  }
+  .spend-section:last-child{margin-bottom:0;}
+  .spend-section-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    padding:10px 0 8px;
+  }
+  .spend-section-title{
+    font-size:0.9rem;
+    font-weight:700;
+    color:var(--ink);
+  }
+  .spend-section-total{
+    font-size:0.75rem;
+    font-weight:600;
+    color:var(--accent);
+  }
+  .account-terms-section{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:2px 12px;
+  }
+  .account-terms-section-warn{
+    background:var(--warn-soft);
+    border-color:#f0ddd4;
+  }
+  .account-terms-mini{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:8px 10px;
+    flex-shrink:0;
+    width:92px;
+  }
+  .account-terms-mini-warn{
+    background:var(--warn-soft);
+    border-color:#f0ddd4;
+  }
+  .account-terms-mini-row{
+    display:flex;
+    flex-direction:column;
+    margin-bottom:7px;
+  }
+  .account-terms-mini-row:last-child{margin-bottom:0;}
+  .account-terms-mini-row span:first-child{
+    font-size:0.58rem;
+    text-transform:uppercase;
+    letter-spacing:0.03em;
+    color:var(--muted);
+    line-height:1.2;
+  }
+  .account-terms-mini-row span:last-child{
+    font-size:0.82rem;
+    font-weight:800;
+    color:var(--ink);
+    line-height:1.2;
+  }
+  .account-terms-mini-sm{
+    width:104px;
+    padding:6px 8px;
+  }
+  .account-terms-mini-sm .account-terms-mini-row{margin-bottom:4px;}
+  .account-terms-mini-sm .account-terms-mini-row:last-child{margin-bottom:0;}
+  .account-terms-mini-sm .account-terms-mini-row span:first-child{font-size:0.54rem;}
+  .account-terms-mini-sm .account-terms-mini-row span:last-child{font-size:0.74rem;}
+  .account-detail-title-box{
+    text-align:center;
+    background:linear-gradient(135deg, #2f6f5e, #4a9683);
+    border-radius:18px;
+    padding:22px 16px;
+    box-shadow:0 8px 22px rgba(47,111,94,0.32);
+    position:relative;
+    overflow:hidden;
+  }
+  .account-detail-title-box::before{
+    content:"";
+    position:absolute;
+    top:-30%;
+    right:-15%;
+    width:60%;
+    height:160%;
+    background:rgba(255,255,255,0.08);
+    transform:rotate(20deg);
+  }
+  .start-savings-btn{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    width:100%;
+    text-align:center;
+    color:var(--accent);
+    font-size:1rem;
+    font-weight:800;
+    letter-spacing:-0.01em;
+    background:var(--accent-soft);
+    border:2px dashed var(--accent);
+    border-radius:16px;
+    padding:18px 16px;
+    cursor:pointer;
+    margin-bottom:14px;
+  }
+  .start-savings-btn .ssb-icon{font-size:1.5rem;}
+  .start-savings-btn:active{opacity:0.75;}
+  .account-detail-title-name{
+    font-size:1.6rem;
+    font-weight:800;
+    color:#fff;
+    letter-spacing:-0.01em;
+    position:relative;
+  }
+  .pie-chart-wrap{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:12px;
+    padding:4px 0 16px;
+  }
+  .pie-chart{
+    border-radius:50%;
+    flex-shrink:0;
+    box-shadow:0 4px 14px rgba(26,34,48,0.12);
+  }
+  .pie-legend{
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    gap:6px 14px;
+    min-width:0;
+  }
+  .pie-legend-item{
+    font-size:0.76rem;
+    color:var(--muted);
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .pie-legend-item:active{opacity:0.6;}
+  .debt-breakdown-pie .pie-legend-item{color:#e8ecef;}
+  .pie-legend-dot{
+    width:9px;
+    height:9px;
+    border-radius:50%;
+    flex-shrink:0;
+  }
+  .hero.debt-hero{
+    background:
+      radial-gradient(circle at 86% 8%, rgba(255,255,255,0.18), transparent 45%),
+      linear-gradient(135deg, #7a3d28 0%, #a8542f 50%, #c96f4a 100%);
+  }
+  /* Bear Run: a little Chrome-Dino-style endless runner living in its own
+     hero card. Teal/green so it reads as a distinct, playful "bonus" card
+     rather than blending into the debt (red/orange) or savings (gold)
+     cards either side of it. */
+  .hero.bear-runner-hero{
+    background:
+      radial-gradient(circle at 14% 8%, rgba(255,255,255,0.2), transparent 45%),
+      linear-gradient(135deg, #1f6b5c 0%, #2f9e86 50%, #5fc9ae 100%);
+    margin-bottom:20px;
+  }
+  [data-theme="dark"] .hero.bear-runner-hero{
+    background:linear-gradient(135deg, #2b2f42, #3d4160);
+  }
+  .runner-game-wrap{
+    position:relative;
+    width:100%;
+    height:170px;
+    border-radius:14px;
+    overflow:hidden;
+    background:rgba(255,255,255,0.14);
+    border:1px solid rgba(255,255,255,0.22);
+    touch-action:none;
+    cursor:pointer;
+    user-select:none;
+  }
+  .runner-canvas{
+    display:block;
+    width:100%;
+    height:100%;
+  }
+  .runner-score{
+    position:absolute;
+    top:8px;
+    right:10px;
+    display:flex;
+    align-items:baseline;
+    gap:8px;
+    font-size:0.95rem;
+    font-weight:800;
+    color:#fff;
+    font-variant-numeric:tabular-nums;
+    text-shadow:0 1px 3px rgba(0,0,0,0.25);
+    pointer-events:none;
+  }
+  .runner-score-best{
+    font-size:0.62rem;
+    font-weight:700;
+    letter-spacing:0.04em;
+    color:rgba(255,255,255,0.85);
+  }
+  .runner-overlay{
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:4px;
+    background:rgba(20,20,20,0.28);
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.2s ease;
+    text-align:center;
+    padding:0 20px;
+  }
+  .runner-overlay.show{
+    opacity:1;
+    pointer-events:auto;
+  }
+  .runner-overlay-title{
+    color:#fff;
+    font-weight:800;
+    font-size:1rem;
+    text-shadow:0 2px 6px rgba(0,0,0,0.35);
+  }
+  .runner-overlay-sub{
+    color:rgba(255,255,255,0.9);
+    font-size:0.76rem;
+    font-weight:600;
+    text-shadow:0 1px 4px rgba(0,0,0,0.3);
+  }
+  /* Bear Crush: a small match-3 grid, pink/purple so it reads as its own
+     distinct "bonus" card next to the teal Bear Run card above it. */
+  .hero.bear-crush-hero{
+    background:
+      radial-gradient(circle at 86% 8%, rgba(255,255,255,0.2), transparent 45%),
+      linear-gradient(135deg, #7a2e78 0%, #b455ae 50%, #e089d9 100%);
+    margin-bottom:20px;
+  }
+  [data-theme="dark"] .hero.bear-crush-hero{
+    background:linear-gradient(135deg, #2b2f42, #3d4160);
+  }
+  .crush-score-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    color:#fff;
+    font-size:0.85rem;
+    font-weight:700;
+    margin-bottom:8px;
+    text-shadow:0 1px 3px rgba(0,0,0,0.25);
+  }
+  .crush-grid{
+    display:grid;
+    grid-template-columns:repeat(6, 1fr);
+    gap:4px;
+    background:rgba(255,255,255,0.14);
+    border:1px solid rgba(255,255,255,0.22);
+    border-radius:14px;
+    padding:6px;
+  }
+  .crush-tile{
+    aspect-ratio:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:1.3rem;
+    line-height:1;
+    border-radius:8px;
+    background:rgba(255,255,255,0.16);
+    cursor:pointer;
+    border:2px solid transparent;
+    transition:transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  .crush-tile.selected{
+    border-color:#fff;
+    background:rgba(255,255,255,0.32);
+    transform:scale(1.06);
+  }
+  .crush-tile.popping{
+    transform:scale(0);
+    opacity:0;
+  }
+  .crush-tile.dropped{
+    animation:crushDropIn 0.22s ease;
+  }
+  @keyframes crushDropIn{
+    from{ transform:translateY(-14px); opacity:0.35; }
+    to{ transform:translateY(0); opacity:1; }
+  }
+  .crush-tile.invalid{
+    animation:crushShake 0.3s ease;
+  }
+  @keyframes crushShake{
+    0%, 100%{ transform:translateX(0); }
+    25%{ transform:translateX(-4px); }
+    75%{ transform:translateX(4px); }
+  }
+  .crush-hint{
+    text-align:center;
+    color:rgba(255,255,255,0.85);
+    font-size:0.7rem;
+    margin-top:8px;
+    font-weight:600;
+  }
+  /* Bear Quest: a small top-down "clear the room" adventure — forest
+     green/gold so it reads as its own distinct card, same "bonus" hero
+     pattern as Bear Run / Bear Crush above it. */
+  .hero.bear-quest-hero{
+    background:
+      radial-gradient(circle at 86% 8%, rgba(255,255,255,0.2), transparent 45%),
+      linear-gradient(135deg, #234d20 0%, #4c7031 50%, #8fae5a 100%);
+    margin-bottom:20px;
+  }
+  [data-theme="dark"] .hero.bear-quest-hero{
+    background:linear-gradient(135deg, #2b2f42, #3d4160);
+  }
+  .quest-score-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    color:#fff;
+    font-size:0.85rem;
+    font-weight:700;
+    margin-bottom:8px;
+    text-shadow:0 1px 3px rgba(0,0,0,0.25);
+  }
+  .quest-hearts{font-size:0.8rem;letter-spacing:1px;}
+  #bearCatchHero .quest-score-row{
+    flex-wrap:wrap;
+    gap:4px 10px;
+    font-size:0.76rem;
+  }
+  .quest-game-wrap{
+    position:relative;
+    width:100%;
+    height:210px;
+    border-radius:14px;
+    overflow:hidden;
+    background:rgba(255,255,255,0.14);
+    border:1px solid rgba(255,255,255,0.22);
+    touch-action:none;
+    user-select:none;
+  }
+  .quest-canvas{
+    display:block;
+    width:100%;
+    height:100%;
+  }
+  /* Bear Catch gets a much taller game area than the other three games —
+     32 sections of NPCs, gym leaders, and distinct trail layouts need the
+     room, where Bear Run/Quest's smaller, faster-paced screens don't. */
+  #catchGameWrap{ height:320px; }
+  /* Bear Catch's d-pad is a bit bigger than Run/Quest's — this game has
+     you navigating full rooms with multiple NPCs, doors, and buildings
+     rather than dodging in a tight arena. */
+  #catchControls .quest-dpad{ width:136px; height:92px; }
+  #catchControls .quest-dpad-btn{ width:44px; height:44px; font-size:1.15rem; border-radius:10px; }
+  #catchControls .quest-dpad-up{ top:0; left:46px; }
+  #catchControls .quest-dpad-left{ top:46px; left:0; }
+  #catchControls .quest-dpad-right{ top:46px; left:92px; }
+  #catchControls .quest-dpad-down{ top:46px; left:46px; }
+  .quest-overlay{
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    background:rgba(20,20,20,0.4);
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.2s ease;
+    text-align:center;
+    padding:0 20px;
+  }
+  .quest-overlay.show{
+    opacity:1;
+    pointer-events:auto;
+  }
+  .quest-overlay-title{
+    color:#fff;
+    font-weight:800;
+    font-size:1.1rem;
+    text-shadow:0 2px 6px rgba(0,0,0,0.35);
+  }
+  .quest-overlay-sub{
+    color:rgba(255,255,255,0.9);
+    font-size:0.76rem;
+    font-weight:600;
+    text-shadow:0 1px 4px rgba(0,0,0,0.3);
+    margin-bottom:4px;
+  }
+  .quest-start-btn{
+    margin-top:4px;
+    padding:10px 24px;
+    border:none;
+    border-radius:999px;
+    background:linear-gradient(135deg, #c96f4a, #e8a868);
+    color:#fff;
+    font-size:0.85rem;
+    font-weight:800;
+    cursor:pointer;
+    box-shadow:0 4px 12px rgba(0,0,0,0.3);
+  }
+  .quest-start-btn:active{opacity:0.8;}
+  .quest-controls{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-top:10px;
+  }
+  .quest-dpad{
+    position:relative;
+    width:104px;
+    height:70px;
+  }
+  .quest-dpad-btn{
+    position:absolute;
+    width:34px;
+    height:34px;
+    border:1px solid rgba(255,255,255,0.3);
+    border-radius:8px;
+    background:rgba(255,255,255,0.16);
+    color:#fff;
+    font-size:0.9rem;
+    line-height:1;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    touch-action:none;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  .quest-dpad-btn:active,
+  .quest-dpad-btn.pressed{
+    background:rgba(255,255,255,0.36);
+    transform:scale(0.94);
+  }
+  .quest-dpad-up{top:0;left:35px;}
+  .quest-dpad-left{top:35px;left:0;}
+  .quest-dpad-right{top:35px;left:70px;}
+  .quest-dpad-down{top:35px;left:35px;}
+  .quest-attack-btn{
+    width:60px;
+    height:60px;
+    border-radius:50%;
+    border:none;
+    background:linear-gradient(135deg, #c8222c, #8a141d);
+    color:#fff;
+    font-size:1.5rem;
+    line-height:1;
+    cursor:pointer;
+    box-shadow:0 4px 12px rgba(0,0,0,0.32);
+    touch-action:none;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  .quest-attack-btn:active,
+  .quest-attack-btn.pressed{
+    transform:scale(0.92);
+  }
+  .quest-hint{
+    text-align:center;
+    color:rgba(255,255,255,0.85);
+    font-size:0.7rem;
+    margin-top:8px;
+    font-weight:600;
+  }
+  /* Bear Catch: a small explore-and-catch adventure — sky blue/meadow so
+     it reads as its own distinct card, same "bonus" hero pattern as the
+     other three games above it. The overworld is the same canvas +
+     on-screen d-pad pattern as Bear Quest; battles swap in as a DOM
+     panel layered over the canvas instead of being drawn on it, since a
+     text/HP-bar battle screen is much more legible than trying to draw
+     one in canvas at this size. */
+  .hero.bear-catch-hero{
+    background:
+      radial-gradient(circle at 86% 8%, rgba(255,255,255,0.2), transparent 45%),
+      linear-gradient(135deg, #1f5c7a 0%, #3d8fae 50%, #7fc4d9 100%);
+    margin-bottom:20px;
+  }
+  [data-theme="dark"] .hero.bear-catch-hero{
+    background:linear-gradient(135deg, #2b2f42, #3d4160);
+  }
+  #catchBearKingBadge{
+    color:#ffd23f;
+    text-shadow:0 1px 3px rgba(0,0,0,0.3);
+  }
+  .dex-list{
+    flex:1;
+    overflow-y:auto;
+    margin-top:8px;
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+  }
+  .dex-row-item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:rgba(255,255,255,0.1);
+    border-radius:8px;
+    padding:5px 8px;
+  }
+  .dex-row-icon{font-size:1rem;width:20px;text-align:center;}
+  .dex-row-label{
+    flex:1;
+    color:#fff;
+    font-size:0.76rem;
+    font-weight:600;
+  }
+  .dex-row-status{font-size:0.8rem;}
+  #catchControls{justify-content:center;}
+  /* Battle panel: layered over the same canvas card, hidden until a
+     battle starts. Deliberately opaque (not semi-transparent like the
+     start/game-over overlays) since it fully replaces the overworld view
+     rather than dimming it. */
+  .battle-panel{
+    position:absolute;
+    inset:0;
+    display:none;
+    flex-direction:column;
+    justify-content:space-between;
+    padding:10px 12px;
+    background:linear-gradient(135deg, #1f5c7a, #163f52);
+    border-radius:14px;
+  }
+  .battle-panel.show{display:flex;}
+  .battle-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .battle-side{flex:1;min-width:0;}
+  .battle-vs{
+    color:rgba(255,255,255,0.7);
+    font-size:0.7rem;
+    font-weight:800;
+    flex-shrink:0;
+  }
+  .battle-name{
+    color:#fff;
+    font-size:0.72rem;
+    font-weight:700;
+    margin-bottom:3px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .battle-hpbar{
+    height:7px;
+    border-radius:4px;
+    background:rgba(0,0,0,0.3);
+    overflow:hidden;
+  }
+  .battle-hpfill{
+    height:100%;
+    width:100%;
+    background:linear-gradient(90deg, #4aa88f, #7fd9bd);
+    transition:width 0.4s ease;
+  }
+  .battle-hpfill.enemy{background:linear-gradient(90deg, #c8222c, #e8626a);}
+  .battle-hp-text{
+    color:rgba(255,255,255,0.75);
+    font-size:0.62rem;
+    margin-top:2px;
+    font-variant-numeric:tabular-nums;
+  }
+  .battle-sprites{
+    display:flex;
+    align-items:center;
+    justify-content:space-around;
+    font-size:2.4rem;
+    line-height:1;
+    margin:4px 0;
+  }
+  .battle-sprite{position:relative;display:inline-block;}
+  .battle-sprite.hit{animation:battleSpriteHit 0.35s ease;}
+  .battle-cta-pulse{animation:battleCtaPulse 0.7s ease-in-out infinite;}
+  @keyframes battleCtaPulse{
+    0%, 100%{transform:scale(1);}
+    50%{transform:scale(1.1);}
+  }
+  @keyframes battleSpriteHit{
+    0%, 100%{transform:translateX(0);}
+    30%{transform:translateX(-6px);}
+    60%{transform:translateX(6px);}
+  }
+  .battle-sprite.heal-glow{animation:battleSpriteHeal 0.9s ease;}
+  @keyframes battleSpriteHeal{
+    0%{filter:brightness(1) drop-shadow(0 0 0 rgba(122,230,180,0)); transform:translateY(0) scale(1);}
+    30%{filter:brightness(1.4) drop-shadow(0 0 10px rgba(122,230,180,0.9)); transform:translateY(-4px) scale(1.08);}
+    100%{filter:brightness(1) drop-shadow(0 0 0 rgba(122,230,180,0)); transform:translateY(0) scale(1);}
+  }
+  .battle-sprite.heal-glow::after{
+    content:'💚';
+    position:absolute;
+    left:50%; top:-4px;
+    font-size:1rem;
+    opacity:0;
+    animation:battleHealSpark 0.9s ease;
+  }
+  @keyframes battleHealSpark{
+    0%{opacity:0; transform:translate(-50%,6px) scale(0.6);}
+    35%{opacity:1; transform:translate(-50%,-10px) scale(1);}
+    100%{opacity:0; transform:translate(-50%,-28px) scale(1.1);}
+  }
+  .battle-sprite.caught{animation:battleSpriteCaught 0.9s ease forwards;}
+  @keyframes battleSpriteCaught{
+    0%{transform:scale(1) rotate(0deg); opacity:1;}
+    22%{transform:scale(1.12) rotate(-8deg); opacity:1;}
+    45%{transform:scale(0.88) rotate(8deg); opacity:1;}
+    70%{transform:scale(0.5) rotate(-6deg); opacity:0.75;}
+    100%{transform:scale(0) rotate(20deg); opacity:0;}
+  }
+  .battle-sprite.caught::after{
+    content:'✨';
+    position:absolute;
+    left:50%; top:50%;
+    font-size:1.1rem;
+    opacity:0;
+    animation:battleCaughtSpark 0.9s ease;
+  }
+  @keyframes battleCaughtSpark{
+    0%, 40%{opacity:0; transform:translate(-50%,-50%) scale(0);}
+    60%{opacity:1; transform:translate(-50%,-50%) scale(1.4);}
+    100%{opacity:0; transform:translate(-50%,-50%) scale(1.9);}
+  }
+  .battle-log{
+    color:#fff;
+    font-size:0.76rem;
+    font-weight:600;
+    text-align:center;
+    min-height:2.2em;
+    text-shadow:0 1px 3px rgba(0,0,0,0.3);
+  }
+  .battle-actions{
+    display:flex;
+    gap:6px;
+  }
+  .battle-action-btn{
+    flex:1;
+    padding:9px 4px;
+    border:none;
+    border-radius:10px;
+    background:rgba(255,255,255,0.18);
+    border:1px solid rgba(255,255,255,0.3);
+    color:#fff;
+    font-size:0.74rem;
+    font-weight:700;
+    cursor:pointer;
+  }
+  .battle-action-btn:active{background:rgba(255,255,255,0.32);}
+  .battle-action-btn:disabled{opacity:0.4;cursor:default;}
+  /* Notes: a little bear-themed notebook card, same "bonus" hero pattern
+     as Bear Run / Bear Crush above it — warm honey/leather cover gradient
+     so it reads as its own distinct card, with a cream ruled-paper
+     textarea "page" inset into it. Holiday variants below swap the cover
+     gradient the same way the game cards do. */
+  .hero.notes-hero{
+    background:
+      radial-gradient(circle at 86% 8%, rgba(255,255,255,0.2), transparent 45%),
+      linear-gradient(135deg, #6b4a24 0%, #9c6f34 50%, #c9995a 100%);
+    margin-bottom:20px;
+  }
+  [data-theme="dark"] .hero.notes-hero{
+    background:linear-gradient(135deg, #2b2f42, #3d4160);
+  }
+  .notebook-page-wrap{
+    position:relative;
+    border-radius:14px;
+    background:linear-gradient(135deg, #fffdf8, #f6ecd8);
+    border:1px solid rgba(255,255,255,0.35);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.6), 0 4px 10px rgba(0,0,0,0.15);
+    padding:14px 14px 10px;
+    overflow:hidden;
+  }
+  [data-theme="dark"] .notebook-page-wrap{
+    background:linear-gradient(135deg, #26211a, #332a1e);
+    border-color:rgba(255,255,255,0.1);
+  }
+  /* A faint paw print watermark tucked in the corner of the page, purely
+     decorative — sits behind the textarea's own (transparent) background
+     so typed text always reads on top of it. */
+  .notebook-page-wrap::after{
+    content:'🐾';
+    position:absolute;
+    right:10px;
+    bottom:6px;
+    font-size:1.6rem;
+    opacity:0.12;
+    pointer-events:none;
+  }
+  .notebook-textarea{
+    position:relative;
+    z-index:1;
+    display:block;
+    width:100%;
+    min-height:140px;
+    resize:vertical;
+    border:none;
+    outline:none;
+    background:
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent 25px,
+        rgba(120,95,60,0.18) 26px
+      );
+    background-position:0 4px;
+    line-height:26px;
+    padding:2px 4px 4px;
+    font-family:inherit;
+    font-size:0.88rem;
+    color:#4a3626;
+  }
+  [data-theme="dark"] .notebook-textarea{
+    color:#e7ebf1;
+    background:
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent 25px,
+        rgba(255,255,255,0.12) 26px
+      );
+    background-position:0 4px;
+  }
+  .notebook-textarea::placeholder{color:#a4917a;}
+  [data-theme="dark"] .notebook-textarea::placeholder{color:#7a8291;}
+  .notebook-save-indicator{
+    text-align:center;
+    color:rgba(255,255,255,0.85);
+    font-size:0.7rem;
+    margin-top:8px;
+    font-weight:600;
+    min-height:1em;
+    opacity:0;
+    transition:opacity 0.4s ease;
+  }
+  .notebook-save-indicator.show{opacity:1;}
+  /* Bear-themed notebook button — same big pill shape/size as the Games
+     button so the two "bonus" entry points read as siblings, just with
+     its own warm honey/leather gradient instead of Games' orange. */
+  .notes-toggle-btn{
+    display:inline-block;
+    width:260px;
+    text-align:center;
+    padding:20px 12px;
+    border:none;
+    border-radius:999px;
+    background:linear-gradient(135deg, #6b4a24, #9c6f34 55%, #c9995a);
+    color:#fff;
+    font-size:1.2rem;
+    font-weight:800;
+    letter-spacing:-0.01em;
+    box-shadow:0 12px 28px rgba(107,74,36,0.4), inset 0 1px 0 rgba(255,255,255,0.35);
+    cursor:pointer;
+    transition:transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .notes-toggle-btn:active{
+    transform:scale(0.97);
+    box-shadow:0 6px 14px rgba(107,74,36,0.32), inset 0 1px 0 rgba(255,255,255,0.3);
+  }
+  [data-theme="dark"] .notes-toggle-btn{
+    background:linear-gradient(135deg, #3d4160, #2b2f42);
+    box-shadow:0 12px 28px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
+  }
+  /* Page-flip controls beneath the notebook textarea: prev/next paw
+     buttons flanking a "2 / 4" page indicator, plus a small delete link
+     that only appears once there's more than one page to delete. */
+  .notebook-nav-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-top:10px;
+  }
+  .notebook-nav-btn{
+    background:rgba(255,255,255,0.16);
+    border:1px solid rgba(255,255,255,0.3);
+    color:#fff;
+    border-radius:10px;
+    padding:7px 14px;
+    font-size:0.76rem;
+    font-weight:700;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .notebook-nav-btn:disabled{opacity:0.35;cursor:default;}
+  .notebook-page-indicator{
+    color:#fff;
+    font-size:0.76rem;
+    font-weight:700;
+    text-shadow:0 1px 3px rgba(0,0,0,0.25);
+    font-variant-numeric:tabular-nums;
+  }
+  .notebook-delete-btn{
+    display:block;
+    margin:8px auto 0;
+    background:transparent;
+    border:none;
+    color:rgba(255,255,255,0.85);
+    font-size:0.7rem;
+    font-weight:600;
+    cursor:pointer;
+    text-decoration:underline;
+  }
+  .hero-pie-wrap-corner{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    flex-shrink:0;
+    margin-top:2px;
+  }
+  .hero-pie-corner{
+    width:60px;
+    height:60px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-shrink:0;
+  }
+  .hero-pie-hole-sm{
+    width:43px;
+    height:43px;
+    border-radius:50%;
+    background:var(--ink-fixed);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:#fff;
+  }
+  .debt-hero .hero-pie-hole-sm{background:#7a3d28;}
+  .savings-hero .hero-pie-hole-sm{background:#a8752e;}
+  .hero-pie-hole-sm .pct{font-size:0.8rem;font-weight:800;}
+  .spend-item{
+    padding:10px 0;
+    border-top:1px solid var(--line);
+  }
+  .spend-item:first-of-type{border-top:none;}
+  .spend-item-name{
+    font-size:0.85rem;
+    font-weight:600;
+    color:var(--ink);
+    margin-bottom:5px;
+  }
+  .spend-item-bar{
+    height:6px;
+    background:rgba(47,111,94,0.15);
+    border-radius:4px;
+    overflow:hidden;
+    margin-bottom:6px;
+  }
+  .spend-item-bar-fill{
+    height:100%;
+    background:var(--accent);
+    border-radius:4px;
+  }
+  .spend-item-numbers{
+    display:flex;
+    justify-content:space-between;
+    font-size:0.78rem;
+    color:var(--muted);
+  }
+  .spend-item-numbers span:first-child{
+    font-weight:600;
+    color:var(--accent);
+  }
+  .spend-item-card{
+    cursor:pointer;
+    border-radius:10px;
+    margin:0 -8px;
+    padding:10px 8px;
+  }
+  .spend-item-card:active{background:rgba(47,111,94,0.06);}
+  .spend-item-complete{
+    background:rgba(47,111,94,0.05);
+  }
+  .spend-item-complete .spend-item-name{
+    color:var(--muted);
+    text-decoration:line-through;
+    text-decoration-color:rgba(107,114,128,0.5);
+  }
+  .spend-item-complete .spend-item-bar-fill{background:var(--accent);}
+  .spend-item-badge{
+    display:inline-block;
+    font-size:0.62rem;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:0.03em;
+    padding:2px 7px;
+    border-radius:20px;
+    margin-left:7px;
+    text-decoration:none;
+    vertical-align:middle;
+  }
+  .spend-item-badge-complete{
+    background:var(--accent);
+    color:#fff;
+  }
+  .spend-item-badge-reopened{
+    background:var(--warn-soft);
+    color:var(--warn);
+  }
+  .spend-item-caret{
+    float:right;
+    color:var(--muted);
+    font-weight:400;
+  }
+  .spend-item-detail{
+    margin-top:8px;
+    padding-top:8px;
+    border-top:1px dashed var(--line);
+  }
+  .spend-item-detail .spend-item-numbers{padding:3px 0;}
+  .spend-item-detail .spend-item-numbers span:first-child{
+    font-weight:400;
+    color:var(--muted);
+  }
+
+  .checkbox-wrap{
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .checkbox-wrap input[type="checkbox"]{
+    width:20px;
+    height:20px;
+    accent-color:var(--accent);
+    margin:0;
+  }
+  .paycheck.completed{
+    opacity:0.55;
+  }
+  .paycheck.completed .paycheck-head .date{
+    text-decoration:line-through;
+  }
+  @keyframes paycheckDisappear{
+    0%{ opacity:1; transform:scale(1) rotate(0deg); }
+    30%{ opacity:1; transform:scale(1.04) rotate(-1.5deg); }
+    100%{ opacity:0; transform:scale(0.6) rotate(6deg) translateY(-14px); }
+  }
+  .paycheck-disappearing{
+    animation:paycheckDisappear 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    pointer-events:none;
+  }
+
+  .celebration-overlay{
+    position:fixed;
+    inset:0;
+    background:linear-gradient(135deg, rgba(30,58,95,0.94), rgba(47,111,94,0.94));
+    z-index:9999;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    flex-direction:column;
+    text-align:center;
+    padding:24px;
+    opacity:0;
+    transition:opacity 0.3s ease;
+    cursor:pointer;
+  }
+  .celebration-overlay.show{opacity:1;}
+  .celebration-confetti{
+    position:absolute;
+    inset:0;
+    overflow:hidden;
+    pointer-events:none;
+  }
+  .confetti-piece{
+    position:absolute;
+    top:-20px;
+    opacity:0.95;
+    border-radius:2px;
+    animation-name:confettiFall;
+    animation-timing-function:ease-in;
+    animation-fill-mode:forwards;
+  }
+  @keyframes confettiFall{
+    0%{ transform:translateY(-10vh) rotate(0deg); }
+    100%{ transform:translateY(110vh) rotate(540deg); }
+  }
+  .celebration-content{
+    position:relative;
+    z-index:1;
+    cursor:default;
+  }
+  .celebration-emoji{
+    font-size:4rem;
+    margin-bottom:6px;
+    animation:celebrationPop 0.6s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes celebrationPop{
+    0%{ transform:scale(0); }
+    70%{ transform:scale(1.15); }
+    100%{ transform:scale(1); }
+  }
+  .celebration-title{
+    font-size:1.6rem;
+    font-weight:900;
+    color:#fff;
+    margin:0 0 24px;
+    letter-spacing:-0.01em;
+    text-shadow:0 2px 10px rgba(0,0,0,0.25);
+  }
+  .celebration-dismiss-btn{
+    background:rgba(255,255,255,0.18);
+    border:1.5px solid rgba(255,255,255,0.5);
+    color:#fff;
+    font-weight:700;
+    padding:12px 28px;
+    border-radius:24px;
+    font-size:0.95rem;
+    cursor:pointer;
+  }
+  .celebration-dismiss-btn:active{opacity:0.7;}
+
+  .section-divider{
+    display:flex;
+    justify-content:center;
+    margin:52px 0 18px;
+  }
+  .section-divider-handle{
+    width:64px;
+    height:7px;
+    border-radius:4px;
+    background:linear-gradient(90deg, var(--accent), #5b3a8a);
+    box-shadow:0 2px 6px rgba(47,111,94,0.3);
+  }
+  .section-title{
+    font-size:1.65rem;
+    font-weight:800;
+    letter-spacing:-0.01em;
+    margin:0 0 20px;
+    color:var(--ink);
+    text-align:center;
+  }
+  .schedule-reset-btn{
+    position:absolute;
+    left:0;
+    top:50%;
+    transform:translateY(-50%);
+    width:32px;
+    height:32px;
+    border-radius:50%;
+    border:1.5px solid var(--line);
+    background:var(--card);
+    color:var(--muted);
+    font-size:1.05rem;
+    line-height:1;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  [data-theme="dark"] .schedule-reset-btn{
+    border-color:var(--warn);
+    color:var(--warn);
+  }
+  .schedule-reset-btn:active{opacity:0.6;}
+  .schedule-expand-btn{
+    width:100%;
+    padding:14px;
+    border:none;
+    border-radius:12px;
+    background:linear-gradient(135deg, #3d5a80, #22405e);
+    color:#fff;
+    font-size:0.9rem;
+    font-weight:700;
+    margin:4px 0 20px;
+    cursor:pointer;
+    box-shadow:0 3px 10px rgba(34,64,94,0.35);
+  }
+  .schedule-expand-btn:active{opacity:0.8;}
+  [data-theme="dark"] .schedule-expand-btn{
+    background:linear-gradient(135deg, #5b7ba8, #34547a);
+    box-shadow:0 3px 10px rgba(0,0,0,0.35);
+  }
+
+  .paycheck{
+    position:relative;
+    background:linear-gradient(135deg, #fffdf9, #f3e6d4);
+    border:1.5px solid #e0bf94;
+    border-radius:14px;
+    padding:14px 16px;
+    margin-bottom:24px;
+    box-shadow:0 2px 8px rgba(26,34,48,0.08);
+  }
+  [data-theme="dark"] .paycheck{
+    background:linear-gradient(135deg, #2b2f42, #3d4160);
+    border-color:#4a4e6b;
+  }
+  /* A little full-bodied bear sitting at the bottom of every paycheck
+     card, smiling and giving a friendly wave. Three independently
+     animated layers, replacing the old two-pseudo-element setup, because
+     the head now needs to tilt on its own axis while the body stays
+     still: .paycheck-bear-body is the static seated torso + legs +
+     resting arm, .paycheck-bear-head rotates around a transform-origin
+     planted at the neck, and .paycheck-bear-arm is the waving arm
+     rotated around its shoulder — all three share the same 3s timing so
+     the tilt and wave read as one connected gesture. The whole group
+     also gets a soft dark drop-shadow outline (light mode only) so the
+     bear's tan/cream fur doesn't wash out against the card's similarly
+     warm-toned background. */
+  .paycheck-bear-scene{
+    display:flex;
+    align-items:flex-end;
+    justify-content:center;
+    gap:12px;
+    margin:12px auto 2px;
+  }
+  .paycheck-bear{
+    width:52px;
+    height:62px;
+    margin:0;
+    position:relative;
+    opacity:0.95;
+    cursor:pointer;
+    flex:none;
+  }
+  /* Tap reaction: angry face + "Grrr" bubble + arm flip, then he turns
+     and stomps off to whichever edge of the card is nearer, fading out
+     as he goes. JS adds .angry immediately on tap, then .walking a beat
+     later once --walk-dist has been measured for this specific card. */
+  .paycheck-bear-bubble{
+    position:absolute;
+    top:-20px;
+    left:50%;
+    transform:translateX(-50%) scale(0.6);
+    background:#a8452e;
+    color:#fff;
+    font-size:0.64rem;
+    font-weight:800;
+    padding:2px 8px;
+    border-radius:11px;
+    white-space:nowrap;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.15s ease, transform 0.15s ease;
+    box-shadow:0 2px 6px rgba(0,0,0,0.18);
+    z-index:4;
+  }
+  .paycheck-bear-bubble::after{
+    content:'';
+    position:absolute;
+    bottom:-4px;
+    left:50%;
+    transform:translateX(-50%);
+    border-width:4px 4px 0;
+    border-style:solid;
+    border-color:#a8452e transparent transparent;
+  }
+  .paycheck-bear.angry .paycheck-bear-bubble{
+    opacity:1;
+    transform:translateX(-50%) scale(1);
+  }
+  .paycheck-bear.walking .paycheck-bear-bubble{
+    opacity:0;
+  }
+  /* Furrowed brows + frown overlay on the head, same erase-and-redraw
+     trick used for the mouth as the hero bear. Freeze the idle head
+     tilt while angry so the glare holds still. */
+  .paycheck-bear.angry .paycheck-bear-head{
+    animation:none;
+  }
+  .paycheck-bear-head::before{
+    content:'';
+    position:absolute;
+    inset:0;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cline x1='32' y1='22' x2='44' y2='30' stroke='%232a1c10' stroke-width='3.6' stroke-linecap='round'/%3E%3Cline x1='68' y1='22' x2='56' y2='30' stroke='%232a1c10' stroke-width='3.6' stroke-linecap='round'/%3E%3Cpath d='M40 48 Q50 55 60 48' stroke='%23f0dcc0' stroke-width='6' fill='none' stroke-linecap='round'/%3E%3Cpath d='M40 50 Q50 45 60 50' stroke='%232a1c10' stroke-width='2.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-size:contain;
+    background-repeat:no-repeat;
+    background-position:center;
+    pointer-events:none;
+    opacity:0;
+  }
+  .paycheck-bear.angry .paycheck-bear-head::before{
+    opacity:1;
+  }
+  /* The normal arm just drops out (no more wave) and a clenched fist
+     with the middle finger raised pops up in its place — his actual
+     reaction — then both fade together once he starts walking off. */
+  .paycheck-bear.angry .paycheck-bear-arm{
+    transition:opacity 0.15s ease;
+    opacity:0;
+  }
+  .paycheck-bear-rude-hand{
+    position:absolute;
+    inset:0;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cellipse cx='75' cy='80' rx='12' ry='11' fill='%23c9955f'/%3E%3Cellipse cx='75' cy='84' rx='6.5' ry='5' fill='%23e8c9a0'/%3E%3Crect x='69.5' y='51' width='9' height='27' rx='4.5' fill='%23c9955f'/%3E%3Cellipse cx='74' cy='55' rx='4' ry='3.6' fill='%23e8c9a0'/%3E%3C/svg%3E");
+    background-size:contain;
+    background-repeat:no-repeat;
+    background-position:center;
+    pointer-events:none;
+    opacity:0;
+    z-index:5;
+    filter:
+      drop-shadow(1px 0 0 rgba(58,38,22,0.45))
+      drop-shadow(-1px 0 0 rgba(58,38,22,0.45))
+      drop-shadow(0 1px 0 rgba(58,38,22,0.45))
+      drop-shadow(0 -1px 0 rgba(58,38,22,0.45));
+  }
+  [data-theme="dark"] .paycheck-bear-rude-hand{filter:none;}
+  @keyframes paycheckRudeHandPop{
+    0%{transform:translateY(16px) scale(0.5); opacity:0;}
+    45%{transform:translateY(-3px) scale(1.12); opacity:1;}
+    70%{transform:translateY(0) scale(1); opacity:1;}
+    100%{transform:translateY(0) scale(1); opacity:1;}
+  }
+  .paycheck-bear.angry .paycheck-bear-rude-hand{
+    animation:paycheckRudeHandPop 0.4s ease-out forwards;
+  }
+  /* A dedicated side-profile pose for the walk-off, instead of reusing
+     the seated front-facing art — the seated bear doesn't have legs
+     built for walking, so body/head/arm/rude-hand all hide and this
+     single side view (mid-stride, still scowling) takes over for the
+     walk. Drawn facing right; JS flips --walk-scale to -1 when he's
+     walking toward the left edge instead. The bat wings aren't tied to
+     a specific pose (they just span the whole silhouette from behind)
+     so they're left out of this list and simply carry on through the
+     walk unchanged. The seated hat/fangs/horns ARE tied to the seated
+     head, so those fade out here — dedicated walk-pose versions fitted
+     to this side-profile head take over instead, right below. */
+  .paycheck-bear.walking .paycheck-bear-body,
+  .paycheck-bear.walking .paycheck-bear-head,
+  .paycheck-bear.walking .paycheck-bear-arm,
+  .paycheck-bear.walking .paycheck-bear-rude-hand,
+  .paycheck-bear.walking .paycheck-bear-hat,
+  .paycheck-bear.walking .paycheck-bear-fangs{
+    opacity:0;
+  }
+  .paycheck-bear-walk-profile{
+    position:absolute;
+    inset:0;
+    background-size:contain;
+    background-repeat:no-repeat;
+    background-position:center;
+    pointer-events:none;
+    opacity:0;
+    z-index:6;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cellipse cx='38' cy='100' rx='10' ry='14' fill='%23c9955f' transform='rotate(22 38 100)'/%3E%3Cellipse cx='63' cy='102' rx='10' ry='14' fill='%23c9955f' transform='rotate(-18 63 102)'/%3E%3Cellipse cx='30' cy='113' rx='8' ry='5' fill='%23c9955f'/%3E%3Cellipse cx='71' cy='114' rx='8' ry='5' fill='%23c9955f'/%3E%3Cellipse cx='52' cy='72' rx='22' ry='26' fill='%23c9955f'/%3E%3Cellipse cx='56' cy='79' rx='13' ry='16' fill='%23f0dcc0'/%3E%3Cellipse cx='34' cy='68' rx='8' ry='14' fill='%23c9955f' transform='rotate(28 34 68)'/%3E%3Cellipse cx='69' cy='61' rx='8' ry='13' fill='%23c9955f' transform='rotate(-38 69 61)'/%3E%3Ccircle cx='58' cy='42' r='19' fill='%23c9955f'/%3E%3Ccircle cx='50' cy='25' r='9.5' fill='%238a5a34'/%3E%3Ccircle cx='50' cy='26' r='5' fill='%23e8c9a0'/%3E%3Cellipse cx='74' cy='46' rx='9' ry='7' fill='%23f0dcc0'/%3E%3Cellipse cx='79' cy='45' rx='2.4' ry='1.8' fill='%234a3020'/%3E%3Cpath d='M70 50 Q76 53 81 49' stroke='%234a3020' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='63' cy='37' r='2.6' fill='%232a1c10'/%3E%3Cline x1='54' y1='29' x2='66' y2='33' stroke='%232a1c10' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E");
+    filter:
+      drop-shadow(1px 0 0 rgba(58,38,22,0.45))
+      drop-shadow(-1px 0 0 rgba(58,38,22,0.45))
+      drop-shadow(0 1px 0 rgba(58,38,22,0.45))
+      drop-shadow(0 -1px 0 rgba(58,38,22,0.45));
+  }
+  [data-theme="dark"] .paycheck-bear-walk-profile{filter:none;}
+  .paycheck-bear.walking .paycheck-bear-walk-profile{
+    opacity:1;
+  }
+  /* Walk-pose holiday accessories, fitted to the side-profile head
+     (circle around 58,42 r19, ear at 50,25) instead of the seated head,
+     so he keeps his hat/horns/fangs while stomping off the card too.
+     Each only shows up while actually walking, under its holiday. */
+  .paycheck-bear-walk-hat, .paycheck-bear-walk-horns, .paycheck-bear-walk-fangs{
+    position:absolute;
+    inset:0;
+    background-size:contain;
+    background-repeat:no-repeat;
+    background-position:center;
+    pointer-events:none;
+    opacity:0;
+    z-index:7;
+  }
+  .paycheck-bear-walk-hat{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cellipse cx='54' cy='21' rx='16' ry='4' fill='%23ffffff'/%3E%3Cpath d='M38 21 C42 8 50 -2 58 -4 C67 -2 70 8 64 15 C59 19 52 16 54 21 Z' fill='%23d1272f' stroke='%23a01f22' stroke-width='1.5'/%3E%3Ccircle cx='63' cy='15' r='5' fill='%23ffffff'/%3E%3C/svg%3E");
+  }
+  .paycheck-bear-walk-horns{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cpath d='M43 24 Q40 15 45 7 Q49 14 47 22 Q45 25 43 24 Z' fill='%23a31212' stroke='%236b0d0d' stroke-width='1.3'/%3E%3Cpath d='M52 23 Q48 12 55 2 Q60 11 58 22 Q55 24 52 23 Z' fill='%23a31212' stroke='%236b0d0d' stroke-width='1.3'/%3E%3C/svg%3E");
+  }
+  .paycheck-bear-walk-fangs{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cpath d='M73 50 L74.5 55 L76 50 Z' fill='%23ffffff'/%3E%3Cpath d='M77 49 L78.5 54 L80 49 Z' fill='%23ffffff'/%3E%3C/svg%3E");
+  }
+  [data-holiday="christmas"] .paycheck-bear.walking .paycheck-bear-walk-hat{
+    opacity:1;
+  }
+  [data-holiday="halloween"] .paycheck-bear.walking .paycheck-bear-walk-horns,
+  [data-holiday="halloween"] .paycheck-bear.walking .paycheck-bear-walk-fangs{
+    opacity:1;
+  }
+  /* Walk to the measured edge distance, bobbing as he goes, fading out
+     near the end so he "exits" rather than popping away. Fill-mode
+     forwards holds him hidden off to the side until JS resets the
+     classes and inline custom properties after the cooldown. */
+  @keyframes paycheckBearWalk{
+    0%{transform:translateX(0) scaleX(var(--walk-scale, 1)) translateY(0); opacity:1;}
+    10%{transform:translateX(0) scaleX(var(--walk-scale, 1)) translateY(-3px); opacity:1;}
+    25%{transform:translateX(calc(var(--walk-dist, 120px) * 0.28)) scaleX(var(--walk-scale, 1)) translateY(0); opacity:1;}
+    40%{transform:translateX(calc(var(--walk-dist, 120px) * 0.5)) scaleX(var(--walk-scale, 1)) translateY(-3px); opacity:1;}
+    55%{transform:translateX(calc(var(--walk-dist, 120px) * 0.72)) scaleX(var(--walk-scale, 1)) translateY(0); opacity:1;}
+    80%{transform:translateX(var(--walk-dist, 120px)) scaleX(var(--walk-scale, 1)) translateY(0); opacity:1;}
+    100%{transform:translateX(var(--walk-dist, 120px)) scaleX(var(--walk-scale, 1)) translateY(0); opacity:0;}
+  }
+  .paycheck-bear.walking{
+    animation:paycheckBearWalk 1.4s ease-in forwards;
+  }
+  /* A tall honey pot standing next to him — tap it and it shatters,
+     honey spilling out, which is what actually sets him off (a
+     different bubble message than tapping him directly). In Christmas
+     mode a lit tree stands here instead (tap it and the lights spark
+     and go dark); in Halloween mode it's a bear skull (tap it and it
+     shatters). All three share this same slot and interaction — only
+     one is ever visible at a time, switched by [data-holiday] on
+     <html> — and any of them sets him off the same way. */
+  .honey-pot, .christmas-tree, .bear-skull{
+    position:relative;
+    width:42px;
+    height:44px;
+    flex:none;
+    cursor:pointer;
+  }
+  /* The tree stands taller than the bear (62px) rather than matching the
+     honey pot/skull's smaller footprint — it reads more like a real tree
+     next to him that way, towering a bit rather than sitting at knee
+     height. background-position:bottom center on its intact/dark layers
+     keeps it rooted to the same ground line as everything else in the
+     scene despite the taller box. */
+  .christmas-tree{
+    width:58px;
+    height:84px;
+  }
+  .christmas-tree, .bear-skull{display:none;}
+  [data-holiday="christmas"] .honey-pot{display:none;}
+  [data-holiday="christmas"] .christmas-tree{display:block;}
+  [data-holiday="halloween"] .honey-pot{display:none;}
+  [data-holiday="halloween"] .bear-skull{display:block;}
+  .honey-pot-intact, .honey-pot-broken,
+  .christmas-tree-intact, .christmas-tree-dark,
+  .bear-skull-intact, .bear-skull-broken{
+    position:absolute;
+    inset:0;
+    background-size:contain;
+    background-repeat:no-repeat;
+    background-position:bottom center;
+    pointer-events:none;
+    filter:
+      drop-shadow(1px 0 0 rgba(58,38,22,0.35))
+      drop-shadow(-1px 0 0 rgba(58,38,22,0.35))
+      drop-shadow(0 1px 0 rgba(58,38,22,0.35))
+      drop-shadow(0 -1px 0 rgba(58,38,22,0.35));
+  }
+  [data-theme="dark"] .honey-pot-intact,
+  [data-theme="dark"] .honey-pot-broken,
+  [data-theme="dark"] .christmas-tree-intact,
+  [data-theme="dark"] .christmas-tree-dark,
+  [data-theme="dark"] .bear-skull-intact,
+  [data-theme="dark"] .bear-skull-broken{filter:none;}
+  .honey-pot-intact{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 70 92'%3E%3Crect x='16' y='16' width='36' height='10' rx='4' fill='%238a5a34'/%3E%3Crect x='11' y='24' width='46' height='8' rx='4' fill='%236b4423'/%3E%3Cpath d='M18 30 Q6 44 9 62 Q11 80 35 82 Q59 80 61 62 Q64 44 52 30 Z' fill='%23c96f4a'/%3E%3Cpath d='M20 36 Q10 50 13 66' stroke='%23e8a868' stroke-width='3' fill='none' stroke-linecap='round' opacity='0.55'/%3E%3Crect x='9' y='56' width='52' height='15' rx='4' fill='%23fbf3e8'/%3E%3Crect x='9' y='56' width='52' height='15' rx='4' fill='none' stroke='%23e0bf94' stroke-width='1.5'/%3E%3Cg transform='rotate(25 47.5 34)'%3E%3Crect x='44' y='6' width='7' height='28' rx='3.5' fill='%23c96f4a'/%3E%3Cellipse cx='47.5' cy='5' rx='5.5' ry='4.8' fill='%23e8a020'/%3E%3Cellipse cx='47.5' cy='11.5' rx='2' ry='2.6' fill='%23e8a020'/%3E%3C/g%3E%3C/svg%3E");
+    transition:opacity 0.1s ease;
+  }
+  .honey-pot-broken{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 70 92'%3E%3Cpath d='M18 62 Q10 76 13 84 Q15 90 35 90 Q55 90 57 84 Q60 76 52 62 Z' fill='%23c96f4a'/%3E%3Cpath d='M18 62 L24 54 L29 63 L35 51 L41 63 L46 54 L52 62 Z' fill='%23c96f4a'/%3E%3Cpath d='M4 66 L12 60 L10 70 Z' fill='%23c96f4a'/%3E%3Cpath d='M60 64 L67 69 L59 75 Z' fill='%23c96f4a'/%3E%3Crect x='4' y='83' width='22' height='6' rx='3' fill='%23c96f4a' transform='rotate(-10 15 86)'/%3E%3Cellipse cx='11' cy='80' rx='4.5' ry='4' fill='%23e8a020' transform='rotate(-10 15 86)'/%3E%3Cellipse cx='35' cy='90' rx='30' ry='7' fill='%23e8a020'/%3E%3Cellipse cx='35' cy='89' rx='21' ry='4.5' fill='%23f3b830'/%3E%3Cpath d='M18 62 Q12 78 26 82 Q40 78 38 62' fill='none' stroke='%23e8a020' stroke-width='2' opacity='0.5'/%3E%3C/svg%3E");
+    opacity:0;
+    transform:scale(0.92);
+    transition:opacity 0.18s ease, transform 0.18s ease;
+  }
+  .honey-pot.broken .honey-pot-intact{
+    opacity:0;
+  }
+  .honey-pot.broken .honey-pot-broken{
+    opacity:1;
+    transform:scale(1);
+  }
+  /* Christmas tree: a lit, decorated pine. Tapping it fires a spark
+     burst and swaps to a version with the string lights gone dark
+     (grey unlit bulbs) — same shake-then-swap mechanic as the honey
+     pot, just re-skinned. */
+  .christmas-tree-intact{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 70 92'%3E%3Crect x='29' y='78' width='12' height='10' rx='2' fill='%236b4423'/%3E%3Cpath d='M35 42 L12 78 L58 78 Z' fill='%231e6b3f'/%3E%3Cpath d='M35 24 L18 58 L52 58 Z' fill='%2322894f'/%3E%3Cpath d='M35 8 L24 38 L46 38 Z' fill='%232ea360'/%3E%3Cpath d='M35 0 L38 6 L44 7 L39 11 L41 17 L35 13 L29 17 L31 11 L26 7 L32 6 Z' fill='%23ffd23f' stroke='%23e8a020' stroke-width='0.5'/%3E%3Ccircle cx='25' cy='50' r='2.2' fill='%23e8412f'/%3E%3Ccircle cx='45' cy='52' r='2.2' fill='%233fa9f5'/%3E%3Ccircle cx='35' cy='64' r='2.2' fill='%23ffd23f'/%3E%3Ccircle cx='22' cy='68' r='2.2' fill='%233fa9f5'/%3E%3Ccircle cx='48' cy='68' r='2.2' fill='%23e8412f'/%3E%3Ccircle cx='30' cy='32' r='2' fill='%23ffd23f'/%3E%3Ccircle cx='42' cy='30' r='2' fill='%23e8412f'/%3E%3Ccircle cx='35' cy='18' r='1.8' fill='%233fa9f5'/%3E%3C/svg%3E");
+    transition:opacity 0.1s ease;
+  }
+  .christmas-tree-dark{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 70 92'%3E%3Crect x='29' y='78' width='12' height='10' rx='2' fill='%236b4423'/%3E%3Cpath d='M35 42 L12 78 L58 78 Z' fill='%231c5c38'/%3E%3Cpath d='M35 24 L18 58 L52 58 Z' fill='%231f7346'/%3E%3Cpath d='M35 8 L24 38 L46 38 Z' fill='%23287d51'/%3E%3Cpath d='M35 0 L38 6 L44 7 L39 11 L41 17 L35 13 L29 17 L31 11 L26 7 L32 6 Z' fill='%23a8a48f' stroke='%23888470' stroke-width='0.5'/%3E%3Ccircle cx='25' cy='50' r='2' fill='%235c6570'/%3E%3Ccircle cx='45' cy='52' r='2' fill='%235c6570'/%3E%3Ccircle cx='35' cy='64' r='2' fill='%235c6570'/%3E%3Ccircle cx='22' cy='68' r='2' fill='%235c6570'/%3E%3Ccircle cx='48' cy='68' r='2' fill='%235c6570'/%3E%3Ccircle cx='30' cy='32' r='1.8' fill='%235c6570'/%3E%3Ccircle cx='42' cy='30' r='1.8' fill='%235c6570'/%3E%3Ccircle cx='35' cy='18' r='1.6' fill='%235c6570'/%3E%3Cg stroke='%23ffe37a' stroke-width='2' stroke-linecap='round'%3E%3Cline x1='35' y1='50' x2='35' y2='39'/%3E%3Cline x1='35' y1='50' x2='26' y2='45'/%3E%3Cline x1='35' y1='50' x2='44' y2='45'/%3E%3Cline x1='35' y1='50' x2='28' y2='58'/%3E%3Cline x1='35' y1='50' x2='42' y2='58'/%3E%3Cline x1='35' y1='50' x2='35' y2='61'/%3E%3C/g%3E%3Cellipse cx='35' cy='45' rx='7' ry='4.5' fill='%23c9c9c9' opacity='0.45'/%3E%3C/svg%3E");
+    opacity:0;
+    transform:scale(0.92);
+    transition:opacity 0.18s ease, transform 0.18s ease;
+  }
+  .christmas-tree.broken .christmas-tree-intact{
+    opacity:0;
+  }
+  .christmas-tree.broken .christmas-tree-dark{
+    opacity:1;
+    transform:scale(1);
+  }
+  /* Bear skull: a bone-white skull with rounded skull-ears, sitting in
+     for the honey pot in Halloween mode. Tapping it shatters it into
+     scattered bone fragments (still showing a socket or two, plus the
+     jaw with teeth) and a small dust cloud. */
+  .bear-skull-intact{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 70 92'%3E%3Ccircle cx='18' cy='20' r='13' fill='%23efe8d4'/%3E%3Ccircle cx='52' cy='20' r='13' fill='%23efe8d4'/%3E%3Ccircle cx='18' cy='21' r='6.5' fill='%23c7bfa0'/%3E%3Ccircle cx='52' cy='21' r='6.5' fill='%23c7bfa0'/%3E%3Cellipse cx='35' cy='46' rx='27' ry='25' fill='%23f2ecd9'/%3E%3Cellipse cx='25' cy='46' rx='6.5' ry='8' fill='%232a1c10'/%3E%3Cellipse cx='45' cy='46' rx='6.5' ry='8' fill='%232a1c10'/%3E%3Cpath d='M31 56 L39 56 L35 65 Z' fill='%232a1c10'/%3E%3Cpath d='M14 66 Q35 82 56 66 L56 74 Q35 90 14 74 Z' fill='%23f2ecd9' stroke='%23c7bfa0' stroke-width='1.2'/%3E%3Cg fill='%23ffffff'%3E%3Crect x='18' y='70' width='4' height='7'/%3E%3Crect x='25' y='73' width='4' height='8'/%3E%3Crect x='32' y='74' width='4' height='8'/%3E%3Crect x='39' y='73' width='4' height='8'/%3E%3Crect x='46' y='70' width='4' height='7'/%3E%3C/g%3E%3C/svg%3E");
+    transition:opacity 0.1s ease;
+  }
+  .bear-skull-broken{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 70 92'%3E%3Cpath d='M14 50 L28 40 L30 56 L16 62 Z' fill='%23f2ecd9'/%3E%3Cellipse cx='21' cy='50' rx='3.5' ry='4' fill='%232a1c10'/%3E%3Cpath d='M40 38 L56 44 L52 60 L38 54 Z' fill='%23f2ecd9'/%3E%3Cellipse cx='47' cy='48' rx='3.5' ry='4' fill='%232a1c10'/%3E%3Cpath d='M24 64 L46 64 L42 78 L28 78 Z' fill='%23f2ecd9'/%3E%3Cg fill='%23ffffff'%3E%3Crect x='29' y='70' width='3.5' height='6'/%3E%3Crect x='35' y='71' width='3.5' height='6'/%3E%3Crect x='41' y='70' width='3.5' height='6'/%3E%3C/g%3E%3Cpath d='M6 58 L14 54 L12 66 Z' fill='%23f2ecd9'/%3E%3Cpath d='M64 58 L56 54 L58 66 Z' fill='%23f2ecd9'/%3E%3Cellipse cx='35' cy='84' rx='26' ry='6' fill='%23bcbcbc' opacity='0.5'/%3E%3C/svg%3E");
+    opacity:0;
+    transform:scale(0.92);
+    transition:opacity 0.18s ease, transform 0.18s ease;
+  }
+  .bear-skull.broken .bear-skull-intact{
+    opacity:0;
+  }
+  .bear-skull.broken .bear-skull-broken{
+    opacity:1;
+    transform:scale(1);
+  }
+  @keyframes potShake{
+    0%, 100%{transform:rotate(0deg);}
+    25%{transform:rotate(-7deg);}
+    50%{transform:rotate(6deg);}
+    75%{transform:rotate(-5deg);}
+  }
+  .honey-pot.shaking .honey-pot-intact,
+  .christmas-tree.shaking .christmas-tree-intact,
+  .bear-skull.shaking .bear-skull-intact{
+    animation:potShake 0.25s ease-in-out;
+  }
+  .paycheck-bear-body, .paycheck-bear-head, .paycheck-bear-arm{
+    position:absolute;
+    inset:0;
+    background-size:contain;
+    background-repeat:no-repeat;
+    background-position:center;
+    pointer-events:none;
+    /* Each layer gets its own outline rather than the group getting one
+       shared outline — a shared filter on the parent only traces the
+       outer silhouette of the whole composite, so wherever the head or
+       arm overlaps the body their edges would blend right in instead of
+       standing out from it. */
+    filter:
+      drop-shadow(1px 0 0 rgba(58,38,22,0.45))
+      drop-shadow(-1px 0 0 rgba(58,38,22,0.45))
+      drop-shadow(0 1px 0 rgba(58,38,22,0.45))
+      drop-shadow(0 -1px 0 rgba(58,38,22,0.45));
+  }
+  [data-theme="dark"] .paycheck-bear-body,
+  [data-theme="dark"] .paycheck-bear-head,
+  [data-theme="dark"] .paycheck-bear-arm{filter:none;}
+  .paycheck-bear-body{
+    /* Seated pose: big, round bent legs overlapping the lower belly
+       (rather than small feet sitting below it) so the silhouette
+       actually reads as sitting, plus a resting arm on the hip. */
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cellipse cx='50' cy='76' rx='28' ry='24' fill='%23c9955f'/%3E%3Cellipse cx='50' cy='83' rx='17' ry='15' fill='%23f0dcc0'/%3E%3Ccircle cx='23' cy='71' r='10' fill='%23c9955f'/%3E%3Cellipse cx='23' cy='74' rx='5.5' ry='4.5' fill='%23f0dcc0'/%3E%3Cellipse cx='31' cy='94' rx='19' ry='17' fill='%23c9955f'/%3E%3Cellipse cx='69' cy='94' rx='19' ry='17' fill='%23c9955f'/%3E%3Cellipse cx='28' cy='100' rx='9' ry='7' fill='%23f0dcc0'/%3E%3Cellipse cx='72' cy='100' rx='9' ry='7' fill='%23f0dcc0'/%3E%3C/svg%3E");
+    z-index:1;
+  }
+  .paycheck-bear-head{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Ccircle cx='32' cy='20' r='11' fill='%238a5a34'/%3E%3Ccircle cx='68' cy='20' r='11' fill='%238a5a34'/%3E%3Ccircle cx='32' cy='21' r='5.5' fill='%23e8c9a0'/%3E%3Ccircle cx='68' cy='21' r='5.5' fill='%23e8c9a0'/%3E%3Ccircle cx='50' cy='38' r='24' fill='%23c9955f'/%3E%3Cellipse cx='50' cy='46' rx='12' ry='9' fill='%23f0dcc0'/%3E%3Cellipse cx='50' cy='40' rx='3.2' ry='2.4' fill='%234a3020'/%3E%3Cpath d='M40 48 Q50 55 60 48' stroke='%234a3020' stroke-width='2.8' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='42' cy='32' r='3' fill='%232a1c10'/%3E%3Ccircle cx='58' cy='32' r='3' fill='%232a1c10'/%3E%3C/svg%3E");
+    z-index:2;
+    transform-origin:50% 56%;
+    animation:bearHeadTilt 4.4s ease-in-out infinite;
+  }
+  /* A quick blink: two fur-colored ellipses sit invisible over the eyes
+     and flash briefly visible, covering the pupils for an instant. Since
+     they're the same fill as the surrounding head fur, they read as
+     closed eyes rather than a visible patch, and being a pseudo-element
+     of the head they tilt along with it for free. */
+  .paycheck-bear-head::after{
+    content:'';
+    position:absolute;
+    inset:0;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cellipse cx='42' cy='32' rx='4.2' ry='3.6' fill='%23c9955f'/%3E%3Cellipse cx='58' cy='32' rx='4.2' ry='3.6' fill='%23c9955f'/%3E%3C/svg%3E");
+    background-size:contain;
+    background-repeat:no-repeat;
+    background-position:center;
+    pointer-events:none;
+    opacity:0;
+    animation:bearBlink 5s ease-in-out infinite;
+  }
+  @keyframes bearBlink{
+    0%, 92%, 100%{opacity:0;}
+    94%, 97%{opacity:1;}
+  }
+  .paycheck-bear-arm{
+    /* A tapered arm — upper arm leading to a paw — parked behind the
+       body (z-index below it) and angled up past the shoulder, so it
+       reads as poking out from behind the bear as it waves rather than
+       being hidden completely or sitting on top. */
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cellipse cx='73' cy='58' rx='8' ry='14' fill='%23c9955f'/%3E%3Ccircle cx='80' cy='73' r='11' fill='%23c9955f'/%3E%3Cellipse cx='80' cy='76' rx='6' ry='5' fill='%23e8c9a0'/%3E%3C/svg%3E");
+    z-index:0;
+    transform-origin:64% 52%;
+    animation:bearBodyWave 3s ease-in-out infinite;
+  }
+  @keyframes bearBodyWave{
+    0%, 100%{transform:rotate(-64deg);}
+    25%{transform:rotate(-94deg);}
+    50%{transform:rotate(-63.5deg);}
+    75%{transform:rotate(-94deg);}
+  }
+  @keyframes bearHeadTilt{
+    0%, 100%{transform:rotate(0deg);}
+    50%{transform:rotate(-14deg);}
+  }
+  .paycheck-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    margin-bottom:8px;
+  }
+  .paycheck-head .date{font-weight:700;font-size:0.95rem;}
+
+  .check-summary{
+    background:var(--card);
+    border-radius:8px;
+    padding:8px 10px;
+    margin-bottom:8px;
+  }
+  .check-summary-row{
+    display:flex;
+    justify-content:space-between;
+    font-size:0.78rem;
+    color:var(--muted);
+    padding:2px 0;
+  }
+  .check-summary-row span:last-child{
+    font-weight:600;
+    color:var(--ink);
+  }
+  .check-summary-row.editable{
+    align-items:center;
+  }
+  .check-summary-row.bonus-row{
+    background:#fdf7ea;
+    border:1px solid #e9d7a8;
+    border-radius:8px;
+    padding:8px 10px;
+    margin:4px 0;
+    font-weight:700;
+  }
+  .check-summary-row.bonus-row span:last-child{
+    color:#8a6a1f;
+  }
+  .check-summary-row.prominent-row{
+    background:var(--accent-soft);
+    border-radius:8px;
+    padding:8px 10px;
+    margin:4px 0;
+  }
+  .check-summary-row.prominent-row span:first-child{
+    font-weight:700;
+    color:var(--ink);
+  }
+  .check-summary-row.prominent-row span:last-child{
+    font-weight:700;
+    color:var(--accent);
+    font-size:0.95rem;
+  }
+  .debt-reduction-line{
+    border-top:1px dashed var(--line);
+    margin-top:6px;
+    padding-top:8px;
+  }
+  .edited-tag{
+    font-size:0.62rem;
+    background:var(--accent-soft);
+    color:var(--accent);
+    padding:1px 6px;
+    border-radius:10px;
+    text-transform:uppercase;
+    font-weight:700;
+  }
+  .amount-input-wrap{
+    display:flex;
+    align-items:center;
+    gap:2px;
+  }
+  input.amount-input{
+    width:80px;
+    padding:4px 6px;
+    font-size:0.85rem;
+    font-weight:600;
+    color:var(--ink);
+    border:1px solid var(--line);
+    border-radius:6px;
+    background:var(--card);
+    text-align:right;
+  }
+  input.amount-input:focus{outline:2px solid var(--accent);outline-offset:1px;}
+
+  .col-labels{
+    display:flex;
+    justify-content:space-between;
+    font-size:0.68rem;
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    color:var(--muted);
+    padding:2px 0 2px;
+  }
+  .bonus-tag{
+    display:inline-block;
+    background:var(--accent-soft);
+    color:var(--accent);
+    font-size:0.68rem;
+    font-weight:700;
+    padding:2px 7px;
+    border-radius:20px;
+    margin-left:6px;
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+  }
+  .line{
+    display:flex;
+    justify-content:space-between;
+    font-size:0.85rem;
+    padding:4px 0;
+  }
+  .line .name{color:var(--ink);}
+  .line .pay{color:var(--accent);font-weight:600;}
+  .line .pay.zero{color:var(--muted);font-weight:400;}
+  .pay-bal-wrap{display:flex;align-items:center;}
+  .col-divider{
+    display:inline-block;
+    width:1px;
+    height:14px;
+    background:var(--line);
+    margin:0 8px;
+  }
+  .line .bal{color:var(--muted);font-size:0.78rem;}
+  .line .interest{color:var(--warn);font-size:0.78rem;}
+  .line .interest,
+  .line .pay,
+  .line .bal{
+    display:inline-block;
+    min-width:54px;
+    text-align:right;
+  }
+  /* The payment cell is an editable input (so an actual bigger/smaller
+     payment can be logged for that check) rather than plain text — sized
+     and colored to sit in the same column as the interest/balance figures
+     either side of it without visually standing out as a form control. */
+  .line .pay-input{
+    display:inline-block;
+    width:54px;
+    padding:2px 3px;
+    font-size:0.8rem;
+    font-weight:600;
+    font-family:inherit;
+    color:var(--accent);
+    border:1px solid var(--line);
+    border-radius:5px;
+    background:var(--card);
+    text-align:right;
+  }
+  .line .pay-input.zero{color:var(--muted);font-weight:400;}
+  .line .pay-input:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  .col-label-cell{
+    display:inline-block;
+    min-width:54px;
+    text-align:right;
+  }
+  .paidoff-badge{
+    font-size:0.68rem;
+    background:var(--accent);
+    color:#fff;
+    padding:1px 6px;
+    border-radius:10px;
+    margin-left:6px;
+  }
+  .milestone-banner{
+    text-align:center;
+    font-weight:800;
+    font-size:1rem;
+    padding:12px;
+    margin:-15px -17px 14px -17px;
+    letter-spacing:0.01em;
+  }
+  .milestone-banner-debt{
+    background:linear-gradient(135deg, #a8452e, #c96f4a);
+    color:#fff;
+    border-radius:13px 13px 0 0;
+  }
+  .milestone-banner-savings{
+    background:linear-gradient(135deg, #c8a15a, #e8c179);
+    color:#3a2c0f;
+    border-radius:13px 13px 0 0;
+  }
+  .milestone-both{
+    background:linear-gradient(135deg, #a8452e, #c8a15a);
+    color:#fff;
+    border-radius:13px 13px 0 0;
+  }
+  .milestone-banner-account{
+    display:block;
+    width:fit-content;
+    background:linear-gradient(135deg, #8a4a30, #c96f4a);
+    color:#fff;
+    border-radius:20px;
+    padding:6px 16px;
+    font-size:0.78rem;
+    font-weight:700;
+    margin:12px auto 0;
+  }
+  .paycheck.milestone-debt{
+    border:2px solid #c96f4a;
+    box-shadow:0 4px 18px rgba(201,111,74,0.25);
+  }
+  .paycheck.milestone-account{
+    border-left:4px solid #8a4a30;
+  }
+  .paycheck.milestone-savings{
+    border:2px solid #c8a15a;
+    box-shadow:0 4px 18px rgba(200,161,90,0.25);
+  }
+  .paycheck.milestone-debt.milestone-savings{
+    border-image:linear-gradient(135deg, #c96f4a, #c8a15a) 1;
+  }
+  .paycheck.milestone-debt .paycheck-head .date,
+  .paycheck.milestone-savings .paycheck-head .date{
+    font-weight:700;
+  }
+  /* Dark mode only: every bear (hero peek bear + paycheck bear, in all
+     his states) swaps from the tan/cream fur palette to hot pink
+     shades. Same shapes, just recolored fills, so each override sits
+     right next to its light-mode counterpart's selector. */
+  [data-theme="dark"] .hero-bear-face{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='25' cy='22' r='14' fill='%23a01f6e'/%3E%3Ccircle cx='75' cy='22' r='14' fill='%23a01f6e'/%3E%3Ccircle cx='25' cy='23' r='7' fill='%23ffc2e0'/%3E%3Ccircle cx='75' cy='23' r='7' fill='%23ffc2e0'/%3E%3Ccircle cx='50' cy='48' r='32' fill='%23ec4fa0'/%3E%3Cellipse cx='50' cy='60' rx='16' ry='12' fill='%23ffd6ec'/%3E%3Cellipse cx='50' cy='54' rx='4' ry='3' fill='%234a1030'/%3E%3Cpath d='M40 61 Q50 68 60 61' stroke='%234a1030' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='38' cy='42' r='3.5' fill='%232a0818'/%3E%3Ccircle cx='62' cy='42' r='3.5' fill='%232a0818'/%3E%3C/svg%3E");
+  }
+  [data-theme="dark"] .hero-bear::before{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cline x1='28' y1='27' x2='45' y2='36' stroke='%232a0818' stroke-width='4.5' stroke-linecap='round'/%3E%3Cline x1='72' y1='27' x2='55' y2='36' stroke='%232a0818' stroke-width='4.5' stroke-linecap='round'/%3E%3Cpath d='M40 61 Q50 68 60 61' stroke='%23ffd6ec' stroke-width='7' fill='none' stroke-linecap='round'/%3E%3Cpath d='M40 63 Q50 59 60 63' stroke='%232a0818' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  }
+  [data-theme="dark"] .hero-bear::after{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cellipse cx='38' cy='42' rx='4.6' ry='4' fill='%23ec4fa0'/%3E%3Cellipse cx='62' cy='42' rx='4.6' ry='4' fill='%23ec4fa0'/%3E%3C/svg%3E");
+  }
+  [data-theme="dark"] .hero-bear-paw{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='78' cy='50' r='16' fill='%23ec4fa0'/%3E%3Cellipse cx='78' cy='54' rx='9' ry='7.5' fill='%23ffc2e0'/%3E%3C/svg%3E");
+  }
+  [data-theme="dark"] .paycheck-bear-head::before{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cline x1='32' y1='22' x2='44' y2='30' stroke='%232a0818' stroke-width='3.6' stroke-linecap='round'/%3E%3Cline x1='68' y1='22' x2='56' y2='30' stroke='%232a0818' stroke-width='3.6' stroke-linecap='round'/%3E%3Cpath d='M40 48 Q50 55 60 48' stroke='%23ffd6ec' stroke-width='6' fill='none' stroke-linecap='round'/%3E%3Cpath d='M40 50 Q50 45 60 50' stroke='%232a0818' stroke-width='2.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  }
+  [data-theme="dark"] .paycheck-bear-rude-hand{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cellipse cx='75' cy='80' rx='12' ry='11' fill='%23ec4fa0'/%3E%3Cellipse cx='75' cy='84' rx='6.5' ry='5' fill='%23ffc2e0'/%3E%3Crect x='69.5' y='51' width='9' height='27' rx='4.5' fill='%23ec4fa0'/%3E%3Cellipse cx='74' cy='55' rx='4' ry='3.6' fill='%23ffc2e0'/%3E%3C/svg%3E");
+  }
+  [data-theme="dark"] .paycheck-bear-walk-profile{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cellipse cx='38' cy='100' rx='10' ry='14' fill='%23ec4fa0' transform='rotate(22 38 100)'/%3E%3Cellipse cx='63' cy='102' rx='10' ry='14' fill='%23ec4fa0' transform='rotate(-18 63 102)'/%3E%3Cellipse cx='30' cy='113' rx='8' ry='5' fill='%23ec4fa0'/%3E%3Cellipse cx='71' cy='114' rx='8' ry='5' fill='%23ec4fa0'/%3E%3Cellipse cx='52' cy='72' rx='22' ry='26' fill='%23ec4fa0'/%3E%3Cellipse cx='56' cy='79' rx='13' ry='16' fill='%23ffd6ec'/%3E%3Cellipse cx='34' cy='68' rx='8' ry='14' fill='%23ec4fa0' transform='rotate(28 34 68)'/%3E%3Cellipse cx='69' cy='61' rx='8' ry='13' fill='%23ec4fa0' transform='rotate(-38 69 61)'/%3E%3Ccircle cx='58' cy='42' r='19' fill='%23ec4fa0'/%3E%3Ccircle cx='50' cy='25' r='9.5' fill='%23a01f6e'/%3E%3Ccircle cx='50' cy='26' r='5' fill='%23ffc2e0'/%3E%3Cellipse cx='74' cy='46' rx='9' ry='7' fill='%23ffd6ec'/%3E%3Cellipse cx='79' cy='45' rx='2.4' ry='1.8' fill='%234a1030'/%3E%3Cpath d='M70 50 Q76 53 81 49' stroke='%234a1030' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='63' cy='37' r='2.6' fill='%232a0818'/%3E%3Cline x1='54' y1='29' x2='66' y2='33' stroke='%232a0818' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E");
+  }
+  [data-theme="dark"] .paycheck-bear-body{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cellipse cx='50' cy='76' rx='28' ry='24' fill='%23ec4fa0'/%3E%3Cellipse cx='50' cy='83' rx='17' ry='15' fill='%23ffd6ec'/%3E%3Ccircle cx='23' cy='71' r='10' fill='%23ec4fa0'/%3E%3Cellipse cx='23' cy='74' rx='5.5' ry='4.5' fill='%23ffd6ec'/%3E%3Cellipse cx='31' cy='94' rx='19' ry='17' fill='%23ec4fa0'/%3E%3Cellipse cx='69' cy='94' rx='19' ry='17' fill='%23ec4fa0'/%3E%3Cellipse cx='28' cy='100' rx='9' ry='7' fill='%23ffd6ec'/%3E%3Cellipse cx='72' cy='100' rx='9' ry='7' fill='%23ffd6ec'/%3E%3C/svg%3E");
+  }
+  [data-theme="dark"] .paycheck-bear-head{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Ccircle cx='32' cy='20' r='11' fill='%23a01f6e'/%3E%3Ccircle cx='68' cy='20' r='11' fill='%23a01f6e'/%3E%3Ccircle cx='32' cy='21' r='5.5' fill='%23ffc2e0'/%3E%3Ccircle cx='68' cy='21' r='5.5' fill='%23ffc2e0'/%3E%3Ccircle cx='50' cy='38' r='24' fill='%23ec4fa0'/%3E%3Cellipse cx='50' cy='46' rx='12' ry='9' fill='%23ffd6ec'/%3E%3Cellipse cx='50' cy='40' rx='3.2' ry='2.4' fill='%234a1030'/%3E%3Cpath d='M40 48 Q50 55 60 48' stroke='%234a1030' stroke-width='2.8' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='42' cy='32' r='3' fill='%232a0818'/%3E%3Ccircle cx='58' cy='32' r='3' fill='%232a0818'/%3E%3C/svg%3E");
+  }
+  [data-theme="dark"] .paycheck-bear-head::after{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cellipse cx='42' cy='32' rx='4.2' ry='3.6' fill='%23ec4fa0'/%3E%3Cellipse cx='58' cy='32' rx='4.2' ry='3.6' fill='%23ec4fa0'/%3E%3C/svg%3E");
+  }
+  [data-theme="dark"] .paycheck-bear-arm{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cellipse cx='73' cy='58' rx='8' ry='14' fill='%23ec4fa0'/%3E%3Ccircle cx='80' cy='73' r='11' fill='%23ec4fa0'/%3E%3Cellipse cx='80' cy='76' rx='6' ry='5' fill='%23ffc2e0'/%3E%3C/svg%3E");
+  }
+  /* Holiday themes — Christmas gives every bear a Santa hat; Halloween
+     gives them vampire fangs and a pair of bat wings behind the body.
+     Everything here is hidden by default and only switched on under the
+     matching [data-holiday] attribute on <html>, set by the theme menu. */
+  .hero-bear-hat, .hero-bear-fangs, .hero-bear-horns,
+  .paycheck-bear-hat, .paycheck-bear-fangs, .paycheck-bear-horns{
+    position:absolute;
+    inset:0;
+    background-size:contain;
+    background-repeat:no-repeat;
+    background-position:center;
+    pointer-events:none;
+    opacity:0;
+    z-index:8;
+    transition:opacity 0.2s ease;
+  }
+  .hero-bear-wings, .paycheck-bear-wings{
+    position:absolute;
+    background-size:contain;
+    background-repeat:no-repeat;
+    background-position:center;
+    pointer-events:none;
+    opacity:0;
+    transform-origin:center;
+    transition:opacity 0.2s ease;
+  }
+  /* Hat, fangs, and horns all sit on the head, so they tilt in lockstep
+     with .hero-bear-face/.hero-bear-wings (same animation + origin)
+     instead of staying rigid while the face underneath turns. */
+  .hero-bear-hat, .hero-bear-fangs, .hero-bear-horns{
+    transform-origin:center;
+    animation:bearHeadTilt 4.4s ease-in-out infinite;
+  }
+  .hero-bear-hat{
+    /* Straighter front and back edges (control points pulled close to
+       the direct line to the tip) so the silhouette reads as a triangle
+       at a glance, while the tip still curls into a soft floppy fold
+       with the pompom nestled in it rather than a perfectly crisp
+       flat-topped triangle. */
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cellipse cx='45' cy='20' rx='32' ry='6.5' fill='%23ffffff'/%3E%3Cpath d='M14 21 C24 13 37 1 48 -6 C64 1 77 11 88 18 C91 23 89 29 82 31 C75 33 69 28 71 23 C72 19 64 15 56 13 C42 10 24 12 14 21 Z' fill='%23d1272f' stroke='%23a01f22' stroke-width='1.5'/%3E%3Ccircle cx='77' cy='28' r='7' fill='%23ffffff'/%3E%3C/svg%3E");
+  }
+  .hero-bear-fangs{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M43 63 L46 70 L49 63 Z' fill='%23ffffff'/%3E%3Cpath d='M51 63 L54 70 L57 63 Z' fill='%23ffffff'/%3E%3C/svg%3E");
+  }
+  .hero-bear-horns{
+    /* A pair of curved red devil horns rising from between the ears,
+       leaning outward and tapering to points. */
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M30 27 Q22 14 33 2 Q41 13 39 26 Q34 29 30 27 Z' fill='%23a31212' stroke='%236b0d0d' stroke-width='1.5'/%3E%3Cpath d='M70 27 Q78 14 67 2 Q59 13 61 26 Q66 29 70 27 Z' fill='%23a31212' stroke='%236b0d0d' stroke-width='1.5'/%3E%3C/svg%3E");
+  }
+  .hero-bear-wings{
+    z-index:-1;
+    top:16px;
+    left:-52px;
+    right:-52px;
+    height:56px;
+    animation:bearHeadTilt 4.4s ease-in-out infinite;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 100'%3E%3Cpath d='M100 20 L75 5 L80 25 L45 8 L55 32 L15 20 L40 42 L18 52 L48 48 Q65 55 100 40 Z' fill='%232a1030'/%3E%3Cpath d='M100 20 L125 5 L120 25 L155 8 L145 32 L185 20 L160 42 L182 52 L152 48 Q135 55 100 40 Z' fill='%232a1030'/%3E%3C/svg%3E");
+  }
+  .paycheck-bear-hat{
+    /* Same straighter, more triangular silhouette as the hero bear's
+       hat, scaled down to this bear's smaller white fur band. */
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cellipse cx='42' cy='16' rx='27' ry='5.5' fill='%23ffffff'/%3E%3Cpath d='M15 16 C23.4 9.2 34.4 -0.9 43.7 -6.8 C57.2 -0.9 68.2 7.5 77.4 13.5 C80 17.7 78.3 22.8 72.4 24.5 C66.5 26.2 61.4 21.9 63.1 17.7 C63.9 14.3 57.2 10.9 50.4 9.2 C38.6 6.7 23.4 8.4 15 16 Z' fill='%23d1272f' stroke='%23a01f22' stroke-width='1.5'/%3E%3Ccircle cx='68' cy='22' r='6' fill='%23ffffff'/%3E%3C/svg%3E");
+  }
+  .paycheck-bear-fangs{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cpath d='M43 50 L45.5 57 L48 50 Z' fill='%23ffffff'/%3E%3Cpath d='M52 50 L54.5 57 L57 50 Z' fill='%23ffffff'/%3E%3C/svg%3E");
+  }
+  .paycheck-bear-horns{
+    /* Same devil horn pair as the hero bear, scaled to this smaller head.
+       Lives inside .paycheck-bear-head in the markup, so it tilts along
+       with the head for free without needing its own animation. */
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cpath d='M34 21 Q27 10 36 1 Q43 9 41 20 Q37 23 34 21 Z' fill='%23a31212' stroke='%236b0d0d' stroke-width='1.5'/%3E%3Cpath d='M66 21 Q73 10 64 1 Q57 9 59 20 Q63 23 66 21 Z' fill='%23a31212' stroke='%236b0d0d' stroke-width='1.5'/%3E%3C/svg%3E");
+  }
+  .paycheck-bear-wings{
+    z-index:0;
+    top:10px;
+    left:-32px;
+    right:-32px;
+    height:44px;
+    animation:bearHeadTilt 4.4s ease-in-out infinite;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 100'%3E%3Cpath d='M100 20 L75 5 L80 25 L45 8 L55 32 L15 20 L40 42 L18 52 L48 48 Q65 55 100 40 Z' fill='%232a1030'/%3E%3Cpath d='M100 20 L125 5 L120 25 L155 8 L145 32 L185 20 L160 42 L182 52 L152 48 Q135 55 100 40 Z' fill='%232a1030'/%3E%3C/svg%3E");
+  }
+  /* The near-black wing fill reads fine against the light-mode card
+     background, but disappears against the dark theme's dark backdrop —
+     swap in a lighter violet (with a thin dark outline for shape
+     definition) whenever dark mode is active, holiday or not. */
+  [data-theme="dark"] .hero-bear-wings{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 100'%3E%3Cpath d='M100 20 L75 5 L80 25 L45 8 L55 32 L15 20 L40 42 L18 52 L48 48 Q65 55 100 40 Z' fill='%238a6fd4' stroke='%234a3670' stroke-width='1.5'/%3E%3Cpath d='M100 20 L125 5 L120 25 L155 8 L145 32 L185 20 L160 42 L182 52 L152 48 Q135 55 100 40 Z' fill='%238a6fd4' stroke='%234a3670' stroke-width='1.5'/%3E%3C/svg%3E");
+  }
+  [data-theme="dark"] .paycheck-bear-wings{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 100'%3E%3Cpath d='M100 20 L75 5 L80 25 L45 8 L55 32 L15 20 L40 42 L18 52 L48 48 Q65 55 100 40 Z' fill='%238a6fd4' stroke='%234a3670' stroke-width='1.5'/%3E%3Cpath d='M100 20 L125 5 L120 25 L155 8 L145 32 L185 20 L160 42 L182 52 L152 48 Q135 55 100 40 Z' fill='%238a6fd4' stroke='%234a3670' stroke-width='1.5'/%3E%3C/svg%3E");
+  }
+  [data-holiday="christmas"] .hero-bear-hat,
+  [data-holiday="christmas"] .paycheck-bear-hat{
+    opacity:1;
+  }
+  [data-holiday="halloween"] .hero-bear-fangs,
+  [data-holiday="halloween"] .paycheck-bear-fangs,
+  [data-holiday="halloween"] .hero-bear-wings,
+  [data-holiday="halloween"] .paycheck-bear-wings,
+  [data-holiday="halloween"] .hero-bear-horns,
+  [data-holiday="halloween"] .paycheck-bear-horns{
+    opacity:1;
+  }
+  /* Holiday color schemes — Christmas reskins the app in the classic
+     red/green/gold palette, Halloween in pumpkin-orange/black/purple,
+     across the page background, the hero cards, and the paycheck cards.
+     Each holiday gets a light- and dark-mode variant of its own palette
+     (rather than just inheriting the neutral dark theme) so it still
+     reads as the holiday regardless of which base theme is active, and
+     each rule here is written to match or outrank the specificity of
+     whatever base/dark-mode rule it's overriding, appearing later in the
+     file so it wins the cascade in every combination. */
+  [data-holiday="christmas"]{
+    --paper:#f2f8f1;
+    --card:#ffffff;
+    --line:#c9e3c8;
+    --accent:#1e7d4a;
+    --accent-soft:#dcf1de;
+    --warn:#c8222c;
+    --warn-soft:#fbdde0;
+  }
+  [data-theme="dark"][data-holiday="christmas"]{
+    --paper:#0d1a11;
+    --card:#152a1c;
+    --line:#2b4a35;
+    --accent:#42b57a;
+    --accent-soft:#1d3a27;
+    --warn:#e2626a;
+    --warn-soft:#3a1c1e;
+  }
+  [data-holiday="christmas"] .app-title-box{
+    background:linear-gradient(135deg, #1e7d4a, #c8222c);
+    box-shadow:0 8px 22px rgba(30,125,74,0.34);
+  }
+  [data-holiday="christmas"] .hero.debt-hero{
+    background:
+      radial-gradient(circle at 86% 8%, rgba(255,255,255,0.18), transparent 45%),
+      linear-gradient(135deg, #8a141d 0%, #c8222c 50%, #e2585f 100%);
+  }
+  [data-holiday="christmas"] .hero.savings-hero{
+    background:
+      radial-gradient(circle at 14% 8%, rgba(255,255,255,0.26), transparent 45%),
+      linear-gradient(135deg, #0e4a2c 0%, #1e7d4a 48%, #47b47c 100%);
+  }
+  [data-holiday="christmas"] .hero.bear-runner-hero{
+    background:
+      radial-gradient(circle at 14% 8%, rgba(255,255,255,0.24), transparent 45%),
+      linear-gradient(135deg, #6b4f10 0%, #c9a13a 50%, #e8c96a 100%);
+  }
+  [data-holiday="christmas"] .hero.bear-crush-hero{
+    background:
+      radial-gradient(circle at 86% 8%, rgba(255,255,255,0.22), transparent 45%),
+      linear-gradient(135deg, #8a141d 0%, #c8222c 45%, #1e7d4a 100%);
+  }
+  [data-holiday="christmas"] .hero.notes-hero{
+    background:
+      radial-gradient(circle at 14% 8%, rgba(255,255,255,0.2), transparent 45%),
+      linear-gradient(135deg, #8a141d 0%, #1e7d4a 60%, #47b47c 100%);
+  }
+  [data-holiday="christmas"] .hero.bear-quest-hero{
+    background:
+      radial-gradient(circle at 86% 8%, rgba(255,255,255,0.2), transparent 45%),
+      linear-gradient(135deg, #0e4a2c 0%, #1e7d4a 48%, #c8222c 100%);
+  }
+  [data-holiday="christmas"] .hero.bear-catch-hero{
+    background:
+      radial-gradient(circle at 14% 8%, rgba(255,255,255,0.2), transparent 45%),
+      linear-gradient(135deg, #0e4a6e 0%, #1e7d4a 55%, #47b47c 100%);
+  }
+  [data-holiday="christmas"] .paycheck{
+    background:linear-gradient(135deg, #fdfdf8, #e4f3e6);
+    border-color:#a9d6b3;
+  }
+  [data-theme="dark"][data-holiday="christmas"] .paycheck{
+    background:linear-gradient(135deg, #16311f, #1e4a2d);
+    border-color:#316a41;
+  }
+  [data-holiday="christmas"] .notebook-page-wrap{
+    background:linear-gradient(135deg, #fdfdf8, #e4f3e6);
+  }
+  [data-theme="dark"][data-holiday="christmas"] .notebook-page-wrap{
+    background:linear-gradient(135deg, #16311f, #1e4a2d);
+  }
+  [data-holiday="halloween"]{
+    --paper:#fbf2e2;
+    --card:#ffffff;
+    --line:#ecc98c;
+    --accent:#d9691f;
+    --accent-soft:#fde6cf;
+    --warn:#6b2fa0;
+    --warn-soft:#ecdcf5;
+  }
+  [data-theme="dark"][data-holiday="halloween"]{
+    --paper:#150e1c;
+    --card:#241831;
+    --line:#4a2f63;
+    --accent:#ff8a3d;
+    --accent-soft:#3a2419;
+    --warn:#b273e8;
+    --warn-soft:#2e1f3d;
+  }
+  [data-holiday="halloween"] .app-title-box{
+    background:linear-gradient(135deg, #d9691f, #3a1e52);
+    box-shadow:0 8px 22px rgba(107,47,160,0.4);
+  }
+  [data-holiday="halloween"] .hero.debt-hero{
+    background:
+      radial-gradient(circle at 86% 8%, rgba(255,255,255,0.14), transparent 45%),
+      linear-gradient(135deg, #341450 0%, #6b2fa0 50%, #9a54cf 100%);
+  }
+  [data-holiday="halloween"] .hero.savings-hero{
+    background:
+      radial-gradient(circle at 14% 8%, rgba(255,255,255,0.22), transparent 45%),
+      linear-gradient(135deg, #9c4610 0%, #d9691f 48%, #f2954a 100%);
+  }
+  [data-holiday="halloween"] .hero.bear-runner-hero{
+    background:
+      radial-gradient(circle at 14% 8%, rgba(255,255,255,0.18), transparent 45%),
+      linear-gradient(135deg, #2a1030 0%, #6b1f2a 50%, #a83d4a 100%);
+  }
+  [data-holiday="halloween"] .hero.bear-crush-hero{
+    background:
+      radial-gradient(circle at 86% 8%, rgba(255,255,255,0.18), transparent 45%),
+      linear-gradient(135deg, #4a1450 0%, #9c4610 60%, #d9691f 100%);
+  }
+  [data-holiday="halloween"] .hero.notes-hero{
+    background:
+      radial-gradient(circle at 14% 8%, rgba(255,255,255,0.18), transparent 45%),
+      linear-gradient(135deg, #2a1030 0%, #6b2fa0 55%, #9a54cf 100%);
+  }
+  [data-holiday="halloween"] .hero.bear-quest-hero{
+    background:
+      radial-gradient(circle at 86% 8%, rgba(255,255,255,0.18), transparent 45%),
+      linear-gradient(135deg, #1e1030 0%, #4a1450 50%, #9c4610 100%);
+  }
+  [data-holiday="halloween"] .hero.bear-catch-hero{
+    background:
+      radial-gradient(circle at 14% 8%, rgba(255,255,255,0.18), transparent 45%),
+      linear-gradient(135deg, #241831 0%, #6b2fa0 55%, #9a54cf 100%);
+  }
+  [data-holiday="halloween"] .paycheck{
+    background:linear-gradient(135deg, #fffaf1, #fbe2bf);
+    border-color:#e0a860;
+  }
+  [data-theme="dark"][data-holiday="halloween"] .paycheck{
+    background:linear-gradient(135deg, #241831, #3a2350);
+    border-color:#5c3878;
+  }
+  [data-holiday="halloween"] .notebook-page-wrap{
+    background:linear-gradient(135deg, #fffaf1, #fbe2bf);
+  }
+  [data-theme="dark"][data-holiday="halloween"] .notebook-page-wrap{
+    background:linear-gradient(135deg, #241831, #3a2350);
+  }
+  /* Holiday background animation — falling snow (Christmas) or flitting
+     bats (Halloween) — behind the content of every card, hero or
+     paycheck alike. Deliberately NOT built with overflow:hidden + an
+     oversized/translating layer: the paycheck bear's walk-off animation
+     depends on being able to visibly slide past the card's own edge, so
+     clipping the card box would cut that short. Instead each effect is
+     sized to exactly match the card (inset:0, border-radius:inherit) and
+     animates in a way that never needs to escape its own box — snow via
+     background-position, bats via a closed left/top loop — so nothing
+     needs to be clipped in the first place. z-index:-1 keeps it behind
+     the card's own real content: for an absolutely-positioned
+     pseudo-element with a negative z-index inside a stacking-context
+     parent, it paints after that parent's own background but before its
+     normal-flow children, which is exactly the "behind the text, above
+     the gradient" layer this needs. */
+  [data-holiday="christmas"] .hero::before,
+  [data-holiday="christmas"] .paycheck::before{
+    content:'';
+    position:absolute;
+    inset:0;
+    border-radius:inherit;
+    background-repeat:repeat;
+    background-image:
+      radial-gradient(circle, rgba(255,255,255,0.85) 1.4px, transparent 1.6px),
+      radial-gradient(circle, rgba(255,255,255,0.6) 1.1px, transparent 1.3px),
+      radial-gradient(circle, rgba(255,255,255,0.45) 1.6px, transparent 1.8px);
+    background-size: 42px 60px, 70px 60px, 56px 60px;
+    background-position: 4px 0, 26px 18px, 14px 42px;
+    pointer-events:none;
+    z-index:-1;
+    animation: cardSnowFall 8s linear infinite;
+  }
+  /* The paycheck card's own background stays pale cream/mint in light
+     mode even at Christmas, so plain white flakes would nearly vanish —
+     swap to a soft slate-blue there instead. Hero cards and dark-mode
+     paycheck cards both use dark/saturated backgrounds, so white stays. */
+  [data-holiday="christmas"]:not([data-theme="dark"]) .paycheck::before{
+    background-image:
+      radial-gradient(circle, rgba(90,140,175,0.55) 1.4px, transparent 1.6px),
+      radial-gradient(circle, rgba(90,140,175,0.4) 1.1px, transparent 1.3px),
+      radial-gradient(circle, rgba(90,140,175,0.3) 1.6px, transparent 1.8px);
+  }
+  @keyframes cardSnowFall{
+    from{ background-position: 4px 0, 26px 18px, 14px 42px; }
+    to{ background-position: 4px 60px, 26px 78px, 14px 102px; }
+  }
+  [data-holiday="halloween"] .hero::before,
+  [data-holiday="halloween"] .hero::after,
+  [data-holiday="halloween"] .paycheck::before,
+  [data-holiday="halloween"] .paycheck::after{
+    content:'';
+    position:absolute;
+    width:28px;
+    height:14px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 16'%3E%3Cpath d='M16 8 Q6 1 1 8 Q9 7 16 11 Q23 7 31 8 Q26 1 16 8 Z' fill='%231a0f24'/%3E%3C/svg%3E");
+    background-size:contain;
+    background-repeat:no-repeat;
+    pointer-events:none;
+    z-index:-1;
+  }
+  [data-holiday="halloween"] .hero::before,
+  [data-holiday="halloween"] .paycheck::before{
+    top:12%;
+    left:4%;
+    opacity:0.55;
+    animation: cardBatFly1 8s ease-in-out infinite;
+  }
+  [data-holiday="halloween"] .hero::after,
+  [data-holiday="halloween"] .paycheck::after{
+    width:22px;
+    height:11px;
+    top:55%;
+    left:6%;
+    opacity:0.4;
+    animation: cardBatFly2 10.5s ease-in-out infinite 1.4s;
+  }
+  /* Same idea as the snow swap above — a near-black bat silhouette reads
+     fine on every other card background, but disappears against the
+     paycheck card's own dark purple in dark mode, so it gets a lighter
+     lavender tint there instead. */
+  [data-theme="dark"][data-holiday="halloween"] .paycheck::before,
+  [data-theme="dark"][data-holiday="halloween"] .paycheck::after{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 16'%3E%3Cpath d='M16 8 Q6 1 1 8 Q9 7 16 11 Q23 7 31 8 Q26 1 16 8 Z' fill='%23cbb8de'/%3E%3C/svg%3E");
+  }
+  @keyframes cardBatFly1{
+    0%{ left:4%; top:10%; }
+    25%{ left:30%; top:22%; }
+    50%{ left:58%; top:8%; }
+    75%{ left:80%; top:20%; }
+    100%{ left:4%; top:10%; }
+  }
+  @keyframes cardBatFly2{
+    0%{ left:6%; top:52%; }
+    25%{ left:34%; top:40%; }
+    50%{ left:62%; top:58%; }
+    75%{ left:84%; top:42%; }
+    100%{ left:6%; top:52%; }
+  }
+  /* The Bear Run card already draws its own snow/bats inside the game
+     canvas itself, so it skips this card-level decoration entirely
+     rather than layering a second, redundant effect behind it. */
+  [data-holiday="christmas"] .hero.bear-runner-hero::before,
+  [data-holiday="halloween"] .hero.bear-runner-hero::before,
+  [data-holiday="halloween"] .hero.bear-runner-hero::after{
+    content:none;
+  }
+  /* Theme picker menu, bottom footer */
+  .theme-menu-wrap{position:relative;display:inline-block;}
+  .theme-menu{
+    position:absolute;
+    bottom:calc(100% + 8px);
+    left:50%;
+    transform:translateX(-50%);
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:12px;
+    box-shadow:0 6px 20px rgba(0,0,0,0.18);
+    padding:6px;
+    display:none;
+    z-index:20;
+    min-width:150px;
+  }
+  .theme-menu.open{display:block;}
+  .theme-menu-item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    width:100%;
+    background:none;
+    border:none;
+    text-align:left;
+    padding:8px 10px;
+    border-radius:8px;
+    font-size:0.85rem;
+    font-weight:600;
+    color:var(--ink);
+    cursor:pointer;
+  }
+  .theme-menu-item:hover{background:var(--accent-soft);}
+  .theme-menu-item.active{background:var(--accent-soft);color:var(--accent);}

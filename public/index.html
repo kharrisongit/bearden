@@ -1,25 +1,367 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f6f5fa"><meta name="description" content="BearDen — your debt, savings, and paycheck plan in one cozy place."><title>BearDen · Your debt tracker</title><link rel="stylesheet" href="style.css?v=20261023-refined"></head><body>
-<header><a class="brand" href="#"><span>BearDen<small>YOUR MONEY, AT HOME</small></span></a><div class="header-actions"><span id="storageBadge" class="badge">On this device</span><button title="Sync connections" aria-label="Sync connections" id="syncBtn" class="quiet"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7v5h-5M4 17v-5h5" /><path d="M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1" /></svg></button><button title="Settings" id="settingsBtn" class="quiet" aria-label="Open settings"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 3-1 3-3 1 1 3-2 2 2 2-1 3 3 1 1 3h6l1-3 3-1-1-3 2-2-2-2 1-3-3-1-1-3z" /><circle cx="12" cy="12" r="3" /></svg></button></div></header>
-<main><div class="welcome"><p class="eyebrow" id="dateLabel"></p><p>Your plan, one paycheck at a time.</p></div>
-<div id="notice" class="notice" role="status" hidden></div>
-<div id="view-debt" data-page="debt" role="tabpanel" aria-labelledby="tab-debt"><section class="card debt-card" aria-labelledby="debtHeading">
-<div class="section-heading"><h1 id="debtHeading">Debt Tracker</h1></div>
-<div id="methods" class="method-grid" aria-label="Payoff method"></div><p id="methodHint" class="footnote"></p>
-<div class="debt-banner"><div><p class="eyebrow">REMAINING DEBT</p><h2 id="debtTotal">$0.00</h2><p id="debtOutlook">Add your debts to start your plan.</p></div><div class="debt-ring" id="debtRing" role="img" aria-label="Debt account breakdown"><div><strong id="debtCount">0</strong><small>accounts</small></div></div></div>
-<div class="tracker-stats"><div><span>Projected balance</span><strong id="projectedDebt">—</strong><small id="projectionDate"></small></div><div><span>Estimated interest</span><strong id="projectedInterest">—</strong><small>in this forecast</small></div><div><span>Paydays in view</span><strong id="paydayCount">0</strong><small id="paydayRange"></small></div></div>
-<div id="cascade" hidden><label>Intensity<select id="intensity"><option value="conservative">Conservative</option><option value="balanced">Balanced</option><option value="aggressive">Aggressive</option></select></label><label>Bonus handling<select id="bonusMode"><option value="retain">Keep bonus</option><option value="split">Split 50/50</option><option value="apply">Apply to debt</option></select></label></div>
-<div class="tracker-panels">
-<details><summary>Income</summary><div class="panel-content"><div class="section-heading"><h2>Your pay schedule</h2><button data-add="income">+ Income</button></div><div id="incomeList"></div></div></details>
-<details id="budgetPanel"><summary>Budget</summary><div class="panel-content"><div class="section-heading"><h2>Budget per paycheck</h2><button data-add="budgets">Add budget item</button></div><form id="budgetForm"><div id="budgetFields"></div><p class="footnote">These amounts repeat with your pay schedule. Put each expense here or in Bills so it is counted once.</p><button type="submit" class="primary full">Save budget</button></form></div></details><details><summary>Debt accounts</summary><div class="panel-content"><div class="section-heading"><h2>Debt breakdown</h2><button data-add="debts">+ Debt</button></div><div id="debtsList"></div><p id="debtProjection" class="footnote"></p></div></details>
-</div></section>
-<section id="alertBox" class="alert" hidden></section><section class="paycheck-section"><div class="section-heading"><div><p class="eyebrow">ONE PAYDAY AT A TIME</p><h2>Your paycheck plan</h2></div><select id="horizon" aria-label="Forecast period"><option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option><option value="180">180 days</option><option value="365">1 year</option></select></div><div id="checksList"></div><p class="footnote">Suggested allocations, not payments. Bills and scheduled debt payments are reserved first, then savings, then extra debt. Same-day bills clear before deposits in the forecast. Interest uses estimated daily simple accrual.</p></section></div><div id="view-bills" data-page="bills" role="tabpanel" aria-labelledby="tab-bills" hidden><section class="card"><div class="section-heading"><h2>Coming up</h2><button data-add="bills">+ Bill</button></div><div id="billsList"></div><p class="footnote">Mark paid after the payment is reflected in your cash balance. Email imports are individual bills.</p></section>
-<section class="card"><div class="section-heading"><h2>Bill inbox</h2><span class="badge" id="reviewCount">0 to review</span></div><p class="muted">Gmail bills with clear amounts and due dates are added automatically. Unclear emails appear here for review.</p><button id="gmailBtn" class="full">Connect Gmail</button><p id="syncStatus" class="footnote">No connections yet.</p><div id="reviewList"></div></section></div><div id="view-savings" data-page="savings" role="tabpanel" aria-labelledby="tab-savings" hidden><section class="card savings-card"><div class="section-heading"><h2>Savings</h2><button data-add="goals">+ Goal</button></div><div class="savings-overview"><strong id="savedTotal">$0.00</strong><span id="savingsHint">Set something aside for what matters.</span></div><div id="goalsList"></div></section>
-</div><div id="view-accounts" data-page="accounts" role="tabpanel" aria-labelledby="tab-accounts" hidden><section class="summary" aria-label="Cash and next payday"><article class="hero"><p class="eyebrow">CASH IN YOUR PLAN</p><h2 id="cashTotal">$0.00</h2><p id="cashHint">Add the accounts you use for bills.</p><div class="hero-bottom"><span>Lowest projected balance</span><strong id="lowTotal">—</strong></div></article><article class="stat"><p>Next paycheck</p><h2 id="nextPay">—</h2><small id="nextDate">Set your pay schedule</small></article><article class="stat"><p>Bills before payday</p><h2 id="billTotal">$0.00</h2><small id="billHint">Includes debt minimums</small></article></section><section class="card"><div class="section-heading"><div><p class="eyebrow">YOUR HOME BASE</p><h2>Bank accounts</h2></div><button data-add="accounts">+ Add</button></div><div id="accountsList"></div><button id="bankBtn" class="full">Connect bank with Plaid</button><p id="bankStatus" class="footnote"></p></section>
-<details class="card extra-panel"><summary>Cash forecast</summary><div class="extra-content"><div id="chart" class="chart"></div><div class="table-scroll"><table><thead><tr><th>Date / activity</th><th>Change</th><th>Balance</th></tr></thead><tbody id="forecastRows"></tbody></table></div></div></details>
-<details class="card extra-panel"><summary>Recent transactions</summary><div id="transactionsList" class="extra-content footnote"></div></details>
-</div><footer>BearDen</footer></main>
-<dialog id="editDialog"><form id="editForm"><div class="section-heading"><h2 id="editTitle">Add item</h2><button type="button" data-close="" aria-label="Close dialog">×</button></div><div id="fields"></div><div class="dialog-actions"><button id="deleteItem" type="button" class="danger" hidden>Delete</button><button type="button" data-close="">Cancel</button><button class="primary" type="submit">Save</button></div></form></dialog>
-<dialog id="settingsDialog"><div class="section-heading"><h2>Your den settings</h2><button data-close="" aria-label="Close settings">×</button></div><p class="muted">Keep money available before making extra debt payments.</p><label>Protected cash cushion ($)<input id="cushion" type="number" min="0" step="0.01"></label><p class="footnote">Gmail scans for bills from all senders automatically. No sender list is needed. Imported bills are one-time entries; future bill emails add their next due dates.</p><button id="saveSettings" class="primary full">Save settings</button><hr><div id="personalImport"></div><h3>Backups &amp; device data</h3><p id="dataMode" class="footnote"></p><div class="button-row"><button id="exportBtn">Export backup</button><label class="button">Import backup<input id="importFile" type="file" accept="application/json" hidden></label></div><div class="button-row"><button id="demoBtn">Explore demo</button><button id="resetBtn" class="danger">Clear device data</button></div><hr><h3>Secure connections</h3><p class="footnote">Sign in to keep your plan and connected accounts together.</p><a class="button" href="/auth/google" id="loginBtn">Sign in with Google</a><button id="logoutBtn" hidden>Sign out</button><button id="disconnectGmail" hidden>Disconnect Gmail</button><div id="disconnectBanks"></div></dialog>
-<dialog id="babyImportDialog"><form id="babyImportForm"><div class="section-heading"><h2>Import Baby Bear setup</h2><button type="button" data-close="" aria-label="Close import">×</button></div><p class="footnote">Imports the saved BearBudgeter preset. Edits stored only in your old browser are not included. Existing debts and matching budget items are skipped. Any income schedule already in BearDen is kept.</p><div id="babyImportPreview"></div><label>Next payday / first biweekly budget date<input id="babyImportDate" type="date" required></label><label>Take-home pay per paycheck ($)<input id="babyImportTakeHome" type="number" min="0.01" step="0.01" required></label><p class="footnote">The prefilled take-home pay is BearBudgeter's estimate, not verified payroll. Replace it with your actual deposit amount if known. Fixed bills are a combined budget allowance; reduce that allowance if you also track its individual bills to avoid counting them twice.</p><p class="footnote">Baby Bear's per-paycheck amounts will repeat every two weeks. Review estimated rates and payment amounts after importing.</p><button id="babyImportSubmit" class="primary full" type="submit">Import setup</button></form></dialog><div id="toast" role="status" hidden></div><script type="module" src="app.mjs?v=20261023-refined"></script><nav class="bottom-nav" role="tablist" aria-label="Main navigation"><button id="tab-debt" data-view="debt" role="tab" aria-controls="view-debt" aria-selected="true" tabindex="0"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M3 10h18M7 15h4" /></svg>Debt</button><button id="tab-bills" data-view="bills" role="tab" aria-controls="view-bills" aria-selected="false" tabindex="-1"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 7h6M9 11h6M9 15h3" /></svg>Bills</button><button id="tab-savings" data-view="savings" role="tab" aria-controls="view-savings" aria-selected="false" tabindex="-1"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h16v12H4zM3 8l9-5 9 5M8 11v6M12 11v6M16 11v6" /></svg>Savings</button><button id="tab-accounts" data-view="accounts" role="tab" aria-controls="view-accounts" aria-selected="false" tabindex="-1"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="3" /><path d="M3 8V5a2 2 0 0 1 2-2h12v3M16 12h5v4h-5z" /></svg>Accounts</button></nav></body></html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>BearDen</title>
 
+<link rel="stylesheet" href="classic.css?v=gamez1"><link rel="stylesheet" href="connections.css?v=gamez1">
+<script src="classic-theme.js?v=gamez1"></script></head>
+<body>
+<div class="wrap">
+
+  <div class="app-title-box"><h1>BearDen</h1><div class="header-actions"><button id="headerSync" aria-label="Sync connections" title="Sync connections" hidden><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7v5h-5M4 17v-5h5M5 8a7 7 0 0 1 12-3l3 4M4 15l3 4a7 7 0 0 0 12-3"/></svg></button><button id="connectionSettings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 3-1 3-3 1 1 3-2 2 2 2-1 3 3 1 1 3h6l1-3 3-1-1-3 2-2-2-2 1-3-3-1-1-3z" /><circle cx="12" cy="12" r="3" /></svg></button></div></div>
+
+  <div class="hero-peek-wrap">
+  <div class="hero-bear"><div class="hero-bear-wings"></div><div class="hero-bear-face"></div><div class="hero-bear-paw"></div><div class="hero-bear-hat"></div><div class="hero-bear-fangs"></div><div class="hero-bear-horns"></div><div class="hero-bear-bubble">Grrr</div></div>
+  <div class="hero debt-hero" id="debtHeroBox">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div class="hero-title" style="margin-bottom:0;flex:1;min-width:0;">💳 Debt Tracker</div>
+      <div class="payoff-method-toggle">
+        <button class="pm-btn" id="pmBtnAvalanche" data-bd-click="setPayoffMethod('avalanche')">🏔️ Avalanche</button>
+        <button class="pm-btn" id="pmBtnSnowball" data-bd-click="setPayoffMethod('snowball')">⛄ Snowball</button>
+      </div>
+    </div>
+    <div class="hero-date-banner" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-top:10px;">
+      <div style="flex:1;min-width:0;">
+        <div class="label">Debt-free by</div>
+        <div class="big" id="heroDate">—</div>
+        <div class="day-counter" id="heroDayCounter"></div>
+        <div class="paycheck-counter" id="heroPaycheckCounter"></div>
+      </div>
+      <div class="hero-pie-wrap-corner" id="heroPieWrap" style="display:none;cursor:pointer;" data-bd-click="toggleDebtBreakdown()">
+        <div class="hero-pie-corner" id="heroPie">
+          <div class="hero-pie-hole-sm">
+            <span class="pct" id="heroPiePct">0%</span>
+          </div>
+        </div>
+        <div style="font-size:0.58rem;color:#c9d2d8;text-align:center;margin-top:3px;max-width:64px;line-height:1.2;">% of total debt paid off</div>
+      </div>
+    </div>
+    <div id="debtBreakdownDropdown" class="hero-pie-dropdown"></div>
+    <div class="row"><span>Remaining debt</span><span id="heroTotal">—</span></div>
+    <div class="row"><span>Interest paid so far</span><span id="heroInterestPaid">—</span></div>
+    <div class="row"><span>Total interest you'll pay</span><span id="heroInterest">—</span></div>
+    <div class="spending-summary-quicklinks" style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.12);">
+      <button class="spending-summary-link" id="incomeToggleBtn" data-bd-click="toggleIncomePanel()">💰 Income</button>
+      <button class="spending-summary-link" id="budgetToggleBtn" data-bd-click="toggleBudgetPanel()">🧾 Budget</button>
+      <button class="spending-summary-link" id="accountsToggleBtn" data-bd-click="toggleDebtPanel()">💳 Accounts</button>
+    </div>
+
+    <div id="incomeDropdown" class="setup-panel-wrap">
+      <div class="howto-title">Income</div>
+      <div class="field-row">
+        <div class="field-name">Hourly rate</div>
+        <input type="number" id="hourlyRate" step="0.01" placeholder="0.00" data-bd-input="updateIncomeEstimateDisplay()">
+      </div>
+      <div class="field-row">
+        <div class="field-name">Hours per paycheck<small id="hoursHint">over 80 = 1.5x overtime</small></div>
+        <input type="number" id="hoursPerCheck" step="0.01" placeholder="80" data-bd-input="enforceHoursCapIfPapaBear(); updateIncomeEstimateDisplay()">
+      </div>
+      <div class="field-row">
+        <div class="field-name">Next check date</div>
+        <input type="date" id="startDate" style="width:150px;">
+      </div>
+      <div class="income-estimate" id="incomeEstimate"></div>
+      <button class="recalc" data-bd-click="useIncomeEstimate()">Use This Estimate</button>
+      <p style="color:var(--muted);font-size:0.78rem;margin:8px 0 0;">Taxes are already calculated for Michigan (federal, state, Social Security, and Medicare). This sets your default take-home pay in "Budget" below. Any single paycheck can still be edited directly in the schedule if it comes in different.</p>
+    </div>
+
+    <div id="budgetDropdown" class="setup-panel-wrap">
+      <div class="howto-title">Budget</div>
+      <div class="field-row">
+        <div class="field-name">Take-home pay<small>per paycheck</small></div>
+        <input type="number" id="takeHome" placeholder="0.00">
+      </div>
+      <div id="budgetItemsList"></div>
+      <button class="add-toggle-btn" data-bd-click="toggleAddBox('addBudgetBox')">+ Add Budget Item</button>
+      <div class="add-item-box" id="addBudgetBox">
+        <div class="card-group-title">Add a budget item</div>
+        <div class="field-row">
+          <div class="field-name">Label</div>
+          <input type="text" id="newBudgetLabel" placeholder="e.g. Car payment" style="width:130px;">
+        </div>
+        <div class="field-row">
+          <div class="field-name">Amount</div>
+          <input type="number" id="newBudgetAmount" step="0.01" placeholder="0.00">
+        </div>
+        <button class="recalc add-btn" data-bd-click="addBudgetItem()">Add Item</button>
+      </div>
+      <button class="recalc" data-bd-click="calculate()">Recalculate</button>
+    </div>
+
+    <div id="accountsDropdown" class="setup-panel-wrap">
+      <div class="howto-title">Accounts</div>
+      <div id="spendingTrackerContent"></div>
+    </div>
+  </div>
+  </div>
+
+  <div id="savingsHeroContainer"></div>
+
+  <div id="schedulePlanSection" style="margin-bottom:8px;">
+    <div class="section-divider"><span class="section-divider-handle"></span></div>
+    <div style="position:relative;display:flex;align-items:center;justify-content:center;margin-bottom:20px;">
+      <div class="section-title" style="margin:0;">📋 Your Schedule:</div>
+      <button class="schedule-reset-btn" data-bd-click="resetCheckedPaychecks()" title="Uncheck all paychecks">↺</button>
+    </div>
+    <div id="scheduleOut"></div>
+    <button class="schedule-expand-btn" id="scheduleExpandBtn" data-bd-click="toggleScheduleExpanded()" style="display:none;"></button>
+    <div id="scheduleRestOut" class="bonus-section-slide"></div>
+  </div>
+
+  <div class="section-divider" style="margin:20px 0 30px;"><span class="section-divider-handle"></span></div>
+
+  <div style="text-align:center;margin:0 0 16px;">
+    <button class="notes-toggle-btn" data-bd-click="toggleNotesSection()" id="notesToggleBtn">📝 Notepad</button>
+  </div>
+
+  <div id="notesSection" class="bonus-section-slide">
+    <div class="hero notes-hero" id="bearNotesHero">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
+        <div class="hero-title" style="margin-bottom:0;">🐻 Bear Notes</div>
+        <button class="icon-btn" data-bd-click="addNotePage()" title="New page">➕</button>
+      </div>
+      <div class="notebook-page-wrap">
+        <textarea class="notebook-textarea" id="notesTextarea" placeholder="Jot down a quick note..." data-bd-input="onNotesInput()"></textarea>
+      </div>
+      <div class="notebook-nav-row">
+        <button class="notebook-nav-btn" data-bd-click="flipNotePage(-1)" id="notesPrevBtn" title="Previous page">🐾 Prev</button>
+        <span class="notebook-page-indicator" id="notesPageIndicator">1 / 1</span>
+        <button class="notebook-nav-btn" data-bd-click="flipNotePage(1)" id="notesNextBtn" title="Next page">Next 🐾</button>
+      </div>
+      <button class="notebook-delete-btn" data-bd-click="deleteNotePage()" id="notesDeleteBtn" title="Delete this page">🗑️ Delete this page</button>
+      <div class="notebook-save-indicator" id="notesSaveIndicator">🐾 Saved</div>
+    </div>
+  </div>
+
+  <div style="text-align:center;margin:0 0 24px;">
+    <button class="games-toggle-btn" data-bd-click="toggleGamesSection()" id="gamesToggleBtn">🎮 Show Games</button>
+  </div>
+
+  <div id="gamesSection" class="bonus-section-slide">
+    <div class="hero bear-runner-hero" id="bearRunnerHero">
+      <div class="hero-title" style="margin-bottom:8px;">🐻 Bear Run</div>
+      <div class="runner-game-wrap" id="runnerGameWrap">
+        <canvas id="runnerCanvas" class="runner-canvas"></canvas>
+        <div class="runner-score">
+          <span id="runnerScoreCurrent">0</span>
+          <span class="runner-score-best">BEST <span id="runnerScoreBest">0</span></span>
+        </div>
+        <div class="runner-overlay show" id="runnerOverlay">
+          <div class="runner-overlay-title" id="runnerOverlayTitle">Tap or press Space to run</div>
+          <div class="runner-overlay-sub" id="runnerOverlaySub">Jump the obstacles!</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero bear-crush-hero" id="bearCrushHero">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
+        <div class="hero-title" style="margin-bottom:0;">🍯 Bear Crush</div>
+        <button class="icon-btn" data-bd-click="restartBearCrush()" title="New game">↺</button>
+      </div>
+      <div class="crush-score-row">
+        <span>Score <strong id="crushScore">0</strong></span>
+        <span class="runner-score-best">BEST <span id="crushBestScore">0</span></span>
+      </div>
+      <div class="crush-grid" id="crushGrid"></div>
+      <div class="crush-hint" id="crushHint">Match 3 or more bear treats in a row!</div>
+    </div>
+
+    <div class="hero bear-quest-hero" id="bearQuestHero">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
+        <div class="hero-title" style="margin-bottom:0;">🗡️ Bear Quest</div>
+        <button class="icon-btn" data-bd-click="restartBearQuest()" title="New game">↺</button>
+      </div>
+      <div class="quest-score-row">
+        <span>Wave <strong id="questWave">1</strong></span>
+        <span id="questHearts" class="quest-hearts">❤️❤️❤️</span>
+        <span class="runner-score-best">BEST <span id="questBestWave">1</span></span>
+      </div>
+      <div class="quest-game-wrap" id="questGameWrap">
+        <canvas id="questCanvas" class="quest-canvas"></canvas>
+        <div class="quest-overlay show" id="questOverlay">
+          <div class="quest-overlay-title" id="questOverlayTitle">Bear Quest</div>
+          <div class="quest-overlay-sub" id="questOverlaySub">Clear each room of enemies to advance!</div>
+          <button class="quest-start-btn" id="questStartBtn">Start Quest</button>
+        </div>
+      </div>
+      <div class="quest-controls" id="questControls">
+        <div class="quest-dpad">
+          <button class="quest-dpad-btn quest-dpad-up" data-dir="up" title="Up">▲</button>
+          <button class="quest-dpad-btn quest-dpad-left" data-dir="left" title="Left">◀</button>
+          <button class="quest-dpad-btn quest-dpad-right" data-dir="right" title="Right">▶</button>
+          <button class="quest-dpad-btn quest-dpad-down" data-dir="down" title="Down">▼</button>
+        </div>
+        <button class="quest-attack-btn" id="questAttackBtn" title="Attack">⚔️</button>
+      </div>
+      <div class="quest-hint" id="questHint">Move with the pad, swing with ⚔️. Watch out — getting touched costs a heart!</div>
+    </div>
+
+    <div class="hero bear-catch-hero" id="bearCatchHero">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
+        <div class="hero-title" style="margin-bottom:0;">🐾 Bear Catch</div>
+        <div class="hero-controls">
+          <button class="icon-btn" data-bd-click="openBearSwitchOverworld()" title="Choose Lead Bear">🔄</button>
+          <button class="icon-btn" data-bd-click="toggleCatchDex()" id="catchDexBtn" title="View Bear Dex">📖</button>
+          <button class="icon-btn" data-bd-click="activateGodMode()" id="catchGodModeBtn" title="God Mode (testing): DoomBear + all variants">⚡</button>
+          <button class="icon-btn" data-bd-click="returnToCampBearCatch()" title="Reset All Progress">↺</button>
+        </div>
+      </div>
+      <div class="quest-score-row">
+        <span>Cub Lv.<strong id="catchLevel">1</strong></span>
+        <span id="catchBearKingBadge" style="display:none;">👑 Bear King</span>
+        <span class="runner-score-best">🎖️ <span id="catchBadges">0/9</span></span>
+        <span class="runner-score-best">CAUGHT <span id="catchCount">0</span>/<span id="catchTotal">19</span></span>
+      </div>
+      <div class="quest-score-row">
+        <span class="runner-score-best">💰 <span id="catchMoney">0</span></span>
+        <span class="runner-score-best">🍯 <span id="catchHoneyTraps">5</span> Honey Traps</span>
+        <span class="runner-score-best">🧪 <span id="catchPotions">0</span> Potions</span>
+      </div>
+      <div class="quest-game-wrap" id="catchGameWrap">
+        <canvas id="catchCanvas" class="quest-canvas"></canvas>
+        <div class="quest-overlay show" id="catchOverlay">
+          <div class="quest-overlay-title" id="catchOverlayTitle">Bear Catch</div>
+          <div class="quest-overlay-sub" id="catchOverlaySub">Meet the Bear Professor in Bear Hollow, pick your first bear, then journey through 9 pairs of Wild Areas and Cities, beat every Gym Leader, and take on the Elite Four and the Bear King! Battles don't heal you anymore — visit a city's Healing Center or use a Healing Potion.</div>
+          <button class="quest-start-btn" id="catchStartBtn">Start Adventure</button>
+        </div>
+        <div class="battle-panel" id="catchBattlePanel">
+          <div class="battle-row">
+            <div class="battle-side">
+              <div class="battle-name" id="battlePlayerName">Cub Lv.1</div>
+              <div class="battle-hpbar"><div class="battle-hpfill" id="battlePlayerHpFill"></div></div>
+              <div class="battle-hp-text" id="battlePlayerHpText">20/20</div>
+            </div>
+            <div class="battle-vs">VS</div>
+            <div class="battle-side">
+              <div class="battle-name" id="battleEnemyName">Wild Bear</div>
+              <div class="battle-hpbar"><div class="battle-hpfill enemy" id="battleEnemyHpFill"></div></div>
+              <div class="battle-hp-text" id="battleEnemyHpText">10/10</div>
+            </div>
+          </div>
+          <div class="battle-sprites">
+            <span class="battle-sprite" id="battlePlayerSprite">🐻</span>
+            <span class="battle-sprite" id="battleEnemySprite">🐼</span>
+          </div>
+          <div class="battle-log" id="battleLog">A wild bear appeared!</div>
+          <div class="battle-actions" id="battleActions">
+            <button class="battle-action-btn" id="battleAttackBtn" data-bd-click="battleAction('attack')">⚔️ Attack</button>
+            <button class="battle-action-btn" data-bd-click="battleAction('catch')" id="battleCatchBtn">🍯 Catch</button>
+            <button class="battle-action-btn" data-bd-click="battleAction('run')" id="battleRunBtn">🏃 Run</button>
+            <button class="battle-action-btn" id="battleSwitchBtn" data-bd-click="openBearSwitchBattle()">🔄 Switch</button>
+          </div>
+        </div>
+        <div class="battle-panel dex-panel" id="catchDexPanel">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div class="battle-name" style="font-size:0.85rem;">📖 Bear Dex</div>
+            <button class="icon-btn" id="catchDexCloseBtn" title="Close">✕</button>
+          </div>
+          <div class="dex-list" id="catchDexList"></div>
+        </div>
+        <div class="battle-panel dex-panel" id="catchDialogPanel">
+          <div class="battle-name" id="catchDialogName" style="font-size:0.85rem;">Elder</div>
+          <div class="battle-log" id="catchDialogText" style="min-height:44px;">...</div>
+          <div class="battle-actions">
+            <button class="battle-action-btn" id="catchDialogCloseBtn">Continue</button>
+          </div>
+        </div>
+        <div class="battle-panel" id="catchTrainerIntroPanel" style="align-items:center;justify-content:center;text-align:center;">
+          <div id="trainerIntroSprite" style="font-size:3.2rem;line-height:1;">🧑</div>
+          <div class="battle-name" id="trainerIntroName" style="font-size:1rem;margin-top:10px;">Trainer</div>
+          <div class="battle-log" id="trainerIntroQuote" style="text-align:center;margin-top:4px;">"..."</div>
+          <div class="battle-cta-pulse" style="color:#ffd166;font-weight:900;font-size:1.35rem;letter-spacing:0.5px;margin-top:10px;text-shadow:0 2px 6px rgba(0,0,0,0.5);">Get ready to battle!</div>
+        </div>
+        <div class="battle-panel dex-panel" id="catchStorePanel">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div class="battle-name" style="font-size:0.85rem;">🏪 General Store</div>
+            <button class="icon-btn" id="catchStoreCloseBtn" title="Close">✕</button>
+          </div>
+          <div class="battle-log" id="catchStoreMoney" style="min-height:34px;">💰 0 coins</div>
+          <div class="battle-actions">
+            <button class="battle-action-btn" id="catchBuyTrapBtn">🍯 Buy Honey Trap — 15💰</button>
+            <button class="battle-action-btn" id="catchBuyPotionBtn">🧪 Buy Healing Potion — 20💰</button>
+            <button class="battle-action-btn" id="catchBuyFullRestoreBtn">🔒 Full Restore — unlocks after the 3rd Gym Badge</button>
+          </div>
+        </div>
+        <div class="battle-panel dex-panel" id="catchStarterPanel">
+          <div class="battle-name" style="font-size:0.85rem;">🐻 Bear Professor Hazel</div>
+          <div class="battle-log" id="catchStarterText" style="min-height:34px;">Pick your first bear!</div>
+          <div class="battle-actions" style="flex-direction:column;gap:6px;" id="catchStarterOptions"></div>
+          <button class="battle-action-btn" id="catchStarterCloseBtn" style="margin-top:6px;">Not yet</button>
+        </div>
+        <div class="battle-panel dex-panel" id="catchResetConfirmPanel">
+          <div class="battle-name" style="font-size:0.85rem;">⚠️ Reset All Progress?</div>
+          <div class="battle-log" style="min-height:34px;">This clears your caught bears, Cub level, coins, Honey Traps, Potions, and Full Restores — it cannot be undone.</div>
+          <div class="battle-actions">
+            <button class="battle-action-btn" id="catchResetConfirmBtn">Yes, Reset Everything</button>
+            <button class="battle-action-btn" id="catchResetCancelBtn">Cancel</button>
+          </div>
+        </div>
+        <div class="battle-panel dex-panel" id="catchBearSwitchPanel">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div class="battle-name" style="font-size:0.85rem;">🔄 Choose Lead Bear</div>
+            <button class="icon-btn" id="catchBearSwitchCloseBtn" title="Close">✕</button>
+          </div>
+          <div class="battle-actions" style="flex-direction:column;gap:6px;" id="catchBearSwitchOptions"></div>
+        </div>
+        <div class="battle-panel dex-panel" id="catchHealConfirmPanel">
+          <div class="battle-name" style="font-size:0.85rem;">👩‍⚕️ Nurse Willow</div>
+          <div class="battle-log" id="catchHealConfirmText" style="min-height:34px;">Let me heal your Cub back to full — sound good?</div>
+          <div class="battle-actions">
+            <button class="battle-action-btn" id="catchHealConfirmBtn">Yes, please</button>
+            <button class="battle-action-btn" id="catchHealConfirmCancelBtn">Not now</button>
+          </div>
+        </div>
+      </div>
+      <div class="quest-controls" id="catchControls">
+        <div class="quest-dpad">
+          <button class="quest-dpad-btn quest-dpad-up" data-dir="up" title="Up">▲</button>
+          <button class="quest-dpad-btn quest-dpad-left" data-dir="left" title="Left">◀</button>
+          <button class="quest-dpad-btn quest-dpad-right" data-dir="right" title="Right">▶</button>
+          <button class="quest-dpad-btn quest-dpad-down" data-dir="down" title="Down">▼</button>
+        </div>
+        <button class="quest-attack-btn" id="catchInteractBtn" style="background:linear-gradient(135deg, #2f8f5b, #1c5c3a);" title="Talk / Battle — face an NPC or trainer first">🅰️</button>
+      </div>
+      <div class="quest-hint" id="catchHint">Walk into a door to go through. Face an NPC or trainer and press 🅰️ to talk or battle. In Bear Hollow, talk to the Professor to pick your first bear. Every trainer fight earns coins — spend them on Honey Traps at a city Store to keep catching!</div>
+    </div>
+  </div>
+
+  <div class="section-divider" style="margin:20px 0 0;"><span class="section-divider-handle"></span></div>
+  <div class="page-footer" style="margin-top:18px;">
+    
+    <div id="storageStatus" class="page-footer-status"></div>
+    
+  </div>
+
+</div>
+
+<div class="celebration-overlay" id="celebrationOverlay" data-bd-click="dismissCelebration()">
+  <div class="celebration-confetti" id="celebrationConfetti"></div>
+  <div class="celebration-content">
+    <div class="celebration-emoji" id="celebrationEmoji">🎉</div>
+    <div class="celebration-title" id="celebrationTitle"></div>
+    <button class="celebration-dismiss-btn" data-bd-click="event.stopPropagation(); dismissCelebration();">Keep Going →</button>
+  </div>
+</div>
+
+
+<script defer src="purify.min.js"></script><script defer src="connections.js?v=gamez1"></script><script defer src="classic-events.js?v=gamez1"></script><script defer src="classic.js?v=gamez1"></script><dialog id="connectionDialog"><div class="connection-heading"><h2>Settings</h2><button id="closeConnectionSettings" aria-label="Close settings">Close</button></div><p id="connectionMessage" role="status"></p><section><h3>Your account</h3><p id="accountMode"></p><a class="connection-button" id="classicLogin" href="/auth/google">Sign in with Google</a><button id="classicLogout" hidden>Sign out</button><button id="classicSync" hidden>Sync connections</button></section><div id="privateConnections" hidden><section><h3>Bank connections</h3><button id="classicBank">Connect bank with Plaid</button><p id="classicBankStatus"></p><div id="classicBalances"></div><div id="classicBanks"></div></section><section><h3>Email bills</h3><button id="classicGmail">Connect Gmail</button><button id="classicDisconnectGmail" hidden>Disconnect Gmail</button><p id="classicEmailStatus"></p><div id="classicEmailBills"></div><div id="classicReviews"></div></section></div><section id="trackerOptions"><h3>Tracker options</h3><div class="setup-discreet">
+        <label> Enable bonus controls<input type="checkbox" id="kurtisModeCheckbox" data-bd-change="toggleKurtisMode(this.checked)"> Enable bonus controls</label>
+        <span class="setup-discreet-note">Add a bonus to any individual paycheck.</span>
+      </div><div class="setup-discreet" style="margin-top:10px;">
+        <label> Salary mode<input type="checkbox" id="papaBearModeCheckbox" data-bd-change="togglePapaBearMode(this.checked)"> Salary mode</label>
+        <span class="setup-discreet-note">Caps hours at 80 per paycheck, with no overtime.</span>
+      </div><button class="recalc" style="background:var(--warn);margin-top:14px;" data-bd-click="confirmTrackerReset()">Reset Everything</button><div class="footer-btn-row">
+      <button class="theme-toggle-btn" data-bd-click="toggleTheme()" id="themeToggleBtn" title="Toggle dark mode">🌙</button>
+      
+      <div class="theme-menu-wrap">
+        <button class="add-toggle-btn howto-toggle-small" data-bd-click="toggleHolidayMenu()" id="holidayToggleBtn">🎨 Theme</button>
+        <div class="theme-menu" id="holidayMenu">
+          <button class="theme-menu-item" id="holidayItemChristmas" data-bd-click="setHolidayTheme('christmas')">🎄 Christmas</button>
+          <button class="theme-menu-item" id="holidayItemHalloween" data-bd-click="setHolidayTheme('halloween')">🎃 Halloween</button>
+          <button class="theme-menu-item" id="holidayItemStandard" data-bd-click="setHolidayTheme('standard')">🐻 Standard</button>
+        </div>
+      </div>
+    </div></section><section><h3>Backups</h3><button id="classicExport">Export tracker backup</button><label class="connection-button">Import tracker backup<input id="classicImport" type="file" accept="application/json" hidden></label><button id="legacyExport" hidden>Export previous BearDen data</button></section></dialog></body>
+</html>
