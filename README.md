@@ -10,8 +10,8 @@ A separate household finance app: cash, bills, paydays, debt, and savings in one
 - Savings goals and per-payday contributions. Future bills and minimums are reserved before savings and extra debt suggestions.
 - Editable plans, paid-bill markers, JSON backup/import, device-only mode, and isolated sample data.
 - Server-side Plaid Link, token exchange, accounts, paginated transaction sync, and connection removal.
-- Owner-only Google sign-in; optional Gmail read-only consent; selected-sender email scanning and a bill review inbox.
-- On Cloudflare, bounded scheduled batches run every 15 minutes, with completed sources refreshed approximately every six hours. On the optional Node server, background sync runs every six hours while the server is running. Each sender is scanned for messages from the last 90 days. Repeated message IDs are skipped.
+- Owner-only Google sign-in; optional Gmail read-only consent; automatic bill discovery across all Gmail senders and a review inbox for unclear emails.
+- On Cloudflare, bounded scheduled batches run every 15 minutes, with completed sources refreshed approximately every six hours. On the optional Node server, background sync runs every six hours while the server is running. Bill-related messages from all senders in the last 90 days are scanned. Repeated message IDs are skipped.
 - Encrypted server records, HttpOnly session cookies, OAuth state/PKCE, origin checks, optimistic save revision checks, and no third-party analytics.
 
 **Live connections are not configured or verified yet.** The code has automated tests for planning, parsing, sync pagination, and access controls. Real bank and Gmail testing requires your credentials, consent, and a deployed server.
@@ -59,7 +59,7 @@ Render's free web service does not provide the always-on, persistent-disk setup 
 6. In Settings, paste the **full From email address** from each real bill email. Start with Consumers Energy. Sender addresses are deliberately not guessed.
 7. Choose Sync connections. Review imported candidates before adding them as bills.
 
-Gmail's read-only scope covers the mailbox; BearDen enforces selected senders in both the query and exact From-address comparison. It cannot send, edit, or delete email. It stores the refresh token, message IDs, a short snippet, and extracted candidates; it does not retain full bodies or download attachments. Bill emails are never sent to an AI provider.
+Gmail's read-only scope covers the mailbox; BearDen searches bill-related keywords across all senders (excluding sent mail, spam, and trash). No sender list is required. It cannot send, edit, or delete email. It stores the refresh token, message IDs, a short snippet, and extracted candidates; it does not retain full bodies or download attachments. Bill emails are never sent to an AI provider.
 
 Google OAuth apps in Testing generally get seven-day refresh tokens for Gmail. Complete the appropriate personal-use production configuration before expecting unattended ongoing syncing. Personal-use verification exceptions may apply, but this app does not bypass Google's requirements. Reconnect when consent is revoked or expired. Disconnect Gmail revokes the Google grant, which can also affect other granted scopes for this OAuth client.
 
@@ -92,7 +92,7 @@ For the connected app, use the server URL instead. GitHub remains the source of 
 - Planned debt/savings allocations are **suggestions**, not transfers. Update balances after real payments, and mark bills paid only after the cash snapshot reflects them.
 - Squasher's half-balance suggestions apply to balances remaining after earlier scheduled minimums; future minimums stay reserved. It can deliberately leave surplus unallocated. Cushion Cascade uses the configured cushion × intensity (1.5 / 1 / 0.5) plus retained bonus money.
 - Debt interest is a daily-simple estimate through the last forecast event, not a lender payoff quote. Minimums and APRs are manually maintained; Plaid Liabilities is not implemented.
-- Email parsing is conservative: explicit amount-due labels and complete numeric/month-name due dates. Ambiguous fields, yearless dates, PDF-only bills, and links to provider portals require manual entry. Every candidate requires review; Gmail never silently overwrites a bill. Check for an existing bill for the same period before accepting reminders.
+- Email parsing is conservative: explicit amount-due labels and complete numeric/month-name due dates. Ambiguous fields, yearless dates, PDF-only bills, and links to provider portals require manual entry. Clear upcoming bills are automatically added as one-time entries. Receipts, payment confirmations and zero-due notices are skipped; unclear, past-due and credit-card statements need review. Repeated message IDs and matching sender/account/date/amount fingerprints are deduplicated. Different sender addresses and manually entered bills can still require reconciliation. Existing bills are not overwritten.
 - Transactions are displayed, but automatic payment matching is **not yet implemented**. Duplicate payments are avoided by the cash-snapshot approach and explicit paid markers, not inferred from merchant names.
 - Full BearBudgeter parity is not claimed: profile modes, its games/themes, gross bonus tax estimates, frozen completed-paycheck snapshots, arbitrary per-check overrides, and legacy backup migration remain separate future work. The four payoff strategies and core savings planning are included in the new engine.
 - Email sync is polling, not instant push. Cloudflare triggers run without an open browser; the optional Node server must stay awake. Sync failures appear in the connection status.

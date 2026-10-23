@@ -8,8 +8,27 @@ export function applyTransactions(existing,changes,itemId){const map=new Map(exi
 export function messageText(payload){let plain=[],html=[];function walk(p){if(p.body?.data){const text=Buffer.from(p.body.data,'base64url').toString('utf8');if(p.mimeType==='text/plain')plain.push(text);else if(p.mimeType==='text/html')html.push(text);}for(const child of p.parts||[])walk(child);}walk(payload||{});return (plain.length?plain.join('\n'):html.join('\n').replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi,' ').replace(/<[^>]*>/g,' ').replace(/&nbsp;|&#160;/g,' ').replace(/&amp;/g,'&')).slice(0,100000);}
 export function parseBill(text){
  // Only explicit amount-due and due-date labels. Never guess dates from statement dates.
- const amounts=[...text.matchAll(/(?:total\s+amount\s+due|amount\s+due|total\s+due|balance\s+due)\s*:?\s*\$\s*([\d,]+\.\d{2})/gi)].map(m=>cents(m[1].replaceAll(',','')));
- const dates=[];for(const m of text.matchAll(/(?:payment\s+due(?:\s+date)?|due\s+date|due\s+by)\s*:?\s*(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/gi)){const s=`${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;try{if(day(s)===s)dates.push(s);}catch{}}
- for(const m of text.matchAll(/(?:payment\s+due(?:\s+date)?|due\s+date|due\s+by)\s*:?\s*([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/gi)){const month=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(m[1].slice(0,3).toLowerCase())+1;if(month){const s=`${m[3]}-${String(month).padStart(2,'0')}-${m[2].padStart(2,'0')}`;try{if(day(s)===s)dates.push(s);}catch{}}}
+ const amounts=[...text.matchAll(/(?:total\s+amount\s+due|amount\s+due|total\s+due|balance\s+due|payment\s+amount)\s*:?\s*\$\s*([\d,]+(?:\.\d{2})?)(?![\d.])/gi)].map(m=>cents(m[1].replaceAll(',','')));
+ const dates=[];for(const m of text.matchAll(/(?:payment\s+due(?:\s+date)?|due\s+date|due\s+(?:by|on))\s*:?\s*(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/gi)){const s=`${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;try{if(day(s)===s)dates.push(s);}catch{}}
+ for(const m of text.matchAll(/(?:payment\s+due(?:\s+date)?|due\s+date|due\s+(?:by|on))\s*:?\s*([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/gi)){const month=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(m[1].slice(0,3).toLowerCase())+1;if(month){const s=`${m[3]}-${String(month).padStart(2,'0')}-${m[2].padStart(2,'0')}`;try{if(day(s)===s)dates.push(s);}catch{}}}
  const a=[...new Set(amounts)],d=[...new Set(dates)];return {amount:a.length===1?a[0]:null,date:d.length===1?d[0]:null};
+}
+
+
+// Search all senders, including archived mail; never include spam/trash or sent mail.
+export const billMailQuery = 'newer_than:90d -in:sent {bill invoice statement "amount due" "payment due" "balance due" "autopay" "automatic payment" "payment reminder" "renewal"}';
+export function classifyBillEmail({id,from,subject='',snippet='',text='',today=new Date().toISOString().slice(0,10)}) {
+ const sender=(from.match(/<([^>]+)>/)?.[1]||from).trim().toLowerCase();
+ const name=(from.includes('<')?from.split('<')[0].trim().replace(/^"|"$/g,''):sender).slice(0,200)||'Email bill';
+ const content=subject+'\n'+text;
+ if(/\b(payment (?:received|confirmed|successful|confirmation)|receipt|thank you for (?:your )?payment|paid in full)\b/i.test(subject))return {action:'ignore'};
+ if(!/\b(bill|invoice|statement|amount due|payment due|balance due|autopay|automatic payment|payment reminder|renewal)\b/i.test(content))return {action:'ignore'};
+ const parsed=parseBill(content),candidate={id,sender,name,subject:subject.slice(0,300),snippet:snippet.slice(0,350),...parsed};
+ const account=content.match(/(?:account|card)\s*(?:number|no\.?|#|ending(?: in)?)?\s*[:*xX•-]*\s*(\d{4,})\b/i)?.[1]||'';
+ const sourceKey=JSON.stringify([sender,account,parsed.date,parsed.amount]);candidate.sourceKey=sourceKey;
+ const paid=/\b(payment (?:has been |was )?(?:received|processed|successful)|paid in full|no payment (?:is )?(?:due|required))\b/i.test(content);
+ if(paid||parsed.amount===0)return {action:'ignore'};
+ const reason=!Number.isSafeInteger(parsed.amount)||parsed.amount<=0||parsed.amount>1e12?'Amount missing or conflicting':!parsed.date?'Due date missing or conflicting':parsed.date<today?'Past due date: check whether already paid':/\b(minimum payment|minimum amount|credit card|statement balance)\b/i.test(content)?'Check against your debt plan before adding a card payment':null;
+ if(reason)return {action:'review',candidate:{...candidate,reason}};
+ return {action:'add',candidate,bill:{id:'gmail-'+id,name,amount:parsed.amount,date:parsed.date,repeat:'once',source:'gmail',sourceId:id,sourceKey,sender}};
 }

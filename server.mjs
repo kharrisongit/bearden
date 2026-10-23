@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {randomBytes,createHash,createCipheriv,createDecipheriv} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {blank,validate,cents} from './public/engine.mjs';
-import {request,plaid,transactionSync,applyTransactions,messageText,parseBill} from './providers.mjs';
+import {request,plaid,transactionSync,applyTransactions,messageText,classifyBillEmail,billMailQuery} from './providers.mjs';
 
 const root=dirname(fileURLToPath(import.meta.url)),port=Number(process.env.PORT||3000),origin=new URL(process.env.APP_URL||`http://localhost:${port}`).origin,secure=origin.startsWith('https:'),allowed=process.env.ALLOWED_EMAIL?.toLowerCase(),key=process.env.DATA_KEY?Buffer.from(process.env.DATA_KEY,'base64'):null;
 if(key&&key.length!==32)throw Error('DATA_KEY must be 32 random bytes in base64');
@@ -34,8 +34,25 @@ async function doSync(){
  for(const item of c.items){try{const synced=await transactionSync(item),accounts=await plaid('/accounts/get',{access_token:item.token});c.transactions=applyTransactions(c.transactions,synced.changes,item.id);item.cursor=synced.cursor;
   updatePlan(s=>{const activeIds=new Set(accounts.accounts.map(a=>'plaid-'+a.account_id));s.accounts=s.accounts.filter(a=>a.itemId!==item.id||activeIds.has(a.id));for(const a of accounts.accounts){const id='plaid-'+a.account_id,old=s.accounts.find(x=>x.id===id),balance=a.balances.available??a.balances.current;if(balance===null)continue;const eligible=a.type==='depository'&&a.subtype==='checking'&&a.balances.iso_currency_code==='USD';const entry={id,itemId:item.id,name:a.name+(a.mask?' •'+a.mask:''),balance:cents(balance),include:eligible?(old?.include??true):false,source:'plaid',currency:a.balances.iso_currency_code};if(old)Object.assign(old,entry);else s.accounts.push(entry);}});c.bankUpdated=now;
  }catch(e){errors.push(`${item.name}: ${e.message}`);}}
- if(c.gmail){try{const token=await googleToken({grant_type:'refresh_token',refresh_token:c.gmail.refreshToken}),senders=getPlan().state.emailSenders;
-  if(!senders.length)errors.push('Gmail: add bill sender addresses in Settings');else{const query=`newer_than:90d {${senders.map(s=>'from:'+s).join(' ')}}`,headers={Authorization:'Bearer '+token.access_token},seen=new Set(c.seen);let pageToken='',scanned=0;do{const q=new URLSearchParams({q:query,maxResults:'50'});if(pageToken)q.set('pageToken',pageToken);const page=await request('https://gmail.googleapis.com/gmail/v1/users/me/messages?'+q,{headers});for(const m of page.messages||[]){if(seen.has(m.id))continue;const msg=await request('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+encodeURIComponent(m.id)+'?format=full',{headers});const header=name=>msg.payload?.headers?.find(h=>h.name.toLowerCase()===name)?.value||'',from=header('from'),address=(from.match(/<([^>]+)>/)?.[1]||from).trim().toLowerCase();seen.add(m.id);if(!senders.some(s=>s.toLowerCase()===address))continue;const text=messageText(msg.payload);c.candidates.push({id:m.id,sender:address,subject:header('subject').slice(0,300),snippet:(msg.snippet||'').slice(0,350),...parseBill(text)});scanned++;}pageToken=page.nextPageToken||'';if(scanned>=200&&pageToken){errors.push('Gmail: more messages remain; run another sync');break;}}while(pageToken);c.seen=[...seen];c.gmailUpdated=now;}
+ if(c.gmail){try{
+  if(c.gmail.signature!=='automatic-bills-v1'){c.gmail.signature='automatic-bills-v1';c.seen=[];delete c.gmail.page;}
+  const token=await googleToken({grant_type:'refresh_token',refresh_token:c.gmail.refreshToken}),headers={Authorization:'Bearer '+token.access_token},seen=new Set(c.seen||[]);
+  const q=new URLSearchParams({q:billMailQuery,maxResults:'10'});if(c.gmail.page)q.set('pageToken',c.gmail.page);
+  const page=await request('https://gmail.googleapis.com/gmail/v1/users/me/messages?'+q,{headers});
+  for(const m of page.messages||[]){if(seen.has(m.id))continue;
+   const msg=await request('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+encodeURIComponent(m.id)+'?format=full',{headers});
+   const header=n=>msg.payload?.headers?.find(h=>h.name.toLowerCase()===n)?.value||'';
+   const result=classifyBillEmail({id:m.id,from:header('from'),subject:header('subject'),snippet:msg.snippet||'',text:messageText(msg.payload).slice(0,32000)});
+   if(result.action==='add'){
+    const p=getPlan();if(!p.state.bills.some(b=>b.sourceId===m.id||b.sourceKey===result.bill.sourceKey)){p.state.bills.push(result.bill);validate(p.state);p.revision++;write('plan',p);}
+    c.candidates=c.candidates.filter(x=>x.id!==m.id);
+   }else if(result.action==='review'&&!c.candidates.some(x=>x.id===m.id)){
+    if(c.candidates.filter(x=>!x.dismissed).length>=100)throw Error('Review or dismiss unclear emails to make room for more');
+    c.candidates.push(result.candidate);
+   }
+   seen.add(m.id);c.seen=[...seen];write('connections',c);
+  }
+  c.gmail.page=page.nextPageToken||'';c.gmailUpdated=now;
  }catch(e){errors.push('Gmail: '+e.message+'; reconnect if authorization expired');}}
  c.status=errors.length?'Sync needs attention — '+errors.join(' · '):'Last sync: '+now;c.lastAttempt=now;write('connections',c);return c;
 }
@@ -80,3 +97,4 @@ server.listen(port,()=>console.log('BearDen listening on port '+port+' ('+(googl
 // An always-on single server is required. Sync continues with no browser open.
 const timer=setInterval(()=>{if(!googleConfigured)return;const c=connections();if(c.lastAttempt&&Date.now()-Date.parse(c.lastAttempt)<6*3600000)return;if(c.gmail||c.items.length)sync().catch(()=>console.error('Background sync failed; check provider setup.'));},60000);timer.unref();
 process.on('SIGTERM',()=>{clearInterval(timer);server.close(()=>{db.close();process.exit(0);});});
+

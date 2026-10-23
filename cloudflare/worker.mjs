@@ -2,7 +2,7 @@
 import {randomBytes,createHash,createCipheriv,createDecipheriv} from 'node:crypto';
 import {Buffer} from 'node:buffer';
 import {blank,validate,cents} from '../public/engine.mjs';
-import {parseBill,messageText,applyTransactions} from '../providers.mjs';
+import {classifyBillEmail,billMailQuery,messageText,applyTransactions} from '../providers.mjs';
 
 const random=()=>randomBytes(32).toString('base64url'),hash=s=>createHash('sha256').update(s).digest('hex');
 const sixHours=6*3600000;
@@ -41,18 +41,27 @@ export function runtime(env,fetcher=fetch){
   }catch(e){if(e.code==='TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION')delete item.pending;item.nextSync=Date.now()+900000;throw e;}
  }
  async function syncGmail(c){
-  const senders=(await plan()).state.emailSenders;if(!senders.length)return 'Gmail: add bill sender addresses in Settings.';
-  const signature=hash([...senders].sort().join('|'));if(c.gmail.signature!==signature){c.gmail.signature=signature;delete c.gmail.page;delete c.gmail.backlog;}
-  if(c.candidates.filter(x=>!x.dismissed).length>=100)return 'Review or dismiss your bill inbox before importing more emails.';
+  const signature='automatic-bills-v1';if(c.gmail.signature!==signature){c.gmail.signature=signature;delete c.gmail.page;delete c.gmail.backlog;}
   const token=await googleToken({grant_type:'refresh_token',refresh_token:c.gmail.refreshToken}),h={Authorization:'Bearer '+token.access_token};
-  if(!c.gmail.backlog?.length){const q=new URLSearchParams({q:`newer_than:90d {${senders.map(s=>'from:'+s).join(' ')}}`,maxResults:'10'});if(c.gmail.page)q.set('pageToken',c.gmail.page);const page=await request('https://gmail.googleapis.com/gmail/v1/users/me/messages?'+q,{headers:h});c.gmail.backlog=(page.messages||[]).map(m=>m.id);c.gmail.page=page.nextPageToken||'';}
+  if(!c.gmail.backlog?.length){const q=new URLSearchParams({q:billMailQuery,maxResults:'10'});if(c.gmail.page)q.set('pageToken',c.gmail.page);const page=await request('https://gmail.googleapis.com/gmail/v1/users/me/messages?'+q,{headers:h});c.gmail.backlog=(page.messages||[]).map(m=>m.id);c.gmail.page=page.nextPageToken||'';}
   // Up to three messages keeps external and database subrequests below the Free limit.
-  for(let i=0;i<3&&c.gmail.backlog.length;i++){const id=c.gmail.backlog[0];if(!await first('SELECT id FROM mail_seen WHERE id=?',hash(id))&&!c.candidates.some(x=>x.id===id)){
-    const msg=await request('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+encodeURIComponent(id)+'?format=full',{headers:h}),header=n=>msg.payload?.headers?.find(h=>h.name.toLowerCase()===n)?.value||'',from=header('from'),sender=(from.match(/<([^>]+)>/)?.[1]||from).trim().toLowerCase();
-    if(senders.some(s=>s.toLowerCase()===sender)){c.candidates.push({id,sender,subject:header('subject').slice(0,300),snippet:(msg.snippet||'').slice(0,350),...parseBill(messageText(msg.payload).slice(0,32000))});await write('connections',c);}
-   }await run('INSERT OR IGNORE INTO mail_seen VALUES(?,?)',hash(id),Date.now());c.gmail.backlog.shift();}
+  for(let i=0;i<3&&c.gmail.backlog.length;i++){const id=c.gmail.backlog[0];if(!await first('SELECT id FROM mail_seen WHERE id=?',hash(signature+'|'+id))){
+    const msg=await request('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+encodeURIComponent(id)+'?format=full',{headers:h}),header=n=>msg.payload?.headers?.find(h=>h.name.toLowerCase()===n)?.value||'',from=header('from');
+    const result=classifyBillEmail({id,from,subject:header('subject'),snippet:msg.snippet||'',text:messageText(msg.payload).slice(0,32000)});
+    if(result.action==='add'){
+     const p=await plan();
+     if(!p.state.bills.some(b=>b.sourceId===id||b.sourceKey===result.bill.sourceKey)){
+      if(p.state.bills.length>=1000)throw Error('Bill storage is full. Export and remove old bills before continuing.');
+      p.state.bills.push(result.bill);validate(p.state);if(JSON.stringify(p.state).length>240000)throw Error('Plan storage is full. Export and remove old records before continuing.');p.revision++;await write('plan',p);
+     }
+     c.candidates=c.candidates.filter(x=>x.id!==id);
+    }else if(result.action==='review'&&!c.candidates.some(x=>x.id===id)){
+     if(c.candidates.length>=100)throw Error('Review or dismiss unclear emails to make room for more. Automatic scanning will resume.');
+     c.candidates.push(result.candidate);await write('connections',c);
+    }
+   }await run('INSERT OR IGNORE INTO mail_seen VALUES(?,?)',hash(signature+'|'+id),Date.now());c.gmail.backlog.shift();}
   c.gmailUpdated=new Date().toISOString();const more=c.gmail.backlog.length||c.gmail.page;c.gmail.nextSync=more?0:Date.now()+sixHours;
-  return more?'Email batch imported. More will be checked on the next scheduled run.':'Gmail checked. New candidates are ready for review; next check in about 6 hours.';
+  return more?'Email batch scanned; clear bills added automatically. More emails will be checked on the next scheduled run.':'Gmail checked; clear bills added automatically. Only unclear emails need review. Next check in about 6 hours.';
  }
  async function sync(force=false){return locked(async()=>{const c=await connections(),now=Date.now(),bank=c.items.find(i=>i.pending||!i.nextSync||i.nextSync<=now)||(force?c.items[0]:null),gmail=c.gmail&&(force||c.gmail.backlog?.length||c.gmail.page||!c.gmail.nextSync||c.gmail.nextSync<=now);
    if(!bank&&!gmail)return {status:c.status};try{if(gmail&&(!bank||c.lastTask==='bank')){c.lastTask='gmail';c.status=await syncGmail(c);}else{c.lastTask='bank';c.status=await syncBank(c,bank);}}catch(e){c.status='Sync needs attention: '+e.message;if(c.lastTask==='gmail'&&c.gmail)c.gmail.nextSync=now+sixHours;}
@@ -101,3 +110,4 @@ export default {
  async fetch(req,env){try{return await runtime(env).handle(req);}catch(e){return json({error:e.message||'Request failed'},400);}},
  async scheduled(_event,env,ctx){const app=runtime(env);if(app.configured)ctx.waitUntil(app.sync().catch(()=>{/* Connection errors are stored in the private status. Do not log tokens or payloads. */}));}
 };
+

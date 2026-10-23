@@ -61,7 +61,7 @@ Add these as **runtime secrets**, not build logs or public browser variables. Th
 1. Use a separate Google Cloud project for BearDen, enable the Gmail API, and configure the OAuth consent screen.
 2. Create a **Web application** OAuth client. Register the exact redirect URL: `https://YOUR-WORKER/auth/google/callback`.
 3. Start with your account as a test user. Sign in to BearDen, then choose Connect Gmail to grant read-only access separately from basic sign-in.
-4. In BearDen Settings, copy the full From address from a Consumers Energy bill. Only explicitly selected sender addresses are processed.
+4. In BearDen, use Sync connections. Gmail automatically searches all senders for bill-related emails and adds clear upcoming bills; no sender list is needed.
 5. For ongoing unattended sync, resolve Google's seven-day refresh-token limitation for apps left in Testing. Configure production/personal-use eligibility as appropriate; this code cannot bypass Google's policy.
 
 The existing Google account can be reused. The game project's Firebase API key cannot replace the OAuth client secret or Gmail consent. BearDen needs its own authorization.
@@ -78,16 +78,16 @@ The existing Google account can be reused. The game project's Firebase API key c
 - A single Cron Trigger runs every 15 minutes, even with the browser closed. Propagation of new schedules can take several minutes.
 - A trigger processes one bank page or up to three emails. Connected sources are normally refreshed approximately every six hours; backlogs continue in later batches. Manual Sync runs one additional batch.
 - Plaid initial history requests 30 days; processing keeps up to 200 recent transactions per bank and 1,000 total. This is a recent-activity dashboard, not a permanent transaction archive.
-- Gmail scans the last 90 days for configured senders. At most 100 pending candidates are retained; review/dismiss them to allow more. Accepted candidates leave the queue when the plan saves. Full message bodies and attachments are not stored.
+- Gmail searches bill-related emails from all senders in the last 90 days. Clear upcoming bills are added automatically; unclear, past-due and card statements need review. At most 100 pending candidates are retained; review/dismiss them to allow more. Accepted candidates leave the queue when the plan saves. Full message bodies and attachments are not stored.
 - A database lock prevents concurrent scheduled work and saves from overwriting one another. A busy save reports an error; reload/retry after sync completes. Revision checks protect against stale tabs.
-- The personal adapter supports up to 10 bank connections, 20 selected email senders, and a 250 KB plan. Free CPU, request, and database limits still apply; live runtime checks are required. Exceeding Free limits can interrupt service. Do not upgrade to a paid plan merely to finish setup.
+- The personal adapter supports up to 10 bank connections, and a 250 KB plan. Free CPU, request, and database limits still apply; live runtime checks are required. Exceeding Free limits can interrupt service. Do not upgrade to a paid plan merely to finish setup.
 - Worker secrets encrypt the private D1 records. Google refresh tokens and Plaid access tokens never go to the browser. The same owner-only sign-in and CSRF protections apply.
 - The Node SQLite database and Cloudflare D1 use separate encrypted stores; moving hosting requires exporting/importing the plan and reconnecting providers. They are not binary-compatible database backups.
 - No paid resources have been created. The old Render deployment configuration was removed to avoid accidental paid setup.
 
 ## Verification
 
-`npm test` covers the original planner plus Worker authorization, encryption, OAuth state/PKCE, owner restrictions, D1 locking, save revisions, paginated bank staging, exact sender filtering, and bounded Gmail batches. A Wrangler dry-run checks that the Worker and assets bundle successfully. Provider responses in automated tests are simulated; no live credentials are included.
+`npm test` covers the original planner plus Worker authorization, encryption, OAuth state/PKCE, owner restrictions, D1 locking, save revisions, paginated bank staging, automatic bill discovery and reminder deduplication, and bounded Gmail batches. A Wrangler dry-run checks that the Worker and assets bundle successfully. Provider responses in automated tests are simulated; no live credentials are included.
 
 ## Official references
 
