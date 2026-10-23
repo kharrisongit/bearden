@@ -6,7 +6,7 @@
   "workers_dev": true,
   "assets": {"directory": "./public", "binding": "ASSETS", "run_worker_first": true},
   "triggers": {"crons": ["*/15 * * * *"]},
-  "d1_databases": [{"binding": "DB", "database_name": "bearden", "database_id": "REPLACE_WITH_D1_DATABASE_ID"}],
+  "d1_databases": [{"binding": "DB", "database_name": "bearden", "database_id": "ac251775-4b06-486e-aada-bcd4fce5097d"}],
   "vars": {"PLAID_ENV": "sandbox"},
   "observability": {"enabled": false}
 }
