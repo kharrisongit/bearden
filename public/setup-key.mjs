@@ -1,0 +1,3 @@
+const key=document.querySelector('#key'),status=document.querySelector('#status');
+document.querySelector('#generate').onclick=()=>{if(key.value&&!confirm('Replace the newly generated key on this page?'))return;const bytes=crypto.getRandomValues(new Uint8Array(32));key.value=btoa(String.fromCharCode(...bytes));document.querySelector('#copy').disabled=false;status.textContent='Generated on this device. Copy it before leaving this page.';};
+document.querySelector('#copy').onclick=async()=>{try{await navigator.clipboard.writeText(key.value);status.textContent='Copied. Paste into Cloudflare DATA_KEY and your password manager.';}catch{key.focus();key.select();status.textContent='Copy the selected key manually.';}};

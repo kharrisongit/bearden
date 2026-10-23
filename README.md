@@ -11,7 +11,7 @@ A separate household finance app: cash, bills, paydays, debt, and savings in one
 - Editable plans, paid-bill markers, JSON backup/import, device-only mode, and isolated sample data.
 - Server-side Plaid Link, token exchange, accounts, paginated transaction sync, and connection removal.
 - Owner-only Google sign-in; optional Gmail read-only consent; selected-sender email scanning and a bill review inbox.
-- Background sync every six hours while the server is running. Each sender is scanned for messages from the last 90 days. Repeated message IDs are skipped.
+- On Cloudflare, bounded scheduled batches run every 15 minutes, with completed sources refreshed approximately every six hours. On the optional Node server, background sync runs every six hours while the server is running. Each sender is scanned for messages from the last 90 days. Repeated message IDs are skipped.
 - Encrypted server records, HttpOnly session cookies, OAuth state/PKCE, origin checks, optimistic save revision checks, and no third-party analytics.
 
 **Live connections are not configured or verified yet.** The code has automated tests for planning, parsing, sync pagination, and access controls. Real bank and Gmail testing requires your credentials, consent, and a deployed server.
@@ -29,6 +29,10 @@ Open `http://localhost:3000`. Without server credentials, BearDen runs in manual
 
 ## Setup
 
+**Recommended: [free Cloudflare setup](cloudflare/SETUP.md).** This uses Workers, D1, and scheduled batches without an always-on paid server. The repo now includes `cloudflare/worker.mjs`, `cloudflare/schema.sql`, and `wrangler.jsonc`. No service has been provisioned yet. Start with the Cloudflare guide.
+
+The following describes the optional original Node server for local use or alternative hosting. Its always-on/disk requirements do **not** apply to the Cloudflare adapter.
+
 ### 1. Host the server
 
 The connected version serves the dashboard and API from the **same HTTPS origin**. This avoids relying on third-party cookies on iPhone/Safari. Connect this GitHub repository to a Node or Docker host with automatic deploys from `main`.
@@ -40,7 +44,7 @@ The connected version serves the dashboard and API from the **same HTTPS origin*
 - Set `NODE_ENV=production` and the environment variables in `.env.example` through the host's secret/environment settings. Do not commit the populated `.env`.
 - Generate `DATA_KEY` once using the command in `.env.example`. Retain the same key across redeploys; back it up separately. Losing it makes encrypted data unreadable.
 - Set `APP_URL` to the public HTTPS origin, with no path, and `ALLOWED_EMAIL` to your Google account address. Only that verified account can access the server data.
-- The included `render.yaml` describes a paid starter service with a 1 GB persistent disk. Review the host's charges before deploying it. Nothing has been provisioned by adding this file.
+- The paid Render deployment configuration has been removed. Use the free Cloudflare guide above unless you explicitly choose different hosting.
 
 Render's free web service does not provide the always-on, persistent-disk setup required here. A different host with those capabilities also works.
 
@@ -91,7 +95,7 @@ For the connected app, use the server URL instead. GitHub remains the source of 
 - Email parsing is conservative: explicit amount-due labels and complete numeric/month-name due dates. Ambiguous fields, yearless dates, PDF-only bills, and links to provider portals require manual entry. Every candidate requires review; Gmail never silently overwrites a bill. Check for an existing bill for the same period before accepting reminders.
 - Transactions are displayed, but automatic payment matching is **not yet implemented**. Duplicate payments are avoided by the cash-snapshot approach and explicit paid markers, not inferred from merchant names.
 - Full BearBudgeter parity is not claimed: profile modes, its games/themes, gross bonus tax estimates, frozen completed-paycheck snapshots, arbitrary per-check overrides, and legacy backup migration remain separate future work. The four payoff strategies and core savings planning are included in the new engine.
-- Email sync is polling, not instant push. It runs without a browser only while the host is awake. Sync failures appear in the connection status.
+- Email sync is polling, not instant push. Cloudflare triggers run without an open browser; the optional Node server must stay awake. Sync failures appear in the connection status.
 - This is a single-household, single-owner app. No automatic payments, transaction categorization, shared logins, or external alert delivery.
 
 ## Verification
