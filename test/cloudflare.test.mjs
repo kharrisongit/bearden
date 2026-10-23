@@ -34,3 +34,16 @@ test('failed initial balance fetch preserves connection and manual sync recovers
  let ready=false;const f=fixture(async url=>{if(url.endsWith('/item/public_token/exchange'))return Response.json({item_id:'i',access_token:'private'});if(url.endsWith('/accounts/get')){if(!ready)return Response.json({error_code:'INSTITUTION_NOT_RESPONDING'},{status:400});return Response.json({accounts:[{account_id:'a',name:'Checking',type:'depository',subtype:'checking',balances:{available:50,current:50,iso_currency_code:'USD'}}]});}return Response.json({error_code:'PRODUCT_NOT_READY'},{status:400});});
  const response=await (await f.app.handle(f.req('/api/plaid/exchange',{public_token:'public'}))).json();assert.match(response.status,/could not load/);assert.equal(f.get('connections').items[0].token,'private');ready=true;await f.app.sync(true);assert.equal(f.get('plan').state.accounts[0].balance,5000);assert.match(f.get('connections').status,/PRODUCT_NOT_READY/);f.db.close();
 });
+test('Baby Bear import requires owner session and matching origin; source file is not public',async()=>{
+ const f=fixture();assert.equal((await f.app.handle(new Request(f.env.APP_URL+'/api/import/baby-bear'))).status,401);
+ assert.equal((await f.app.handle(new Request(f.env.APP_URL+'/api/import/baby-bear',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}))).status,401);
+ assert.equal((await f.app.handle(f.req('/api/import/baby-bear',{date:'2026-11-01',revision:0},'https://other.example'))).status,403);
+ assert.equal((await f.app.handle(new Request(f.env.APP_URL+'/baby-bear.mjs'))).status,404);f.db.close();
+});
+test('Baby Bear import preserves existing data, skips duplicate debts and rejects stale revisions',async()=>{
+ const f=fixture(),s=blank();s.accounts=[{id:'cash',name:'Bank',balance:100,include:true}];s.debts=[{id:'custom',name:'Affirm',balance:100,apr:1,minimum:1,date:'2026-11-01'}];f.set('plan',{state:s,revision:5});
+ assert.equal((await f.app.handle(f.req('/api/import/baby-bear',{date:'2026-11-01',revision:4}))).status,409);
+ const response=await (await f.app.handle(f.req('/api/import/baby-bear',{date:'2026-11-01',revision:5}))).json();assert.equal(response.added,7);assert.equal(response.skipped,1);
+ const p=f.get('plan');assert.deepEqual(p.state.accounts,s.accounts);assert.equal(p.state.debts[0].balance,100);assert.equal(p.state.debts[1].minimumRepeat,'biweekly');
+ const again=await (await f.app.handle(f.req('/api/import/baby-bear',{date:'2026-11-01',revision:p.revision}))).json();assert.equal(again.added,0);assert.equal(f.get('plan').state.debts.length,8);f.db.close();
+});
