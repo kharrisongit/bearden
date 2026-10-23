@@ -5,13 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>BearDen</title>
 
-<link rel="stylesheet" href="classic.css?v=gamez1"><link rel="stylesheet" href="connections.css?v=gamez1">
-<script src="classic-theme.js?v=gamez1"></script></head>
+<link rel="stylesheet" href="classic.css?v=tabs1"><link rel="stylesheet" href="connections.css?v=tabs1"><link rel="stylesheet" href="tabs.css?v=tabs1">
+<script src="classic-theme.js?v=tabs1"></script></head>
 <body>
 <div class="wrap">
 
   <div class="app-title-box"><h1>BearDen</h1><div class="header-actions"><button id="headerSync" aria-label="Sync connections" title="Sync connections" hidden><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7v5h-5M4 17v-5h5M5 8a7 7 0 0 1 12-3l3 4M4 15l3 4a7 7 0 0 0 12-3"/></svg></button><button id="connectionSettings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 3-1 3-3 1 1 3-2 2 2 2-1 3 3 1 1 3h6l1-3 3-1-1-3 2-2-2-2 1-3-3-1-1-3z" /><circle cx="12" cy="12" r="3" /></svg></button></div></div>
 
+  <section id="tab-debt" class="tab-page" role="tabpanel" aria-labelledby="nav-debt">
   <div class="hero-peek-wrap">
   <div class="hero-bear"><div class="hero-bear-wings"></div><div class="hero-bear-face"></div><div class="hero-bear-paw"></div><div class="hero-bear-hat"></div><div class="hero-bear-fangs"></div><div class="hero-bear-horns"></div><div class="hero-bear-bubble">Grrr</div></div>
   <div class="hero debt-hero" id="debtHeroBox">
@@ -110,6 +111,7 @@
     <div id="scheduleRestOut" class="bonus-section-slide"></div>
   </div>
 
+</section><section id="tab-tools" class="tab-page" role="tabpanel" aria-labelledby="nav-tools" hidden><div class="tab-intro"><h2>Tools</h2><p>A place for your notes and a little downtime.</p></div>
   <div class="section-divider" style="margin:20px 0 30px;"><span class="section-divider-handle"></span></div>
 
   <div style="text-align:center;margin:0 0 16px;">
@@ -327,6 +329,30 @@
     </div>
   </div>
 
+</section>
+<section id="tab-income" class="tab-page" role="tabpanel" aria-labelledby="nav-income" hidden>
+<div class="tab-intro"><h2>Income</h2><p>Your balances, bills, and the month ahead.</p></div>
+<section class="income-card bank-card"><div class="card-heading"><h3>Bank balances</h3><button type="button" data-open-settings>Manage</button></div><div id="incomeBalances"></div><p id="incomeBankUpdated" class="subtle"></p></section>
+<section class="income-card"><div class="card-heading"><h3>Bill calendar</h3><div class="calendar-controls"><button id="monthPrev" aria-label="Previous month">‹</button><strong id="calendarMonth" aria-live="polite"></strong><button id="monthNext" aria-label="Next month">›</button></div></div><div class="calendar-weekdays" aria-hidden="true"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div><div id="billCalendar" class="bill-calendar"></div><div class="calendar-key"><span class="bill-dot"></span>Bills <span class="pay-dot"></span>Paydays</div><div class="card-heading"><h4 id="agendaHeading">Upcoming bills</h4><button id="clearDay" hidden>Show month</button></div><div id="billAgenda"></div>
+<details class="add-bill"><summary>Add a bill</summary><form id="incomeBillForm"><label>Name<input name="name" required maxlength="100" placeholder="Electric, phone, rent…"></label><div class="form-pair"><label>Amount ($)<input name="amount" type="number" min="0.01" max="1000000" step="0.01" required></label><label>Due date<input name="date" type="date" required></label></div><label>Repeats<select name="repeat"><option value="once">Once</option><option value="monthly">Monthly</option><option value="biweekly">Every two weeks</option><option value="weekly">Weekly</option></select></label><label class="check-label"><input name="covered" type="checkbox"> Already covered by my Debt budget</label><button type="submit">Add bill</button></form></details></section>
+<section class="income-card"><div class="card-heading"><h3>30-day forecast</h3><span class="forecast-tag">Estimated</span></div><div id="incomeForecast"></div><p class="subtle">Starts with included USD checking balances. Paycheck budgets, debt payments, and savings are set aside on payday. Bills marked “covered by Debt budget” are not deducted again. Today’s unchecked paycheck is included; check it off in Debt if it is already in your bank balance.</p></section><p id="incomeStatus" role="status"></p></section><section id="tab-settings" class="tab-page" role="tabpanel" aria-labelledby="nav-settings" hidden><div id="connectionDialog"><div class="connection-heading"><h2>Settings</h2></div><p id="connectionMessage" role="status"></p><section><h3>Your account</h3><p id="accountMode"></p><a class="connection-button" id="classicLogin" href="/auth/google">Sign in with Google</a><button id="classicLogout" hidden>Sign out</button><button id="classicSync" hidden>Sync connections</button></section><div id="privateConnections" hidden><section><h3>Bank connections</h3><button id="classicBank">Connect bank with Plaid</button><p id="classicBankStatus"></p><div id="classicBalances"></div><div id="classicBanks"></div></section><section><h3>Email bills</h3><button id="classicGmail">Connect Gmail</button><button id="classicDisconnectGmail" hidden>Disconnect Gmail</button><p id="classicEmailStatus"></p><div id="classicEmailBills"></div><div id="classicReviews"></div></section></div><section id="trackerOptions"><h3>Tracker options</h3><div class="setup-discreet">
+        <label><input type="checkbox" id="kurtisModeCheckbox" data-bd-change="toggleKurtisMode(this.checked)"> Baby Bear mode</label>
+        <span class="setup-discreet-note">Add a bonus to any individual paycheck.</span>
+      </div><div class="setup-discreet" style="margin-top:10px;">
+        <label><input type="checkbox" id="papaBearModeCheckbox" data-bd-change="togglePapaBearMode(this.checked)"> Papa Bear mode</label>
+        <span class="setup-discreet-note">Caps hours at 80 per paycheck, with no overtime.</span>
+      </div><button class="recalc" style="background:var(--warn);margin-top:14px;" data-bd-click="confirmTrackerReset()">Reset Everything</button><div class="footer-btn-row">
+      <button class="theme-toggle-btn" data-bd-click="toggleTheme()" id="themeToggleBtn" title="Toggle dark mode">🌙</button>
+      
+      <div class="theme-menu-wrap">
+        <button class="add-toggle-btn howto-toggle-small" data-bd-click="toggleHolidayMenu()" id="holidayToggleBtn">🎨 Theme</button>
+        <div class="theme-menu" id="holidayMenu">
+          <button class="theme-menu-item" id="holidayItemChristmas" data-bd-click="setHolidayTheme('christmas')">🎄 Christmas</button>
+          <button class="theme-menu-item" id="holidayItemHalloween" data-bd-click="setHolidayTheme('halloween')">🎃 Halloween</button>
+          <button class="theme-menu-item" id="holidayItemStandard" data-bd-click="setHolidayTheme('standard')">🐻 Standard</button>
+        </div>
+      </div>
+    </div></section><section><h3>Backups</h3><button id="classicExport">Export tracker backup</button><label class="connection-button">Import tracker backup<input id="classicImport" type="file" accept="application/json" hidden></label><button id="legacyExport" hidden>Export previous BearDen data</button></section></div></section>
   <div class="section-divider" style="margin:20px 0 0;"><span class="section-divider-handle"></span></div>
   <div class="page-footer" style="margin-top:18px;">
     
@@ -346,22 +372,5 @@
 </div>
 
 
-<script defer src="purify.min.js"></script><script defer src="connections.js?v=gamez1"></script><script defer src="classic-events.js?v=gamez1"></script><script defer src="classic.js?v=gamez1"></script><dialog id="connectionDialog"><div class="connection-heading"><h2>Settings</h2><button id="closeConnectionSettings" aria-label="Close settings">Close</button></div><p id="connectionMessage" role="status"></p><section><h3>Your account</h3><p id="accountMode"></p><a class="connection-button" id="classicLogin" href="/auth/google">Sign in with Google</a><button id="classicLogout" hidden>Sign out</button><button id="classicSync" hidden>Sync connections</button></section><div id="privateConnections" hidden><section><h3>Bank connections</h3><button id="classicBank">Connect bank with Plaid</button><p id="classicBankStatus"></p><div id="classicBalances"></div><div id="classicBanks"></div></section><section><h3>Email bills</h3><button id="classicGmail">Connect Gmail</button><button id="classicDisconnectGmail" hidden>Disconnect Gmail</button><p id="classicEmailStatus"></p><div id="classicEmailBills"></div><div id="classicReviews"></div></section></div><section id="trackerOptions"><h3>Tracker options</h3><div class="setup-discreet">
-        <label> Enable bonus controls<input type="checkbox" id="kurtisModeCheckbox" data-bd-change="toggleKurtisMode(this.checked)"> Enable bonus controls</label>
-        <span class="setup-discreet-note">Add a bonus to any individual paycheck.</span>
-      </div><div class="setup-discreet" style="margin-top:10px;">
-        <label> Salary mode<input type="checkbox" id="papaBearModeCheckbox" data-bd-change="togglePapaBearMode(this.checked)"> Salary mode</label>
-        <span class="setup-discreet-note">Caps hours at 80 per paycheck, with no overtime.</span>
-      </div><button class="recalc" style="background:var(--warn);margin-top:14px;" data-bd-click="confirmTrackerReset()">Reset Everything</button><div class="footer-btn-row">
-      <button class="theme-toggle-btn" data-bd-click="toggleTheme()" id="themeToggleBtn" title="Toggle dark mode">🌙</button>
-      
-      <div class="theme-menu-wrap">
-        <button class="add-toggle-btn howto-toggle-small" data-bd-click="toggleHolidayMenu()" id="holidayToggleBtn">🎨 Theme</button>
-        <div class="theme-menu" id="holidayMenu">
-          <button class="theme-menu-item" id="holidayItemChristmas" data-bd-click="setHolidayTheme('christmas')">🎄 Christmas</button>
-          <button class="theme-menu-item" id="holidayItemHalloween" data-bd-click="setHolidayTheme('halloween')">🎃 Halloween</button>
-          <button class="theme-menu-item" id="holidayItemStandard" data-bd-click="setHolidayTheme('standard')">🐻 Standard</button>
-        </div>
-      </div>
-    </div></section><section><h3>Backups</h3><button id="classicExport">Export tracker backup</button><label class="connection-button">Import tracker backup<input id="classicImport" type="file" accept="application/json" hidden></label><button id="legacyExport" hidden>Export previous BearDen data</button></section></dialog></body>
+<script defer src="purify.min.js"></script><script defer src="tabs.js?v=tabs1"></script><script defer src="connections.js?v=tabs1"></script><script defer src="classic-events.js?v=tabs1"></script><script defer src="classic.js?v=tabs1"></script><nav class="bottom-tabs" role="tablist" aria-label="BearDen sections"><button id="nav-debt" role="tab" aria-controls="tab-debt" aria-selected="true" tabindex="0" data-tab="debt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v14H4zM4 9h16M8 15h3"/></svg><span>Debt</span></button><button id="nav-income" role="tab" aria-controls="tab-income" aria-selected="false" tabindex="-1" data-tab="income"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10l9-7 9 7M5 10v10m7-10v10m7-10v10M3 21h18"/></svg><span>Income</span></button><button id="nav-tools" role="tab" aria-controls="tab-tools" aria-selected="false" tabindex="-1" data-tab="tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 5a5 5 0 0 0-6 6L3 16v5h5l5-5a5 5 0 0 0 6-6l-4 4-5-5z"/></svg><span>Tools</span></button><button id="nav-settings" role="tab" aria-controls="tab-settings" aria-selected="false" tabindex="-1" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6l1 3 3 1-1 3 2 2-2 2 1 3-3 1-1 3H9l-1-3-3-1 1-3-2-2 2-2-1-3 3-1zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6"/></svg><span>Settings</span></button></nav></body>
 </html>

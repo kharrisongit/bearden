@@ -6757,3 +6757,6 @@ function addConnectedBill(bill,date){
  const n=Math.floor((Date.parse(date+'T12:00:00Z')-Date.parse(start+'T12:00:00Z'))/86400000/14)+1;
  extraExpenses[n]??=[];extraExpenses[n].push({id:++extraExpenseIdCounter,label:bill.name,amount:bill.amount/100});calculate();return n;
 }
+
+// Read-only snapshot for the Income overview; the original payoff engine remains authoritative.
+window.getDebtPlan=()=>({state:gatherAppState(),schedule:lastSchedule.map(r=>({...r,date:r.date.getFullYear()+'-'+String(r.date.getMonth()+1).padStart(2,'0')+'-'+String(r.date.getDate()).padStart(2,'0')}))});

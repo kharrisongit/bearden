@@ -66,7 +66,7 @@ test('original tracker storage is private, encrypted, revision checked, and inde
 test('all scripts and styles used by the original tracker are publicly served with strict script CSP',async()=>{
  const f=fixture(),html=readFileSync('public/index.html','utf8');
  const urls=[...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css)(?:\?[^"]*)?)"/g)].map(m=>m[1]);
- urls.push('classic-migrate.mjs');
+ urls.push('classic-migrate.mjs','income-model.mjs');
  for(const url of urls){const r=await f.app.handle(new Request(f.env.APP_URL+'/'+url));assert.equal(r.status,200,url);assert.match(r.headers.get('Content-Security-Policy'),/script-src 'self' https:\/\/cdn.plaid.com;/);}
  f.db.close();
 });
