@@ -84,7 +84,7 @@ export function billEvents(legacy,planner,linked,start,end){
  let bills=[...(legacy?.bills||[]).filter(b=>!['budget','baby-bear-budget'].includes(b.source)),...(planner.manual||[])];
  const replaced=new Set(bills.filter(b=>b.source==='plaid-credit').map(b=>b.replaces).filter(Boolean));
  bills=bills.filter(b=>!replaced.has(b.id));
- const electric=bills.find(b=>b.id===planner.electricBillId&&b.billKind==='electric'&&b.source!=='gmail');
+ const electric=bills.find(b=>b.id===planner.electricBillId&&b.billKind==='electric'&&b.source!=='gmail'&&!planner.emailLinks?.['bill:'+b.id]);
  if(electric){
   const monthlyEmails=new Map();
   for(const b of bills)if(b.source==='gmail'&&(b.billKind==='electric'||/consumers\s*energy/i.test(b.name))){const key=b.date.slice(0,7),old=monthlyEmails.get(key);if(!old||b.date>old.date)monthlyEmails.set(key,b);}
@@ -103,7 +103,7 @@ export function billEvents(legacy,planner,linked,start,end){
    const key=bill.id+':'+date;
    if(paid.has(key)||legacy?.paid?.includes(key)||(bill.gmailConfirmed&&[...paid,...(legacy?.paid||[])].some(k=>k.startsWith(bill.id+':'+date.slice(0,7)))))continue;
    const covered=Boolean(linked[bill.id])||bill.paidByCard||bill.source==='tracker-debt'||(bill.source==='plaid-credit'?bill.covered:(overrides[bill.id]??(bill.source!=='gmail'&&bill.source!=='manual'&&bill.source!=='bank-estimate'&&bill.source!=='bank-tracked')));
-   out.push({...bill,date,key,type:'bill',covered,overdue:date<start});
+   out.push({...bill,date,key,type:'bill',covered,overdue:date<start,emailConfirmed:!!bill.emailConfirmed&&date===(bill.emailDueDate||bill.date)});
   }
  }
  return out.sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name));

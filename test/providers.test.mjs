@@ -22,3 +22,16 @@ test('electric-only scanning excludes unrelated bills and tags Consumers Energy'
  const result=classifyElectricEmail(input);assert.equal(result.action,'add');assert.equal(result.bill.name,'Consumers Energy');assert.equal(result.bill.billKind,'electric');
  assert.equal(classifyElectricEmail({...input,from:'Shopping <store@example.com>'}).action,'ignore');
 });
+
+test('utility due dates support short years and omitted years using the received email date',()=>{
+ const options={referenceDate:'2026-10-20T12:00:00Z'};
+ for(const date of ['Due: 10/30/26','Due October 30','Due date: Oct. 30','Payment due: 10/30'])assert.deepEqual(parseBill('Bill amount: $187.42 '+date,options),{amount:18742,date:'2026-10-30'});
+ assert.equal(parseBill('Due January 5',{referenceDate:'2026-12-27T12:00:00Z'}).date,'2027-01-05');
+ assert.equal(parseBill('Due December 30',{referenceDate:'2027-01-02T12:00:00Z'}).date,'2026-12-30');
+ assert.equal(parseBill('Due October 30').date,null);assert.equal(parseBill('Due 02/30',options).date,null);
+ assert.equal(parseBill('Due 10/30 Due 10/31',options).date,null);assert.equal(parseBill('Statement date 10/30 Last payment $187.42',options).date,null);
+ assert.equal(parseBill('Bill amount: $187.42 Amount due: $200.00',options).amount,null);
+});
+test('HTML utility labels decode dollar and colon entities',()=>{
+ const text=messageText({mimeType:'text/html',body:{data:Buffer.from('<p>Bill amount&colon; &dollar;187.42</p><p>Due date&colon; 10/30/2026</p>').toString('base64url')}});assert.deepEqual(parseBill(text),{amount:18742,date:'2026-10-30'});
+});

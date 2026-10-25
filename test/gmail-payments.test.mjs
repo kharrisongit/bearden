@@ -69,3 +69,26 @@ test('duplicate processing emails do not restart the no-Plaid two-day timer',()=
  const first=mail(),reminder=mail({id:'g:2',subject:'Payment processing',receivedAt:'2026-10-26T18:00:00Z'});
  const result=emailAccountStatus([first,reminder],emailLink(first),{now:Date.parse('2026-10-27T12:00:00Z')});assert.equal(result.payments.length,1);assert.equal(result.payments[0].status,'posted');assert.equal(result.payments[0].estimated,true);assert.equal(result.payments[0].postedDate,'2026-10-27');
 });
+
+test('selected electric bill replaces a bank estimate even with newer incomplete notices and survives a trimmed email cache',()=>{
+ const selected=mail({id:'g:electric-october',from:'Consumers Energy <billing@consumersenergy.com>',subject:'Your October bill',receivedAt:'2026-10-20T12:00:00Z',text:'Bill amount: $187.42 Due October 30 Account ending in 4321'});
+ const newer={...selected,id:'g:reminder',receivedAt:'2026-10-24T12:00:00Z',subject:'View your statement',amount:null,dueDate:null,balance:null,minimum:null};
+ const bill={id:'tracked-power',source:'bank-tracked',name:'Home electric',amount:12000,date:'2026-10-28',repeat:'monthly'},link={...emailLink(selected),selectedAt:'2026-10-25T12:00:00Z'},links={'bill:tracked-power':link};
+ assert.equal(selected.amount,18742);assert.equal(selected.dueDate,'2026-10-30');
+ for(const messages of [[newer,selected],[newer],[]]){const updated=emailBillUpdate(bill,messages,links);assert.equal(updated.amount,18742);assert.equal(updated.date,'2026-10-30');assert.equal(updated.emailMessageId,selected.id);assert.equal(updated.id,bill.id);}
+ const oldLink={mailboxId:link.mailboxId,sender:link.sender,accountLast4:link.accountLast4};assert.equal(emailBillUpdate(bill,[newer,selected],{'bill:tracked-power':oldLink}).amount,18742);
+ assert.equal(bill.amount,12000);
+});
+test('selected bill remains authoritative until a later incoming complete bill, without mixing a different mailbox or account',async()=>{
+ const {billStatement}=await import('../public/email-model.mjs');
+ const selected=mail({id:'g:october',subject:'Your bill',receivedAt:'2026-10-20T12:00:00Z',text:'Amount due: $100 Due 10/30/26 Account ending in 1234'}),link={...emailLink(selected),selectedAt:'2026-10-25T12:00:00Z'},beforeSelection={...selected,id:'g:old-choice',amount:11100,receivedAt:'2026-10-23T12:00:00Z'},next={...selected,id:'g:november',amount:12500,dueDate:'2026-11-30',receivedAt:'2026-11-18T12:00:00Z'},oldCycle={...selected,id:'g:old-cycle',amount:8000,dueDate:'2026-09-30',receivedAt:'2026-11-20T12:00:00Z'};
+ const now=Date.parse('2026-11-21T12:00:00Z');assert.equal(billStatement([beforeSelection,selected],link,{now}).id,selected.id);
+ const others=[{...next,mailboxId:'other'},{...next,accountLast4:'5678'},oldCycle];assert.equal(billStatement([...others,selected],link,{now}).id,selected.id);assert.equal(billStatement([next,...others,selected],link,{now}).id,next.id);
+});
+test('email-confirmed amounts override bank estimates in the calendar and forecast without duplicating the bill',async()=>{
+ const {billEvents,cashForecast}=await import('../public/income-model.mjs');
+ const m=mail({subject:'Your bill',text:'Amount due: $187.42 Due date: October 30, 2026'}),bill={id:'power',name:'Home electric',source:'bank-tracked',billKind:'electric',amount:12000,date:'2026-10-28',repeat:'monthly'},link=emailLink(m),updated=emailBillUpdate(bill,[m],{'bill:power':link});
+ const events=billEvents({bills:[updated]},{manual:[],paid:[],emailLinks:{'bill:power':link},electricBillId:'power'}, {}, '2026-10-25','2026-11-24');assert.equal(events.length,1);assert.equal(events[0].amount,18742);assert.equal(events[0].date,'2026-10-30');assert.equal(events[0].emailConfirmed,true);
+ assert.equal(cashForecast([{balance:50000,include:true}],[],events,'2026-10-25').outgoing,18742);
+ const next=billEvents({bills:[updated]},{manual:[],paid:[]},{},'2026-11-01','2026-11-30');assert.equal(next[0].emailConfirmed,false);
+});

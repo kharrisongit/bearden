@@ -40,7 +40,7 @@
  function error(e){$('#incomeStatus').textContent=e.message||String(e);$('#accountStatus').textContent=e.message||String(e);$('#accountSaveStatus').textContent=e.message||String(e);}
  async function save(){await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();}
  let initializing;
- function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel]=await Promise.all([import('./income-model.mjs?v=gmail-payments1'),import('./email-model.mjs?v=gmail-payments1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;await renderIncome();}catch(e){error(e);}})();}
+ function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel]=await Promise.all([import('./income-model.mjs?v=email-bill-fix1'),import('./email-model.mjs?v=email-bill-fix1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;await renderIncome();}catch(e){error(e);}})();}
  window.addEventListener('load',initialize,{once:true});
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});
@@ -141,7 +141,7 @@
    if(!window.BearDen.plan?.connections?.gmail){for(const id of ['billEditor','debtEditor','creditEditor'])$('#'+id).close();window.selectBearTab('settings');$('#classicEmailStatus').textContent='Add a Gmail account, then choose an email in this account’s details.';$('#classicGmail').focus();return;}
    pickingEmail=pick.dataset.pickEmail;$('#emailSearchQuery').value=$('#'+pickingEmail+'EditorForm').elements.name.value;$('#emailSearchStatus').textContent='';renderEmailChoices();$('#emailLinkPicker').showModal();
   }
-  const chosen=e.target.closest('[data-link-email]');if(chosen){const message=mailMessages().find(m=>m.id===chosen.dataset.linkEmail);if(message){emailDrafts[pickingEmail].link=mailModel.emailLink(message);renderEmailDraft(pickingEmail);$('#emailLinkPicker').close();}}
+  const chosen=e.target.closest('[data-link-email]');if(chosen){const message=mailMessages().find(m=>m.id===chosen.dataset.linkEmail);if(message){emailDrafts[pickingEmail].link=mailModel.emailLink(message);renderEmailDraft(pickingEmail);if(pickingEmail==='bill'){const form=$('#billEditorForm');if(mailModel.completeBillStatement(message)){form.elements.amount.value=(message.amount/100).toFixed(2);form.elements.date.value=message.dueDate;$('#billEditorError').textContent='Email amount and due date filled in. Save bill to apply them.';}else{$('#billEditorError').textContent=message.paymentStatus?'This is a payment notice, not an upcoming bill. It links the sender; your bill estimate is unchanged.':'Could not read a clear amount and due date from this email. Your estimate is unchanged; enter the details above or select another bill email.';}}$('#emailLinkPicker').close();}}
   const unlink=e.target.closest('[data-unlink-email]');if(unlink){emailDrafts[unlink.dataset.unlinkEmail].link=null;renderEmailDraft(unlink.dataset.unlinkEmail);}
   const refresh=e.target.closest('[data-refresh-email]');if(refresh){refresh.disabled=true;await discoverMail(refresh.dataset.refreshEmail,planner.emailLinks[refresh.dataset.refreshEmail]?.sender||'');refresh.disabled=false;}
  });
@@ -314,7 +314,7 @@
    const calendarRows=[...bills,...paidBills.map(b=>({...b,isPaid:true}))].filter(b=>!selected||b.date===selected).sort((a,b)=>a.date.localeCompare(b.date));
    $('#calendarAgenda').innerHTML=calendarRows.map(b=>'<button type="button" class="calendar-agenda-row" data-account-view="'+(model.isDebtPayment(b)?'debt':'bills')+'"><span><strong>'+esc(b.name)+'</strong><small>'+esc(dateLabel(b.date))+' · '+(b.isPaid?'✓ Paid':model.isDebtPayment(b)?'Debt payment':'Bill')+'</small></span><strong>'+money(b.amount)+'</strong></button>').join('')||'<p class="subtle">No payments '+(selected?'on this day.':'this month.')+'</p>';
    const billTile=(b,paid=false)=>{
-    const editable=['bank-tracked','manual'].includes(b.source),d=new Date(b.date+'T12:00:00'),category=billCategories[b.billKind]||'Bill',status=paid?(bankPaid.has(b.key)?'Paid '+dateLabel(bankPaidDates.get(b.key))+' · Bank transaction':'Marked paid'):(b.gmailConfirmed||b.emailConfirmed||b.source==='gmail')?'Confirmed by Gmail':planner.electricBillId===b.id?'Gmail linked · Estimated':'Estimated';
+    const editable=['bank-tracked','manual'].includes(b.source),d=new Date(b.date+'T12:00:00'),category=billCategories[b.billKind]||'Bill',status=paid?(bankPaid.has(b.key)?'Paid '+dateLabel(bankPaidDates.get(b.key))+' · Bank transaction':'Marked paid'):(b.gmailConfirmed||b.emailConfirmed||b.source==='gmail')?'Confirmed by Gmail':(planner.electricBillId===b.id||planner.emailLinks['bill:'+b.id])?'Gmail linked · Estimated':'Estimated';
     return '<article class="bill-tile recurring-account" data-account-id="'+esc(b.id)+'"><div class="bill-tile-main"><div class="bill-date '+(b.date<today&&!paid?'is-overdue':'')+'"><span>'+esc(d.toLocaleDateString('en-US',{month:'short'}))+'</span><strong>'+d.getDate()+'</strong></div><div class="bill-tile-info"><h4>'+esc(b.name)+'</h4><span class="bill-category">'+esc(category)+'</span><small>'+esc(b.date<today&&!paid?'Overdue':status)+'</small></div><div class="bill-tile-right"><strong>'+money(b.amount)+'</strong>'+(editable?'<button type="button" class="bill-icon-button" data-edit-bill="'+esc(b.id)+'" aria-label="Edit '+esc(b.name)+'">'+pencil+'</button>':'')+'</div></div><div class="bill-tile-footer"><span>'+esc(b.paidByCard?'Paid through credit card':({monthly:'Monthly',biweekly:'Every two weeks',weekly:'Weekly',once:'One-time bill'})[b.repeat]||'Scheduled')+'</span>'+(paid&&bankPaid.has(b.key)?'<span>✓ Bank payment</span>':'<button class="bill-paid-button" '+(paid?'data-bill-unpaid':'data-bill-paid')+'="'+esc(b.key)+'">'+(paid?'Mark unpaid':'✓ Mark paid')+'</button>')+'</div>'+paymentMarkup('bill:'+b.id)+'</article>';
    };
    $('#billAgenda').innerHTML=list.map(b=>billTile(b)).join('')||'<p class="subtle">Add a recurring bill or track one from your transactions.</p>';
@@ -358,7 +358,7 @@
   let base=manual||raw;if(newManual)base={id:null,name:'',amount:0,date:iso(new Date()),repeat:'monthly',billKind:'other'};
   if(transaction){const temporary={choice:'bill',id:'new',name:transaction.name,amount:Math.round(transaction.amount*100),lastPayment:transaction.date,repeat:'monthly'};base=model.reviewBankActivity([transaction],{[transaction.key]:temporary},[],iso(new Date())).bills[0];}
   if(!base)return;
-  const b={...base,...planner.estimates[base.id]},form=$('#billEditorForm');
+  const b=mailModel.emailBillUpdate({...base,...planner.estimates[base.id]},mailMessages(),planner.emailLinks),form=$('#billEditorForm');
   editingBill={id:transaction?null:id,key:transaction?.key||raw?.groupKey,transaction,base,manual:!!manual,newManual};
   form.reset();form.elements.billKind.innerHTML=Object.entries(billCategories).filter(([key])=>!['credit-card','loan'].includes(key)||key===b.billKind).map(([key,label])=>'<option value="'+key+'">'+label+'</option>').join('');form.elements.name.value=b.name;form.elements.billKind.value=billCategories[b.billKind]?b.billKind:'other';form.elements.amount.value=newManual?'':b.amount/100;form.elements.date.value=b.date;form.elements.repeat.value=b.repeat||'monthly';form.elements.covered.checked=!!planner.covered[id];
   form.elements.gmailElectric.checked=planner.electricBillId===id||(!planner.electricBillId&&b.billKind==='electric');
@@ -388,7 +388,7 @@
    storeEditorLink('bill','bill:'+id,name);
    if(!linkDrafts.bill.link&&!editingBill.manual&&!editingBill.newManual){delete planner.bankRules[editingBill.key];delete planner.estimates[id];planner.manual.push({id,name,amount,date,repeat,billKind,source:'manual'});}
    planner.covered[id]=d.has('covered');
-   if(billKind==='electric'&&d.has('gmailElectric'))planner.electricBillId=id;else if(planner.electricBillId===id)delete planner.electricBillId;
+   if(billKind==='electric'&&d.has('gmailElectric')&&!planner.emailLinks['bill:'+id])planner.electricBillId=id;else if(planner.electricBillId===id)delete planner.electricBillId;
    await save();$('#billEditor').close();discoverMail('bill:'+id,name);$('#transactionStatus').textContent='Bill saved.';$('#accountStatus').textContent='Recurring bill saved.';
   }catch(e){planner=snapshot;$('#billEditorError').textContent=e.message;}finally{button.disabled=false;}
  };

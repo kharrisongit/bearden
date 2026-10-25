@@ -16,7 +16,7 @@ export function forgetMailbox(c,id,owner){const account=mailboxes(c,owner).find(
 export async function scanMailbox(c,account,{request,googleToken,query=null,limit=3}){
  account.lastSyncAttempt=Date.now();
  const token=await googleToken({grant_type:'refresh_token',refresh_token:account.refreshToken}),headers={Authorization:'Bearer '+token.access_token};
- if(account.signature!=='all-bills-v3'){account.signature='all-bills-v3';delete account.backlog;delete account.page;account.seen=[];}
+ if(account.signature!=='all-bills-v4'){account.signature='all-bills-v4';delete account.backlog;delete account.page;account.seen=[];}
  let queue;
  if(query!==null||!account.backlog?.length){
   const search=query===null?'':String(query).replace(/[^\p{L}\p{N}\s@.-]/gu,' ').trim().slice(0,100);
