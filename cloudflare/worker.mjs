@@ -1,3 +1,4 @@
+import {recurringBills} from '../recurring.mjs';
 import {validateClassic} from '../classic-state.mjs';
 // Serverless adapter. No persistent process, local disk, or paid Worker features.
 import {randomBytes,createHash,createCipheriv,createDecipheriv} from 'node:crypto';
@@ -31,18 +32,18 @@ export function runtime(env,fetcher=fetch){
  async function request(url,options={}){const r=await fetcher(url,{...options,signal:AbortSignal.timeout(15000)});let d;try{d=await r.json();}catch{throw Error('Provider response unreadable');}if(!r.ok){const error=Error(d.error_code||d.error?.status||'Provider request failed ('+r.status+')');error.code=d.error_code;throw error;}return d;}
  async function plaid(path,data){if(!env.PLAID_CLIENT_ID||!env.PLAID_SECRET)throw Error('Plaid is not configured');const mode=env.PLAID_ENV||'sandbox';if(!['sandbox','production'].includes(mode))throw Error('Invalid Plaid environment');return request(`https://${mode}.plaid.com${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:env.PLAID_CLIENT_ID,secret:env.PLAID_SECRET,...data})});}
  const googleToken=data=>request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,...data})});
- function publicConnections(c){return {items:c.items.map(i=>({id:i.id,name:i.name})),transactions:c.transactions.slice(0,100),candidates:c.candidates.filter(x=>!x.dismissed),gmail:!!c.gmail,bankUpdated:c.bankUpdated,gmailUpdated:c.gmailUpdated,status:c.status};}
+ function publicConnections(c){return {items:c.items.map(i=>({id:i.id,name:i.name})),recurringBills:recurringBills(c.transactions),transactions:c.transactions.slice(0,100),candidates:c.candidates.filter(x=>!x.dismissed),gmail:!!c.gmail,bankUpdated:c.bankUpdated,gmailUpdated:c.gmailUpdated,status:c.status};}
  async function syncBalances(c,item){
    const accounts=await plaid('/accounts/get',{access_token:item.token});
-   await updatePlan(s=>{const active=new Set(accounts.accounts.map(a=>'plaid-'+a.account_id));s.accounts=s.accounts.filter(a=>a.itemId!==item.id||active.has(a.id));for(const a of accounts.accounts){const balance=a.balances.available??a.balances.current;if(balance===null)continue;const id='plaid-'+a.account_id,old=s.accounts.find(x=>x.id===id),eligible=a.type==='depository'&&a.subtype==='checking'&&a.balances.iso_currency_code==='USD',entry={id,itemId:item.id,name:a.name+(a.mask?' •'+a.mask:''),balance:cents(balance),include:eligible?(old?.include??true):false,source:'plaid',currency:a.balances.iso_currency_code};if(old)Object.assign(old,entry);else s.accounts.push(entry);}});
+   await updatePlan(s=>{const active=new Set(accounts.accounts.map(a=>'plaid-'+a.account_id));s.accounts=s.accounts.filter(a=>a.itemId!==item.id||active.has(a.id));for(const a of accounts.accounts){const balance=a.balances.available??a.balances.current;if(balance===null)continue;const id='plaid-'+a.account_id,old=s.accounts.find(x=>x.id===id),eligible=a.type==='depository'&&a.subtype==='checking'&&a.balances.iso_currency_code==='USD',entry={id,itemId:item.id,name:a.name+(a.mask?' •'+a.mask:''),balance:cents(balance),include:eligible?(old?.include??true):false,source:'plaid',type:a.type,subtype:a.subtype,currency:a.balances.iso_currency_code};if(old)Object.assign(old,entry);else s.accounts.push(entry);}});
   item.balancesUpdated=Date.now();c.bankUpdated=new Date().toISOString();
  }
  async function syncBank(c,item){
   // One page per invocation, with a staged snapshot. Never commit a partial cursor.
   if(!item.pending)item.pending={original:item.cursor||'',cursor:item.cursor||'',transactions:c.transactions.filter(t=>t.itemId===item.id)};
-  try{if(!item.balancesUpdated||Date.now()-item.balancesUpdated>=sixHours)await syncBalances(c,item);const page=await plaid('/transactions/sync',{access_token:item.token,cursor:item.pending.cursor,count:100});item.pending.transactions=applyTransactions(item.pending.transactions,[page],item.id).slice(0,200);item.pending.cursor=page.next_cursor;
+  try{if(!item.balancesUpdated||Date.now()-item.balancesUpdated>=sixHours)await syncBalances(c,item);const page=await plaid('/transactions/sync',{access_token:item.token,cursor:item.pending.cursor,count:100});item.pending.transactions=applyTransactions(item.pending.transactions,[page],item.id).filter(t=>t.date>=new Date(Date.now()-200*86400000).toISOString().slice(0,10)).slice(0,1500);item.pending.cursor=page.next_cursor;
    if(page.has_more)return 'Bank history is loading in small batches. Next step within 15 minutes.';
-   c.transactions=[...c.transactions.filter(t=>t.itemId!==item.id),...item.pending.transactions].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,1000);item.cursor=item.pending.cursor;delete item.pending;item.nextSync=Date.now()+sixHours;return item.name+' synced. Scheduled again in about 6 hours.';
+   c.transactions=[...c.transactions.filter(t=>t.itemId!==item.id),...item.pending.transactions].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3000);item.cursor=item.pending.cursor;delete item.pending;item.nextSync=Date.now()+sixHours;return item.name+' synced. Scheduled again in about 6 hours.';
   }catch(e){if(e.code==='TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION')delete item.pending;item.nextSync=Date.now()+900000;throw e;}
  }
  async function syncGmail(c){
@@ -97,7 +98,7 @@ export function runtime(env,fetcher=fetch){
    if(req.method!=='POST')return json({error:'Method not allowed'},405);if(req.headers.get('origin')!==origin)return json({error:'Request origin does not match this server'},403);const b=await body(req);
    if(path==='/api/logout'){await run('DELETE FROM sessions WHERE hash=?',hash(cookies(req).bearden));const response=json({ok:true});response.headers.append('Set-Cookie',cookie('bearden','',0));return response;}
    if(path==='/api/sync')return json(await sync(true));
-   if(path==='/api/plaid/link'){const d=await plaid('/link/token/create',{user:{client_user_id:hash(owner)},client_name:'BearDen',products:['transactions'],transactions:{days_requested:30},country_codes:['US'],language:'en',...(env.PLAID_REDIRECT_URI?{redirect_uri:env.PLAID_REDIRECT_URI}:{})});return json({link_token:d.link_token});}
+   if(path==='/api/plaid/link'){const d=await plaid('/link/token/create',{user:{client_user_id:hash(owner)},client_name:'BearDen',products:['transactions'],transactions:{days_requested:180},country_codes:['US'],language:'en',...(env.PLAID_REDIRECT_URI?{redirect_uri:env.PLAID_REDIRECT_URI}:{})});return json({link_token:d.link_token});}
    return locked(async()=>{
     if(path==='/api/classic'){const state=validateClassic(b.state),current=await read('classic',{revision:0});if(current.revision!==b.revision)return json({error:'The tracker changed in another tab. Export your edits and reload.'},409);await write('classic',{state,revision:current.revision+1});return json({revision:current.revision+1});}
     if(path==='/api/import/baby-bear'){const p=await plan();if(p.revision!==b.revision)return json({error:'Your plan changed. Close the import, reload, and try again.'},409);const result=importBabyBear(p.state,b.date,b.takeHome);if(result.changed){p.revision++;await write('plan',p);}return json({...result,revision:p.revision});}

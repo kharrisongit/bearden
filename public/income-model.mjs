@@ -23,9 +23,12 @@ export function billEvents(legacy,planner,linked,start,end){
   const dates=occurrences(bill.date,bill.repeat||'once',start,end);
   if(bill.repeat==='once'&&bill.date<start)dates.unshift(bill.date);
   for(const date of dates){
+   // Prefer a manually entered or confirmed bill over a matching bank estimate.
+   const norm=s=>String(s).toLowerCase().replace(/[^a-z0-9]/g,'');
+   if(bill.source==='bank-estimate'&&bills.some(other=>other.source!=='bank-estimate'&&norm(other.name)===norm(bill.name)&&occurrences(other.date,other.repeat||'once',day(date,-7),day(date,7)).length))continue;
    const key=bill.id+':'+date;
    if(paid.has(key)||legacy?.paid?.includes(key))continue;
-   const covered=Boolean(linked[bill.id])||(overrides[bill.id]??(bill.source!=='gmail'&&bill.source!=='manual'));
+   const covered=Boolean(linked[bill.id])||(overrides[bill.id]??(bill.source!=='gmail'&&bill.source!=='manual'&&bill.source!=='bank-estimate'));
    out.push({...bill,date,key,type:'bill',covered,overdue:date<start});
   }
  }
