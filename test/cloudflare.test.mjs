@@ -76,3 +76,8 @@ test('widget bank refresh updates balances without scanning Gmail or leaving ban
  f.set('connections',{items:[{id:'bank',name:'ELGA',token:'secret'}],transactions:[],candidates:[],gmail:{refreshToken:'mail'},lastTask:'bank'});
  const r=await f.app.handle(f.req('/api/bank/refresh',{}));assert.equal(r.status,200);assert.equal(calls.length,2);assert.equal(f.get('connections').items[0].cursor,'new');f.db.close();
 });
+
+test('credit accounts show current amount owed, never available credit as cash',async()=>{
+ const f=fixture(async url=>url.endsWith('/transactions/sync')?Response.json({added:[],modified:[],removed:[],next_cursor:'new',has_more:false}):Response.json({accounts:[{account_id:'card',type:'credit',subtype:'credit card',name:'Visa',balances:{current:861.21,available:4138.79,iso_currency_code:'USD'}}]}));
+ f.set('connections',{items:[{id:'i',name:'Bank',token:'t',cursor:''}],transactions:[],candidates:[],gmail:null});await f.app.sync();const a=f.get('plan').state.accounts[0];assert.equal(a.balance,86121);assert.equal(a.include,false);f.db.close();
+});

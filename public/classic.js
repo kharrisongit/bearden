@@ -39,7 +39,7 @@ function money(n){
   return sign + '$' + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
-const PIE_COLORS = ['#7052d6','#9a83e2','#bdf5d2','#c7b8ef','#8cbdab','#b1a0d7','#d8cffa','#56977c'];
+const PIE_COLORS = ['#147d76','#65b9a1','#ebaa8a','#d8bc78','#6f9eac','#b88e9b','#c4d9b7','#477f75'];
 
 // Builds a CSS conic-gradient pie chart with a legend. segments is
 // [{label, value, target}]; colors are assigned automatically. If
@@ -1298,7 +1298,7 @@ function toggleGamesSection(){
 // that isn't full-height. Persisted directly to localStorage (synchronously,
 // same as the early-apply script in <head>) rather than through the async
 // `storage` wrapper, so the choice sticks the instant it's tapped.
-const THEME_PAPER = { light: '#f6f5fa', dark: '#15151f' };
+const THEME_PAPER = { light: '#f6f2e9', dark: '#102321' };
 
 function applyThemeBackground(isDark){
   const color = isDark ? THEME_PAPER.dark : THEME_PAPER.light;

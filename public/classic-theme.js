@@ -10,7 +10,7 @@
       const saved = localStorage.getItem('bearden:classic:theme');
       if (saved === 'dark') {
         document.documentElement.setAttribute('data-theme', 'dark');
-        document.documentElement.style.backgroundColor = '#15151f';
+        document.documentElement.style.backgroundColor = '#102321';
       }
       const savedHoliday = localStorage.getItem('bearden:classic:holiday');
       if (savedHoliday === 'christmas' || savedHoliday === 'halloween') {

@@ -64,3 +64,10 @@ test('tracked bills and everyday spending remain mutually exclusive in forecast'
  r=reviewBankActivity([tx],{[key]:{choice:'bill',id:'music',name:tx.name,amount:1500,lastPayment:tx.date}},[],'2026-10-25');assert.equal(r.spending.total,0);assert.equal(r.bills.length,1);
  assert.equal(billEvents({bills:r.bills},{},{},'2026-10-25','2026-11-25')[0].covered,false);
 });
+
+test('custom bill names and categories survive new bank transactions',async()=>{
+ const {reviewBankActivity,transactionKey}=await import('../public/bank-activity.mjs');
+ const t={...history()[0],name:'ELGA AUTO ACH',date:'2026-10-20',amount:250},key=transactionKey(t);
+ const r=reviewBankActivity([t],{[key]:{id:'car',choice:'bill',name:'Buick payment',billKind:'car-payment',lastPayment:'2026-09-20',amount:24000,repeat:'monthly'}},[],'2026-10-25');
+ assert.equal(r.bills[0].name,'Buick payment');assert.equal(r.bills[0].billKind,'car-payment');assert.equal(r.bills[0].amount,25000);
+});

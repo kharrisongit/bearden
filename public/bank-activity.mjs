@@ -39,7 +39,7 @@ export function reviewBankActivity(transactions,rules={},suggestions=[],today=ne
   if(choice==='spending'){
    const cat=kind.kind==='spending'?kind:{key:'other',label:'Other spending'},g=categories.get(cat.key)||{key:cat.key,label:cat.label,amount:0,count:0};g.amount+=Math.round(t.amount*100);g.count++;categories.set(cat.key,g);
   }
-  return {...t,key,choice,label:choice==='bill'?'Tracked bill':choice==='excluded'?'Transfer or debt payment':choice==='suggested'?'Possible bill':kind.kind==='spending'?kind.label:'Personal spending',reason:kind.reason};
+  return {...t,key,choice,spendingCategoryKey:kind.kind==='spending'?kind.key:'other',label:choice==='bill'?'Tracked bill':choice==='excluded'?'Transfer or debt payment':choice==='suggested'?'Possible bill':kind.kind==='spending'?kind.label:'Personal spending',reason:kind.reason};
  });
  const bills=[];
  for(const [key,rule]of Object.entries(rules))if(rule.choice==='bill'){
@@ -49,7 +49,7 @@ export function reviewBankActivity(transactions,rules={},suggestions=[],today=ne
   let next=repeat==='monthly'?nextMonth(date):day(date,repeat==='weekly'?7:repeat==='biweekly'?14:0);
   // A user's tracked bill remains scheduled even if the bank has not posted the next payment yet.
   for(let n=0;next<today&&n<120&&repeat!=='once';n++)next=repeat==='monthly'?nextMonth(next):day(next,repeat==='weekly'?7:14);
-  bills.push({id:rule.id,name:latest?.name||rule.name,amount:latest?Math.round(latest.amount*100):rule.amount,date:next,repeat,source:'bank-tracked',billKind:suggestion?.billKind||classifyBankTransaction(latest||{name:rule.name,amount:1,currency:'USD'}).billKind,lastPayment:date,groupKey:key});
+  bills.push({id:rule.id,name:rule.name||latest?.name,amount:latest?Math.round(latest.amount*100):rule.amount,date:next,repeat,source:'bank-tracked',billKind:rule.billKind||suggestion?.billKind||classifyBankTransaction(latest||{name:rule.name,amount:1,currency:'USD'}).billKind,lastPayment:date,groupKey:key});
  }
  return {rows,bills,spending:{start,end:today,total:[...categories.values()].reduce((n,c)=>n+c.amount,0),categories:[...categories.values()].sort((a,b)=>b.amount-a.amount)}};
 }

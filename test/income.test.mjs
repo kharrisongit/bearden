@@ -19,11 +19,17 @@ test('overdue unpaid one-time bills count once and non-USD balances do not enter
  const f=cashForecast([{balance:4000,include:true,currency:'USD'},{balance:999999,include:true,currency:'EUR'}],[],bills,'2026-10-23');assert.equal(f.low,-1000);assert.equal(f.rows[0].date,'2026-10-23');
 });
 
-test('personal spending forecast spreads only spending beyond existing budget over 30 days',async()=>{
- const {spendingProjection}=await import('../public/income-model.mjs');
- const plan={state:{startDate:'2026-11-01',takeHome:1000,budgetItems:[{id:'g',name:'Groceries',amount:100},{id:'r',name:'Rent',amount:500}]},schedule:[]};
- const s=spendingProjection(plan,{total:40000},'2026-10-25');assert.equal(s.reserved,20000);assert.equal(s.additional,20000);assert.equal(s.events.reduce((n,e)=>n+e.amount,0),20000);assert.equal(s.events.length,30);
- const f=cashForecast([{balance:100000,include:true}],[],s.events,'2026-10-25');assert.equal(f.endBalance,80000);assert.equal(f.outgoing,20000);
- assert.equal(spendingProjection(plan,{total:10000},'2026-10-25').additional,0);
- assert.equal(spendingProjection(plan,{total:40000},'2026-10-25',false).additional,0);
+test('bill forecast excludes personal budgets and savings while keeping rent and debt obligations',()=>{
+ const plan={state:{startDate:'2026-10-25'},schedule:[{paycheck:1,takeHomeThisCheck:1800,bonusAmount:0,budgetLineItemsThisCheck:[{name:'Rent',amount:500},{name:'Groceries',amount:200},{name:'Personal spending',amount:100}],extrasThisCheck:[],payments:[150],savingsByGoal:[{contribution:75}]}]};
+ const [pay]=paydayEvents(plan,'2026-10-25','2026-10-25',{billsOnly:true});assert.equal(pay.allocations,65000);assert.equal(pay.amount,180000);
+ assert.equal(paydayEvents(plan,'2026-10-25','2026-10-25')[0].allocations,102500);
+});
+
+test('selected electric bill receives Gmail amount/date with custom name and no duplicate',()=>{
+ const tracked={id:'power',name:'Home power',amount:12000,date:'2026-11-20',repeat:'monthly',source:'bank-tracked',billKind:'electric',groupKey:'power-key'},other={...tracked,id:'garage',name:'Garage electric'},email={id:'gmail-1',name:'Consumers Energy',amount:14321,date:'2026-11-05',repeat:'once',source:'gmail',billKind:'electric'};
+ const planner={electricBillId:'power',covered:{power:true}};
+ const rows=billEvents({bills:[tracked,other,email]},planner,{},'2026-11-01','2026-12-31');
+ const confirmed=rows.find(b=>b.gmailConfirmed);assert.equal(confirmed.name,'Home power');assert.equal(confirmed.id,'power');assert.equal(confirmed.amount,14321);assert.equal(confirmed.date,'2026-11-05');assert.equal(confirmed.covered,true);
+ assert.equal(rows.filter(b=>b.id==='power'&&b.date.startsWith('2026-11')).length,1);assert.equal(rows.filter(b=>b.id==='garage').length,2);assert.equal(rows.find(b=>b.id==='power'&&b.date.startsWith('2026-12')).amount,12000);
+ planner.paid=['power:2026-11-20'];assert.equal(billEvents({bills:[tracked,email]},planner,{},'2026-11-01','2026-11-30').length,0);
 });
