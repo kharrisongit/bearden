@@ -25,11 +25,31 @@ window.BearDen=(()=>{
   const c=legacy?.connections||{},s=legacy?.state;
   $('#classicBankStatus').textContent=c.items?.length?`${c.items.length} bank connection(s). ${config.syncDescription||''}`:'Connect a bank to see its balances here.';
   $('#classicBalances').innerHTML=(s?.accounts||[]).filter(a=>a.source==='plaid').map(a=>`<div class="connection-row"><strong>${esc(a.name)}</strong>${money(a.balance)}<small>${esc(a.currency||'USD')}${c.bankUpdated?' · Updated '+esc(new Date(c.bankUpdated).toLocaleString()):''}</small></div>`).join('');
-  $('#classicBanks').innerHTML=(c.items||[]).map(i=>`<button data-bank-disconnect="${esc(i.id)}">Disconnect ${esc(i.name)}</button>`).join('');
+  $('#classicBanks').innerHTML=(c.items||[]).map(i=>`<div class="connection-row"><strong>${esc(i.name)}</strong><button data-credit-update="${esc(i.id)}">${i.liabilities?'Update card access':'Enable card details'}</button><button data-bank-disconnect="${esc(i.id)}">Disconnect</button>${i.liabilitiesStatus?'<small>'+esc(i.liabilitiesStatus)+'</small>':''}</div>`).join('');
   $('#classicGmail').textContent=c.gmail?'Reconnect Gmail':'Connect Gmail';$('#classicDisconnectGmail').hidden=!c.gmail;
   $('#classicEmailStatus').textContent=c.gmail?(c.electricStatus||'Connected. Checking for your monthly Consumers Energy bill.'):'Not connected';
  }
- async function connectBank(resume=false){if(!requireLogin())return;if(!config.plaidConfigured)throw Error('Bank connections are unavailable right now.');const token=resume?sessionStorage.getItem('bearden-link-token'):(await api('/api/plaid/link',{})).link_token;if(!token)throw Error('Bank sign-in expired. Please connect again.');sessionStorage.setItem('bearden-link-token',token);if(!window.Plaid)await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://cdn.plaid.com/link/v2/stable/link-initialize.js';s.onload=resolve;s.onerror=()=>reject(Error('Could not load Plaid.'));document.head.append(s);});const handler=window.Plaid.create({token,...(resume?{receivedRedirectUri:location.href}:{}),onSuccess:async(public_token,metadata)=>{try{const r=await api('/api/plaid/exchange',{public_token,name:metadata.institution?.name||'Bank'});sessionStorage.removeItem('bearden-link-token');history.replaceState(null,'','/');await refresh();message(r.status||'Bank connected.');}catch(e){message(e.message);}finally{handler.destroy();}},onExit:()=>handler.destroy()});handler.open();}
+ async function connectBank(resume=false,options={}){
+  if(!requireLogin())return;if(!config.plaidConfigured)throw Error('Bank connections are unavailable right now.');
+  if(resume)options=JSON.parse(sessionStorage.getItem('bearden-link-context')||'{}');
+  const token=resume?sessionStorage.getItem('bearden-link-token'):(await api('/api/plaid/link',options)).link_token;
+  if(!token)throw Error('Bank sign-in expired. Please connect again.');
+  sessionStorage.setItem('bearden-link-token',token);sessionStorage.setItem('bearden-link-context',JSON.stringify(options));
+  if(!window.Plaid)await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://cdn.plaid.com/link/v2/stable/link-initialize.js';s.onload=resolve;s.onerror=()=>reject(Error('Could not load Plaid.'));document.head.append(s);});
+  const handler=window.Plaid.create({token,...(resume?{receivedRedirectUri:location.href}:{}),onSuccess:async(public_token,metadata)=>{try{
+   const r=options.itemId?await api('/api/plaid/updated',{itemId:options.itemId}):await api('/api/plaid/exchange',{public_token,name:metadata.institution?.name||'Bank',kind:options.kind});
+   sessionStorage.removeItem('bearden-link-token');sessionStorage.removeItem('bearden-link-context');history.replaceState(null,'','/');await refresh();message(r.status||'Account connected.');
+   if(options.kind==='credit'||options.itemId)window.selectBearTab('income');
+  }catch(e){message(e.message);window.selectBearTab('settings');}finally{handler.destroy();}},onExit:error=>{if(error){message(error.display_message||error.error_message||'Plaid could not connect this account.');window.selectBearTab('settings');}handler.destroy();}});handler.open();
+ }
+ document.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-connect-credit],[data-credit-update],[data-refresh-credit]');if(!b)return;b.disabled=true;
+  const status=document.querySelector('#creditStatus');try{
+   if(b.hasAttribute('data-refresh-credit')){if(status)status.textContent='Refreshing card…';const r=await api('/api/cards/refresh',{itemId:b.dataset.refreshCredit});await refresh();if(status)status.textContent=r.status||'Card refreshed.';}
+   else await connectBank(false,{kind:'credit',...(b.dataset.creditUpdate?{itemId:b.dataset.creditUpdate}:{})});
+  }catch(e){message(e.message);if(status)status.textContent=e.message;window.selectBearTab('settings');}finally{b.disabled=false;}
+ });
+
  function run(fn){return async e=>{const b=e?.currentTarget;if(b)b.disabled=true;try{await fn();}catch(err){message(err.message);}finally{if(b)b.disabled=false;}};}
  $('#classicLogout').onclick=run(async()=>{await window.performSaveAppState?.();await queue;await api('/api/logout',{});location.reload();});
  $('#classicSync').onclick=run(async()=>{await queue;const r=await api('/api/sync',{});await refresh();message(r.status||'Connections synced.');});

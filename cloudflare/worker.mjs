@@ -1,3 +1,4 @@
+import {creditLinkOptions,syncCredit,publicCredit,publicItem} from '../credit.mjs';
 import {recurringBills,personalSpending} from '../recurring.mjs';
 import {validateClassic} from '../classic-state.mjs';
 // Serverless adapter. No persistent process, local disk, or paid Worker features.
@@ -32,18 +33,20 @@ export function runtime(env,fetcher=fetch){
  async function request(url,options={}){const r=await fetcher(url,{...options,signal:AbortSignal.timeout(15000)});let d;try{d=await r.json();}catch{throw Error('Provider response unreadable');}if(!r.ok){const error=Error(d.error_code||d.error?.status||'Provider request failed ('+r.status+')');error.code=d.error_code;throw error;}return d;}
  async function plaid(path,data){if(!env.PLAID_CLIENT_ID||!env.PLAID_SECRET)throw Error('Plaid is not configured');const mode=env.PLAID_ENV||'sandbox';if(!['sandbox','production'].includes(mode))throw Error('Invalid Plaid environment');return request(`https://${mode}.plaid.com${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:env.PLAID_CLIENT_ID,secret:env.PLAID_SECRET,...data})});}
  const googleToken=data=>request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,...data})});
- function publicConnections(c){return {items:c.items.map(i=>({id:i.id,name:i.name})),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-30*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates.filter(x=>!x.dismissed),gmail:!!c.gmail,electricStatus:c.gmail?.billStatus,bankUpdated:c.bankUpdated,gmailUpdated:c.gmailUpdated,status:c.status};}
+ function publicConnections(c){return {items:c.items.map(publicItem),creditCards:publicCredit(c),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-30*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates.filter(x=>!x.dismissed),gmail:!!c.gmail,electricStatus:c.gmail?.billStatus,bankUpdated:c.bankUpdated,gmailUpdated:c.gmailUpdated,status:c.status};}
  async function syncBalances(c,item){
    const accounts=await plaid('/accounts/get',{access_token:item.token});
    await updatePlan(s=>{const active=new Set(accounts.accounts.map(a=>'plaid-'+a.account_id));s.accounts=s.accounts.filter(a=>a.itemId!==item.id||active.has(a.id));for(const a of accounts.accounts){const balance=['credit','loan'].includes(a.type)?a.balances.current:(a.balances.available??a.balances.current);if(balance===null)continue;const id='plaid-'+a.account_id,old=s.accounts.find(x=>x.id===id),eligible=a.type==='depository'&&a.subtype==='checking'&&a.balances.iso_currency_code==='USD',entry={id,itemId:item.id,name:a.name+(a.mask?' •'+a.mask:''),balance:cents(balance),include:eligible?(old?.include??true):false,source:'plaid',type:a.type,subtype:a.subtype,currency:a.balances.iso_currency_code};if(old)Object.assign(old,entry);else s.accounts.push(entry);}});
   item.balancesUpdated=Date.now();c.bankUpdated=new Date().toISOString();
  }
- async function syncBank(c,item){
+ async function syncBank(c,item,force=false){
+  item.lastSyncAttempt=Date.now();
+  await syncCredit(c,item,plaid,force);
   // One page per invocation, with a staged snapshot. Never commit a partial cursor.
   if(!item.pending)item.pending={original:item.cursor||'',cursor:item.cursor||'',transactions:c.transactions.filter(t=>t.itemId===item.id)};
   try{if(!item.balancesUpdated||Date.now()-item.balancesUpdated>=sixHours)await syncBalances(c,item);const page=await plaid('/transactions/sync',{access_token:item.token,cursor:item.pending.cursor,count:100});item.pending.transactions=applyTransactions(item.pending.transactions,[page],item.id).filter(t=>t.date>=new Date(Date.now()-200*86400000).toISOString().slice(0,10)).slice(0,1500);item.pending.cursor=page.next_cursor;
    if(page.has_more)return 'Bank history is loading in small batches. Next step within 15 minutes.';
-   c.transactions=[...c.transactions.filter(t=>t.itemId!==item.id),...item.pending.transactions].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3000);item.cursor=item.pending.cursor;delete item.pending;item.nextSync=Date.now()+sixHours;return item.name+' synced. Scheduled again in about 6 hours.';
+   c.transactions=[...c.transactions.filter(t=>t.itemId!==item.id),...item.pending.transactions].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3000);item.cursor=item.pending.cursor;delete item.pending;item.nextSync=Date.now()+sixHours;return item.name+' synced. Scheduled again in about 6 hours.'+(item.liabilitiesStatus?' '+item.liabilitiesStatus:'');
   }catch(e){if(e.code==='TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION')delete item.pending;item.nextSync=Date.now()+900000;throw e;}
  }
  async function syncGmail(c){
@@ -69,8 +72,8 @@ export function runtime(env,fetcher=fetch){
   c.gmailUpdated=new Date().toISOString();const more=c.gmail.backlog.length||c.gmail.page;c.gmail.nextSync=more?0:Date.now()+sixHours;
   return more?'Checking Consumers Energy bills.':(c.gmail.billStatus||'Checked Gmail for your monthly Consumers Energy bill.');
  }
- async function sync(force=false,bankOnly=false){return locked(async()=>{const c=await connections(),now=Date.now(),bank=c.items.find(i=>i.pending||!i.nextSync||i.nextSync<=now)||(force?c.items[0]:null),gmail=!bankOnly&&c.gmail&&(force||c.gmail.backlog?.length||c.gmail.page||!c.gmail.nextSync||c.gmail.nextSync<=now);
-   if(!bank&&!gmail)return {status:c.status};try{if(force&&bank)await syncBalances(c,bank);if(gmail&&(!bank||c.lastTask==='bank')){c.lastTask='gmail';c.status=await syncGmail(c);}else{c.lastTask='bank';c.status=await syncBank(c,bank);}}catch(e){c.status='Sync needs attention: '+e.message;if(c.lastTask==='gmail'&&c.gmail)c.gmail.nextSync=now+sixHours;}
+ async function sync(force=false,bankOnly=false){return locked(async()=>{const c=await connections(),now=Date.now(),bank=c.items.filter(i=>force||i.pending||!i.nextSync||i.nextSync<=now).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0],gmail=!bankOnly&&c.gmail&&(force||c.gmail.backlog?.length||c.gmail.page||!c.gmail.nextSync||c.gmail.nextSync<=now);
+   if(!bank&&!gmail)return {status:c.status};try{if(force&&bank)await syncBalances(c,bank);if(gmail&&(!bank||c.lastTask==='bank')){c.lastTask='gmail';c.status=await syncGmail(c);}else{c.lastTask='bank';c.status=await syncBank(c,bank,force);}}catch(e){c.status='Sync needs attention: '+e.message;if(c.lastTask==='gmail'&&c.gmail)c.gmail.nextSync=now+sixHours;}
    c.lastAttempt=new Date().toISOString();c.candidates=c.candidates.filter(x=>!x.dismissed);await write('connections',c);return {status:c.status};});}
  async function handle(req){
   const u=new URL(req.url),path=u.pathname;
@@ -99,26 +102,33 @@ export function runtime(env,fetcher=fetch){
    if(path==='/api/logout'){await run('DELETE FROM sessions WHERE hash=?',hash(cookies(req).bearden));const response=json({ok:true});response.headers.append('Set-Cookie',cookie('bearden','',0));return response;}
    if(path==='/api/bank/refresh')return json(await sync(true,true));
    if(path==='/api/sync')return json(await sync(true));
-   if(path==='/api/plaid/link'){const d=await plaid('/link/token/create',{user:{client_user_id:hash(owner)},client_name:'BearDen',products:['transactions'],transactions:{days_requested:180},country_codes:['US'],language:'en',...(env.PLAID_REDIRECT_URI?{redirect_uri:env.PLAID_REDIRECT_URI}:{})});return json({link_token:d.link_token});}
+   if(path==='/api/plaid/link'){const c=await connections(),item=c.items.find(i=>i.id===b.itemId);const d=await plaid('/link/token/create',{user:{client_user_id:hash(owner)},client_name:'BearDen',...creditLinkOptions(b,item),country_codes:['US'],language:'en',...(env.PLAID_REDIRECT_URI?{redirect_uri:env.PLAID_REDIRECT_URI}:{})});return json({link_token:d.link_token});}
    return locked(async()=>{
     if(path==='/api/classic'){const state=validateClassic(b.state),current=await read('classic',{revision:0});if(current.revision!==b.revision)return json({error:'The tracker changed in another tab. Export your edits and reload.'},409);await write('classic',{state,revision:current.revision+1});return json({revision:current.revision+1});}
     if(path==='/api/import/baby-bear'){const p=await plan();if(p.revision!==b.revision)return json({error:'Your plan changed. Close the import, reload, and try again.'},409);const result=importBabyBear(p.state,b.date,b.takeHome);if(result.changed){p.revision++;await write('plan',p);}return json({...result,revision:p.revision});}
     if(path==='/api/state'){const state=validate(b.state);if(state.emailSenders.length>20||state.emailSenders.some(s=>!/^[-\w.+]+@[\w.-]+\.[a-z]{2,}$/i.test(s)))throw Error('Use up to 20 full sender email addresses');const current=await plan();if(current.revision!==b.revision)return json({error:'Plan changed during sync or in another tab. Export edits and reload before saving.'},409);await write('plan',{state,revision:current.revision+1});const c=await connections(),accepted=new Set(state.bills.map(b=>b.sourceId).filter(Boolean));if(c.candidates.some(x=>accepted.has(x.id))){c.candidates=c.candidates.filter(x=>!accepted.has(x.id));await write('connections',c);}return json({revision:current.revision+1});}
-    if(path==='/api/plaid/exchange'){if(typeof b.public_token!=='string')throw Error('Missing public token');const c=await connections();if(c.items.length>=10)throw Error('This personal setup supports up to 10 bank connections');const d=await plaid('/item/public_token/exchange',{public_token:b.public_token});let item=c.items.find(i=>i.id===d.item_id);if(!item){item={id:d.item_id,token:d.access_token,name:String(b.name||'Bank').slice(0,150),cursor:''};c.items.push(item);}
+    if(path==='/api/plaid/exchange'){if(typeof b.public_token!=='string')throw Error('Missing public token');const c=await connections();if(c.items.length>=10)throw Error('This personal setup supports up to 10 bank connections');const d=await plaid('/item/public_token/exchange',{public_token:b.public_token});let item=c.items.find(i=>i.id===d.item_id);if(!item){item={id:d.item_id,token:d.access_token,name:String(b.name||'Bank').slice(0,150),cursor:'',liabilities:b.kind==='credit'};c.items.push(item);}
      // Persist the exchanged token before fetching balances so a provider failure is recoverable.
      c.status='Bank connected. Loading balances.';await write('connections',c);
-     try{await syncBalances(c,item);c.status='Bank connected; balances loaded. Transaction history will load in the background.';}
+     try{await syncBalances(c,item);await syncCredit(c,item,plaid,true);c.status='Bank connected; balances loaded. Transaction history will load in the background.'+(item.liabilitiesStatus?' '+item.liabilitiesStatus:'');}
      catch(e){c.status='Bank connected, but balances could not load: '+e.message+'. Use Sync connections to retry.';}
      await write('connections',c);return json({ok:true,status:c.status});}
 
-    if(path==='/api/plaid/disconnect'){const c=await connections(),item=c.items.find(i=>i.id===b.id);if(!item)return json({error:'Bank not found'},404);await plaid('/item/remove',{access_token:item.token});c.items=c.items.filter(i=>i.id!==b.id);c.transactions=c.transactions.filter(t=>t.itemId!==b.id);await write('connections',c);await updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.itemId!==b.id);});return json({ok:true});}
+    if(path==='/api/plaid/updated'||path==='/api/cards/refresh'){
+     const c=await connections(),item=c.items.find(i=>i.id===b.itemId);if(!item)return json({error:'Bank connection not found'},404);
+     if(path==='/api/plaid/updated'){item.liabilities=true;await write('connections',c);}
+     try{await syncBalances(c,item);}catch(e){c.status='Balance refresh needs attention: '+e.message;}
+     try{c.status=await syncBank(c,item,true);}catch(e){c.status=(item.liabilitiesStatus||'')+' Transaction sync needs attention: '+e.message;}
+     await write('connections',c);return json({status:c.status});
+    }
+    if(path==='/api/plaid/disconnect'){const c=await connections(),item=c.items.find(i=>i.id===b.id);if(!item)return json({error:'Bank not found'},404);await plaid('/item/remove',{access_token:item.token});c.items=c.items.filter(i=>i.id!==b.id);c.transactions=c.transactions.filter(t=>t.itemId!==b.id);c.creditCards=(c.creditCards||[]).filter(card=>card.itemId!==b.id);await write('connections',c);await updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.itemId!==b.id);});return json({ok:true});}
     if(path==='/api/gmail/disconnect'){const c=await connections();if(c.gmail){const r=await fetcher('https://oauth2.googleapis.com/revoke',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({token:c.gmail.refreshToken}),signal:AbortSignal.timeout(15000)});if(!r.ok&&r.status!==400)throw Error('Could not revoke Google access; try again.');}c.gmail=null;c.candidates=[];await write('connections',c);await run('DELETE FROM mail_seen');return json({ok:true});}
     if(path==='/api/candidate/dismiss'){const c=await connections();c.candidates=c.candidates.filter(x=>x.id!==b.id);await write('connections',c);return json({ok:true});}
     return json({error:'Not found'},404);
    });
   }
   if(!['GET','HEAD'].includes(req.method))return json({error:'Method not allowed'},405);
-  if(!['/','/index.html','/plaid-return','/style.css','/app.mjs','/engine.mjs','/setup-key','/setup-key.html','/setup-key.mjs','/favicon.ico','/tabs.js','/tabs.css','/income-model.mjs','/bank-activity.mjs','/classic.js','/classic.css','/classic-theme.js','/classic-events.js','/classic-migrate.mjs','/connections.js','/connections.css','/purify.min.js'].includes(path))return json({error:'Not found'},404);
+  if(!['/','/index.html','/plaid-return','/style.css','/app.mjs','/engine.mjs','/setup-key','/setup-key.html','/setup-key.mjs','/favicon.ico','/tabs.js','/tabs.css','/income-model.mjs','/credit-model.mjs','/bank-activity.mjs','/classic.js','/classic.css','/classic-theme.js','/classic-events.js','/classic-migrate.mjs','/connections.js','/connections.css','/purify.min.js'].includes(path))return json({error:'Not found'},404);
   const target=new URL(req.url);if(path==='/plaid-return')target.pathname='/';const asset=await env.ASSETS.fetch(new Request(target,req)),response=new Response(asset.body,asset);for(const [k,v]of Object.entries(headers))response.headers.set(k,v);return response;
  }
  return {handle,sync,configured,encrypt,decrypt};

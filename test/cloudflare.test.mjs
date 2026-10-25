@@ -66,7 +66,7 @@ test('original tracker storage is private, encrypted, revision checked, and inde
 test('all scripts and styles used by the original tracker are publicly served with strict script CSP',async()=>{
  const f=fixture(),html=readFileSync('public/index.html','utf8');
  const urls=[...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css)(?:\?[^"]*)?)"/g)].map(m=>m[1]);
- urls.push('classic-migrate.mjs','income-model.mjs','bank-activity.mjs');
+ urls.push('classic-migrate.mjs','income-model.mjs','bank-activity.mjs','credit-model.mjs');
  for(const url of urls){const r=await f.app.handle(new Request(f.env.APP_URL+'/'+url));assert.equal(r.status,200,url);assert.match(r.headers.get('Content-Security-Policy'),/script-src 'self' https:\/\/cdn.plaid.com;/);}
  f.db.close();
 });
@@ -80,4 +80,29 @@ test('widget bank refresh updates balances without scanning Gmail or leaving ban
 test('credit accounts show current amount owed, never available credit as cash',async()=>{
  const f=fixture(async url=>url.endsWith('/transactions/sync')?Response.json({added:[],modified:[],removed:[],next_cursor:'new',has_more:false}):Response.json({accounts:[{account_id:'card',type:'credit',subtype:'credit card',name:'Visa',balances:{current:861.21,available:4138.79,iso_currency_code:'USD'}}]}));
  f.set('connections',{items:[{id:'i',name:'Bank',token:'t',cursor:''}],transactions:[],candidates:[],gmail:null});await f.app.sync();const a=f.get('plan').state.accounts[0];assert.equal(a.balance,86121);assert.equal(a.include,false);f.db.close();
+});
+
+test('credit Link requests Liabilities and Transactions; update mode reuses existing connection',async()=>{
+ const calls=[];const f=fixture(async(url,options)=>{calls.push(JSON.parse(options.body));return Response.json({link_token:'link'});});
+ f.set('connections',{items:[{id:'elga',name:'ELGA',token:'private'}],transactions:[],candidates:[],gmail:null});
+ await f.app.handle(f.req('/api/plaid/link',{kind:'credit'}));assert.deepEqual(calls[0].products,['liabilities','transactions']);assert.deepEqual(calls[0].account_filters.credit.account_subtypes,['credit card','paypal']);
+ await f.app.handle(f.req('/api/plaid/link',{kind:'credit',itemId:'elga'}));assert.equal(calls[1].access_token,'private');assert.equal(calls[1].products,undefined);assert.deepEqual(calls[1].additional_consented_products,['liabilities','transactions']);f.db.close();
+});
+test('credit refresh targets the requested bank, loads payments, stays private and fits Free Worker limits',async()=>{
+ const calls=[];const f=fixture(async(url,options)=>{calls.push(url);assert.equal(JSON.parse(options.body).access_token,'card-token');
+ if(url.endsWith('/accounts/get'))return Response.json({accounts:[]});
+ if(url.endsWith('/liabilities/get'))return Response.json({accounts:[{account_id:'visa',name:'Visa',type:'credit',balances:{current:90,limit:1000,iso_currency_code:'USD'}}],liabilities:{credit:[{account_id:'visa',minimum_payment_amount:20,next_payment_due_date:'2099-11-05'}]}});
+ if(url.endsWith('/transactions/sync'))return Response.json({added:[{transaction_id:'pay',account_id:'visa',name:'Payment thank you',date:'2099-10-20',amount:-40,iso_currency_code:'USD'}],modified:[],removed:[],next_cursor:'new',has_more:false});throw Error('Unexpected URL');});
+ f.set('connections',{items:[{id:'checking',name:'Checking',token:'other'},{id:'card',name:'Card',token:'card-token',liabilities:true}],transactions:[],candidates:[],gmail:{refreshToken:'gmail'}});
+ const result=await (await f.app.handle(f.req('/api/cards/refresh',{itemId:'card'}))).json();assert.match(result.status,/Card details synced/);
+ const state=await (await f.app.handle(f.req('/api/state'))).json();assert.equal(state.connections.creditCards[0].minimum,2000);assert.equal(state.connections.creditCards[0].payments[0].amount,4000);assert.equal(state.connections.items.length,2);assert.ok(!JSON.stringify(state).includes('card-token'));assert.ok(f.queries+calls.length<50);assert.equal(calls.length,3);f.db.close();
+});
+test('enabling card details on an existing item never exchanges a new public token',async()=>{
+ const f=fixture(async url=>{assert.ok(!url.endsWith('/item/public_token/exchange'));if(url.endsWith('/liabilities/get'))return Response.json({accounts:[],liabilities:{credit:[]}});if(url.endsWith('/accounts/get'))return Response.json({accounts:[]});return Response.json({added:[],modified:[],removed:[],next_cursor:'done',has_more:false});});
+ f.set('connections',{items:[{id:'elga',name:'ELGA',token:'private'}],transactions:[],candidates:[],gmail:null});await f.app.handle(f.req('/api/plaid/updated',{itemId:'elga'}));const c=f.get('connections');assert.equal(c.items.length,1);assert.equal(c.items[0].liabilities,true);f.db.close();
+});
+
+test('bank pagination cannot starve a newly linked credit institution',async()=>{
+ const tokens=[];const f=fixture(async(url,options)=>{if(url.endsWith('/accounts/get'))return Response.json({accounts:[]});tokens.push(JSON.parse(options.body).access_token);return Response.json({added:[],modified:[],removed:[],next_cursor:'partial',has_more:true});});
+ f.set('connections',{items:[{id:'first',name:'First',token:'first'},{id:'second',name:'Second',token:'second'}],transactions:[],candidates:[],gmail:null});await f.app.sync();await f.app.sync();assert.deepEqual(tokens,['first','second']);f.db.close();
 });

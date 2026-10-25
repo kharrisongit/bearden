@@ -1,7 +1,15 @@
 export {reviewBankActivity,transactionKey} from './bank-activity.mjs';
+export {creditBills} from './credit-model.mjs';
 import {day,occurrences} from './engine.mjs';
 const cents=n=>Math.round((Number(n)||0)*100);
 const isPersonal=b=>/\b(food|dining|grocer(?:y|ies)|gas|fuel|transport|shopping|personal|spending|entertainment|misc(?:ellaneous)?|allowance|fun|restaurants)\b/i.test(b.name||'');
+export function trackerDebtBills(plan,cardBills=[],preferences={}){
+ const matched=new Set(cardBills.map(b=>String(preferences[b.id]?.trackerCardId||'')).filter(Boolean));
+ return (plan.schedule||[]).filter(row=>!plan.state?.checkedPaychecks?.[row.paycheck]).flatMap(row=>(plan.state?.cards||[]).flatMap((card,index)=>{
+  const amount=cents(row.payments?.[index]);if(amount<=0||matched.has(String(card.id)))return [];
+  return [{id:'tracker-debt-'+card.id+'-'+row.paycheck,name:card.name,amount,date:row.date,repeat:'once',source:'tracker-debt',billKind:'loan',covered:true}];
+ }));
+}
 export function paydayEvents(plan,start,end,{billsOnly=false}={}){
  const s=plan.state||{},rows=new Map((plan.schedule||[]).map(r=>[r.paycheck,r]));
  if(!s.startDate)return [];
@@ -20,6 +28,8 @@ export function paydayEvents(plan,start,end,{billsOnly=false}={}){
 export function billEvents(legacy,planner,linked,start,end){
  const paid=new Set(planner.paid||[]),overrides=planner.covered||{},out=[];
  let bills=[...(legacy?.bills||[]).filter(b=>!['budget','baby-bear-budget'].includes(b.source)),...(planner.manual||[])];
+ const replaced=new Set(bills.filter(b=>b.source==='plaid-credit').map(b=>b.replaces).filter(Boolean));
+ bills=bills.filter(b=>!replaced.has(b.id));
  const electric=bills.find(b=>b.id===planner.electricBillId&&b.billKind==='electric'&&b.source!=='gmail');
  if(electric){
   const monthlyEmails=new Map();
@@ -30,7 +40,7 @@ export function billEvents(legacy,planner,linked,start,end){
  for(const bill of bills){
   if(!bill.date)continue;
   const dates=occurrences(bill.date,bill.repeat||'once',start,end);
-  if(bill.repeat==='once'&&bill.date<start)dates.unshift(bill.date);
+  if(bill.repeat==='once'&&bill.date<start&&bill.source!=='tracker-debt')dates.unshift(bill.date);
   for(const date of dates){
    if(!bill.gmailConfirmed&&bill.id===electric?.id&&bills.some(b=>b.gmailConfirmed&&b.date.slice(0,7)===date.slice(0,7)))continue;
    // Prefer a manually entered or confirmed bill over a matching bank estimate.
@@ -38,7 +48,7 @@ export function billEvents(legacy,planner,linked,start,end){
    if(!bill.gmailConfirmed&&['bank-estimate','bank-tracked'].includes(bill.source)&&bills.some(other=>!['bank-estimate','bank-tracked'].includes(other.source)&&(norm(other.name)===norm(bill.name)||(!electric&&bill.billKind==='electric'&&(other.billKind==='electric'||/consumers\s*energy/i.test(other.name))))&&occurrences(other.date,other.repeat||'once',day(date,-7),day(date,7)).length))continue;
    const key=bill.id+':'+date;
    if(paid.has(key)||legacy?.paid?.includes(key)||(bill.gmailConfirmed&&[...paid,...(legacy?.paid||[])].some(k=>k.startsWith(bill.id+':'+date.slice(0,7)))))continue;
-   const covered=Boolean(linked[bill.id])||(overrides[bill.id]??(bill.source!=='gmail'&&bill.source!=='manual'&&bill.source!=='bank-estimate'&&bill.source!=='bank-tracked'));
+   const covered=Boolean(linked[bill.id])||bill.paidByCard||bill.source==='tracker-debt'||(bill.source==='plaid-credit'?bill.covered:(overrides[bill.id]??(bill.source!=='gmail'&&bill.source!=='manual'&&bill.source!=='bank-estimate'&&bill.source!=='bank-tracked')));
    out.push({...bill,date,key,type:'bill',covered,overdue:date<start});
   }
  }
