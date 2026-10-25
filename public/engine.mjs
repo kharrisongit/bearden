@@ -4,7 +4,16 @@ export const today = () => {const d=new Date();return `${d.getFullYear()}-${Stri
 export function day(s,n=0){const d=new Date(s+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);}
 export function monthly(s,n){const d=new Date(s+'T12:00:00Z'), original=d.getUTCDate();d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+n);const last=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate();d.setUTCDate(Math.min(original,last));return d.toISOString().slice(0,10);}
 export function blank(){return {version:1,settings:{cushion:25000,method:'snowball',intensity:'balanced',bonusMode:'split',horizon:90},accounts:[],bills:[],debts:[],goals:[],income:[],bonuses:[],squash:[],paid:[],emailSenders:[]};}
-export function occurrences(date,repeat,start,end){let out=[];if(!date)return out;for(let i=0;i<2400;i++){const d=repeat==='monthly'?monthly(date,i):day(date,i*(repeat==='weekly'?7:repeat==='biweekly'?14:0));if(d>end)break;if(d>=start)out.push(d);if(!['monthly','weekly','biweekly'].includes(repeat))break;}return out;}
+export function occurrences(date,repeat,start,end){
+ const out=[];if(!date||!start||!end||start>end||![date,start,end].every(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d+'T12:00:00Z'))))return out;
+ if(!['monthly','weekly','biweekly'].includes(repeat))return date>=start&&date<=end?[date]:[];
+ const step=repeat==='weekly'?7:14,months=(a,b)=>(Number(b.slice(0,4))-Number(a.slice(0,4)))*12+Number(b.slice(5,7))-Number(a.slice(5,7));
+ const offset=repeat==='monthly'?months(date,start):Math.floor((Date.parse(start+'T12:00:00Z')-Date.parse(date+'T12:00:00Z'))/86400000/step);
+ const last=repeat==='monthly'?months(date,end):Math.floor((Date.parse(end+'T12:00:00Z')-Date.parse(date+'T12:00:00Z'))/86400000/step);
+ for(let i=Math.max(0,offset);i<=last;i++){const d=repeat==='monthly'?monthly(date,i):day(date,i*step);if(d>=start&&d<=end)out.push(d);}
+ return out;
+}
+
 export function validate(s){
  if(!s||s.version!==1||!s.settings)throw Error('This is not a BearDen backup.');
  const collections=['accounts','bills','debts','goals','income','bonuses'];

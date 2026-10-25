@@ -136,3 +136,14 @@ export function paycheckBillItems({legacy,planner,linked},date,paycheck){
  if(householdEnabled(h))personal.unshift({id:'household-contribution',key:'household:'+date,name:'Fixed Bills',date,amount:h.personalAmount,transfer:true,sharedBills:bills.filter(b=>b.shared),spouseContributions:spouseEvents(h,date,end)});
  return personal;
 }
+
+// Store day-end changes, not one point per calendar day, for long forecasts.
+export function forecastTimeline(f,start){
+ if(f.opening===null)return [];
+ const points=[{date:start,balance:f.opening}];let balance=f.opening;
+ for(const row of f.rows){balance+=row.delta;if(points.at(-1).date===row.date)points.at(-1).balance=balance;else points.push({date:row.date,balance});}
+ if(points.at(-1).date!==f.end)points.push({date:f.end,balance});return points;
+}
+export function forecastBalanceOn(points,date){
+ let lo=0,hi=points.length-1,index=-1;while(lo<=hi){const mid=(lo+hi)>>1;if(points[mid].date<=date){index=mid;lo=mid+1;}else hi=mid-1;}return index<0?null:points[index].balance;
+}
