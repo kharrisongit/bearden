@@ -43,3 +43,13 @@ body{background:radial-gradient(ellipse at 0 0,#aad3bc16,transparent 38%),var(--
 .income-peek-wrap{isolation:isolate;margin-bottom:28px}.income-peek-wrap>.bank-card{z-index:1;margin-bottom:0}.income-peek-wrap:has(#debtIncomeCard){margin-bottom:52px}.income-peek-wrap #debtIncomeCard{margin-bottom:0}#tab-income>.income-peek-wrap{margin-top:44px}
 @media(max-width:370px){.debt-account{padding:12px}.debt-compact-amount>strong{font-size:1.03rem}.debt-account-footer{flex-wrap:wrap}.debt-account-tools{margin-left:auto}.bank-card .card-heading{gap:8px}.bank-card .bank-refresh{padding:8px}.account-view-tabs{margin-top:-12px}}
 @media(prefers-reduced-motion:reduce){.hero-bear,.hero-bear *,.credit-refresh[aria-busy=true] svg{animation:none!important}.hero-bear{transform:translateY(10px)}}
+
+.income-widget-actions{display:flex;gap:8px;margin:-4px 0 20px}.income-widget-actions>button{flex:1}
+#incomeBudgetSlot #budgetDropdown{padding:12px;border:1px solid var(--line);background:var(--card);margin:0 0 18px}#incomeBudgetSlot #budgetDropdown.open{margin:4px 0 22px}
+#incomeBudgetSlot .howto-title{display:none}#incomeBudgetSlot .field-name{color:var(--ink)}#incomeBudgetSlot .field-row{gap:12px}#incomeBudgetSlot input{max-width:55%;width:150px}
+#incomeBudgetSlot .field-name small{color:var(--muted)}#incomeBudgetSlot button{background:var(--accent-soft);color:var(--accent);border-color:var(--line)}#incomeBudgetSlot .recalc{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+.debt-key-amounts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0 10px}
+.debt-key-amounts>div{padding:10px;border-radius:10px;background:var(--paper);min-width:0}.debt-key-amounts>.minimum-due{background:var(--accent-soft)}
+.debt-key-amounts span{display:block;font-size:.68rem;font-weight:600;color:var(--muted);margin-bottom:6px}.debt-key-amounts strong{display:block;color:var(--ink);font-size:1.35rem;font-weight:800;letter-spacing:-.035em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.debt-key-amounts .minimum-due strong{color:var(--accent)}
+.debt-key-amounts+.debt-compact-meta{margin:8px 0}.debt-key-amounts+.debt-compact-meta span{font-size:.63rem}@media(max-width:370px){.debt-key-amounts>div{padding:9px}.debt-key-amounts strong{font-size:1.13rem}.debt-key-amounts span{font-size:.61rem}}
