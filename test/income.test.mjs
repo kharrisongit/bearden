@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {paydayEvents,billEvents,cashForecast} from '../public/income-model.mjs';
+import {paydayEvents,billEvents,cashForecast,accountPaymentRows,isDebtPayment} from '../public/income-model.mjs';
 test('forecast uses edited paycheck allocations and keeps paydays after debt payoff',()=>{
  const plan={state:{startDate:'2026-10-23',takeHome:1800,budgetItems:[{id:1,amount:200}],paycheckOverrides:{2:1900},checkedPaychecks:{1:true}},schedule:[{paycheck:1,date:'2026-10-23',takeHomeThisCheck:2200,bonusAmount:100,budgetLineItemsThisCheck:[{amount:250}],extrasThisCheck:[{amount:30}],payments:[500],savingsByGoal:[{contribution:75}]}]};
  let p=paydayEvents(plan,'2026-10-23','2026-11-07');assert.equal(p.length,1);assert.equal(p[0].date,'2026-11-06');assert.equal(p[0].amount,190000);assert.equal(p[0].allocations,20000);
@@ -32,4 +32,10 @@ test('selected electric bill receives Gmail amount/date with custom name and no 
  const confirmed=rows.find(b=>b.gmailConfirmed);assert.equal(confirmed.name,'Home power');assert.equal(confirmed.id,'power');assert.equal(confirmed.amount,14321);assert.equal(confirmed.date,'2026-11-05');assert.equal(confirmed.covered,true);
  assert.equal(rows.filter(b=>b.id==='power'&&b.date.startsWith('2026-11')).length,1);assert.equal(rows.filter(b=>b.id==='garage').length,2);assert.equal(rows.find(b=>b.id==='power'&&b.date.startsWith('2026-12')).amount,12000);
  planner.paid=['power:2026-11-20'];assert.equal(billEvents({bills:[tracked,email]},planner,{},'2026-11-01','2026-11-30').length,0);
+});
+
+test('Accounts keeps recurring bills separate from debt payments and shows one next payment per account',()=>{
+ const rows=[{id:'rent',source:'manual',billKind:'rent',date:'2026-11-01'},{id:'card',source:'plaid-credit',billKind:'credit-card',date:'2026-11-02'},{id:'tracker-1-1',source:'tracker-debt',trackerCardId:'1',date:'2026-11-06'},{id:'tracker-1-2',source:'tracker-debt',trackerCardId:'1',date:'2026-11-20'},{id:'rent',source:'manual',billKind:'rent',date:'2026-12-01'}];
+ const accounts=accountPaymentRows(rows);assert.equal(accounts.length,3);assert.deepEqual(accounts.filter(b=>!isDebtPayment(b)).map(b=>b.id),['rent']);assert.equal(accounts.filter(isDebtPayment).length,2);
+ assert.deepEqual(accountPaymentRows(rows,'2026-11-20').map(b=>b.id),['tracker-1-2']);assert.equal(isDebtPayment({billKind:'loan',source:'bank-tracked'}),true);
 });

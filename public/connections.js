@@ -39,15 +39,15 @@ window.BearDen=(()=>{
   const handler=window.Plaid.create({token,...(resume?{receivedRedirectUri:location.href}:{}),onSuccess:async(public_token,metadata)=>{try{
    const r=options.itemId?await api('/api/plaid/updated',{itemId:options.itemId}):await api('/api/plaid/exchange',{public_token,name:metadata.institution?.name||'Bank',kind:options.kind});
    sessionStorage.removeItem('bearden-link-token');sessionStorage.removeItem('bearden-link-context');history.replaceState(null,'','/');await refresh();message(r.status||'Account connected.');
-   if(options.kind==='credit'||options.itemId)window.selectBearTab('income');
-  }catch(e){message(e.message);window.selectBearTab('settings');}finally{handler.destroy();}},onExit:error=>{if(error){message(error.display_message||error.error_message||'Plaid could not connect this account.');window.selectBearTab('settings');}handler.destroy();}});handler.open();
+   if(options.kind==='credit'||options.itemId){window.selectBearTab('accounts');window.dispatchEvent(new CustomEvent('bearden-credit-connected',{detail:{options,status:r.status}}));}
+  }catch(e){message(e.message);if(options.fromAccount)window.dispatchEvent(new CustomEvent('bearden-credit-cancelled',{detail:{options,error:e.message}}));else window.selectBearTab('settings');}finally{handler.destroy();}},onExit:error=>{handler.destroy();const detail=error?(error.display_message||error.error_message||'Plaid could not connect this account.'):'';if(options.fromAccount)window.dispatchEvent(new CustomEvent('bearden-credit-cancelled',{detail:{options,error:detail}}));else if(error){message(detail);window.selectBearTab('settings');}}});handler.open();
  }
  document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-connect-credit],[data-credit-update],[data-refresh-credit]');if(!b)return;b.disabled=true;
-  const status=document.querySelector('#creditStatus');try{
+  const status=document.querySelector('#creditStatus'),options={kind:'credit',...(b.dataset.creditUpdate?{itemId:b.dataset.creditUpdate}:{}),...(b.hasAttribute('data-account-connect')?window.prepareDebtConnection():{})};try{
    if(b.hasAttribute('data-refresh-credit')){if(status)status.textContent='Refreshing card…';const r=await api('/api/cards/refresh',{itemId:b.dataset.refreshCredit});await refresh();if(status)status.textContent=r.status||'Card refreshed.';}
-   else await connectBank(false,{kind:'credit',...(b.dataset.creditUpdate?{itemId:b.dataset.creditUpdate}:{})});
-  }catch(e){message(e.message);if(status)status.textContent=e.message;window.selectBearTab('settings');}finally{b.disabled=false;}
+   else await connectBank(false,options);
+  }catch(e){message(e.message);if(status)status.textContent=e.message;if(options.fromAccount)window.dispatchEvent(new CustomEvent('bearden-credit-cancelled',{detail:{options,error:e.message}}));else window.selectBearTab('settings');}finally{b.disabled=false;}
  });
 
  function run(fn){return async e=>{const b=e?.currentTarget;if(b)b.disabled=true;try{await fn();}catch(err){message(err.message);}finally{if(b)b.disabled=false;}};}
@@ -62,6 +62,7 @@ window.BearDen=(()=>{
   catch(e){statuses.forEach(s=>s.textContent=e.message);}
   finally{refreshingBank=false;buttons.forEach(b=>{b.disabled=false;b.removeAttribute('aria-busy');});}
  });
+ $('#babyBearIncome').onclick=run(async()=>{const preset=await api('/api/income/baby-bear');await window.applyIncomePreset(preset);window.dispatchEvent(new Event('bearden-connections'));$('#babyBearIncomeStatus').textContent='Income filled: '+money(preset.hourlyRate*100)+'/hour, '+preset.hoursPerCheck+' hours per paycheck; '+money(preset.amount)+(preset.estimated?' estimated':'')+' take-home. Your accounts and per-paycheck edits are unchanged.';});
  $('#classicBank').onclick=run(()=>connectBank());$('#classicGmail').onclick=()=>{if(requireLogin())location.href='/auth/google?gmail=1';};
  $('#classicDisconnectGmail').onclick=run(async()=>{if(!confirm('Disconnect Gmail and stop checking for new bills?'))return;await api('/api/gmail/disconnect',{});await refresh();});
  $('#classicExport').onclick=()=>{const snapshot=structuredClone(values);if(bridge.loaded)snapshot['app-state']=JSON.stringify(window.gatherAppState());download('bearden-tracker-backup.json',{version:1,values:snapshot});};

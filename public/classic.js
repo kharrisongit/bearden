@@ -28,10 +28,7 @@ let extraExpenses = {}; // { [paycheckNum]: [{id, label, amount}, ...] } — one
 let extraExpenseIdCounter = 0;
 let extraExpenseInputOpenForPaycheck = null; // which paycheck's inline "add expense" field is expanded
 
-// Most recent full snapshot of saved state, including personal fields (cards,
-// budget items, income). Personal fields are only ever pulled from this into
-// the live UI when Baby Bear Mode is explicitly checked — never automatically
-// on page load — so nobody's real numbers show up by default.
+// Most recent saved tracker snapshot. Account setup is explicit through Accounts.
 let loadedState = null;
 
 function money(n){
@@ -99,16 +96,6 @@ function handlePieSliceClick(evt, el){
 // account list (see renderSpendingTracker / buildAccountDetailHTML) instead
 // of a separate raw-input page, so there's no standalone list to rebuild
 // here — just update the data and let calculate() re-render everything.
-function addCard(){
-  const name = document.getElementById('newCardName').value.trim() || 'New Debt';
-  const balance = parseFloat(document.getElementById('newCardBalance').value)||0;
-  const apr = parseFloat(document.getElementById('newCardApr').value)||0;
-  const min = parseFloat(document.getElementById('newCardMin').value)||0;
-  cardIdCounter++;
-  cardsData.push({id: cardIdCounter, name, balance, apr, min});
-  calculate();
-}
-
 function removeCard(id){
   cardsData = cardsData.filter(c => c.id !== id);
   delete accountPaymentOverrides[id];
@@ -216,7 +203,11 @@ function toggleSavingsWithdrawPanel(id){
 }
 
 // ---- Bonus (applied inline, per paycheck card) ----
-const BONUS_TAX_RATE = 0.249; // fixed — matches your pay stub's effective withholding on bonuses
+function privateWithholding(id){
+  const value=document.getElementById(id).value;
+  const rate=value.trim()===''?null:Number(value);
+  return rate!==null&&Number.isFinite(rate)&&rate>=0&&rate<=100?rate:null;
+}
 
 function toggleBonusInlineInput(paycheckNum){
   bonusInputOpenForPaycheck = (bonusInputOpenForPaycheck === paycheckNum) ? null : paycheckNum;
@@ -226,7 +217,8 @@ function toggleBonusInlineInput(paycheckNum){
 function applyBonusToPaycheck(paycheckNum){
   const grossEl = document.getElementById(`bonusInlineAmount-${paycheckNum}`);
   const gross = grossEl ? (parseFloat(grossEl.value)||0) : 0;
-  const net = gross * (1 - BONUS_TAX_RATE);
+  const withholding = privateWithholding('bonusWithholding');
+  const net = gross * (1 - (withholding ?? 0)/100);
   if (net > 0) {
     appliedBonuses[paycheckNum] = net;
   }
@@ -376,6 +368,7 @@ function gatherAppState(){
       balance: c.balance,
       apr: c.apr,
       min: c.min,
+      debtKind: c.debtKind || 'other',
       payoffHistory: c.payoffHistory || [],
       activelyPaidOff: !!c.activelyPaidOff,
       lifetimeInterestPaid: c.lifetimeInterestPaid || 0,
@@ -389,14 +382,14 @@ function gatherAppState(){
     budgetItemIdCounter,
     hourlyRate: document.getElementById('hourlyRate').value,
     hoursPerCheck: document.getElementById('hoursPerCheck').value,
+    incomeWithholding: document.getElementById('incomeWithholding').value,
+    bonusWithholding: document.getElementById('bonusWithholding').value,
     appliedBonuses,
     savingsGoals: savingsGoals.map(g => ({ id: g.id, name: g.name, goal: g.goal, start: g.start, contribution: g.contribution, withdrawalHistory: g.withdrawalHistory || [] })),
     savingsGoalIdCounter,
     takeHome: document.getElementById('takeHome').value,
     startDate: document.getElementById('startDate').value,
     payoffMethod: currentPayoffMethod,
-    babyBearMode: document.getElementById('kurtisModeCheckbox').checked,
-    papaBearMode: document.getElementById('papaBearModeCheckbox').checked,
     paycheckOverrides,
     savingsContributionOverrides,
     budgetItemOverrides,
@@ -659,62 +652,37 @@ function resetSavingsGoal(goalId){
 
 // ---- Income ----
 function calcGrossPay(rate, hours){
-  // Papa Bear Mode: salary, not hourly — there's no such thing as overtime
-  // for him, so hours literally can't exceed 80 for pay purposes, not just
-  // "80 hours at a lower rate." The input itself is also capped at 80 (see
-  // enforceHoursCapIfPapaBear), this is just a second guarantee.
-  const salaryMode = document.getElementById('papaBearModeCheckbox')?.checked;
-  const effectiveHours = salaryMode ? Math.min(hours, 80) : hours;
-  const regularHours = Math.min(effectiveHours, 80);
-  const overtimeHours = salaryMode ? 0 : Math.max(0, effectiveHours - 80);
-  return (rate * regularHours) + (rate * 1.5 * overtimeHours);
-}
-
-const MI_TAKE_HOME_RATE = 79.45; // fixed — Michigan federal, state, Social Security, and Medicare combined
-
-// While Papa Bear Mode is on, the hours field can't hold anything over 80 —
-// he's salary, so there's no overtime to even calculate.
-function enforceHoursCapIfPapaBear(){
-  const salaryMode = document.getElementById('papaBearModeCheckbox')?.checked;
-  if (!salaryMode) return;
-  const hoursEl = document.getElementById('hoursPerCheck');
-  const hours = parseFloat(hoursEl.value);
-  if (!isNaN(hours) && hours > 80) hoursEl.value = '80';
+  return rate * Math.min(hours, 80) + rate * 1.5 * Math.max(0, hours - 80);
 }
 
 function updateIncomeEstimateDisplay(){
   const rate = parseFloat(document.getElementById('hourlyRate').value)||0;
   const hours = parseFloat(document.getElementById('hoursPerCheck').value)||0;
   const gross = calcGrossPay(rate, hours);
-  const takeHome = gross * (MI_TAKE_HOME_RATE/100);
+  const withholding = privateWithholding('incomeWithholding');
+  const takeHome = withholding===null?null:gross * (1-withholding/100);
   const overtimeHours = Math.max(0, hours - 80);
   const box = document.getElementById('incomeEstimate');
   if (rate > 0 && hours > 0) {
-    box.innerHTML = `Estimated gross: <strong>${money(gross)}</strong>${overtimeHours > 0 ? ` (incl. ${overtimeHours.toFixed(2)} OT hrs @ 1.5x)` : ''} · Estimated take-home: <strong>${money(takeHome)}</strong>`;
+    box.innerHTML = `Estimated gross: <strong>${money(gross)}</strong>${overtimeHours > 0 ? ` (incl. ${overtimeHours.toFixed(2)} OT hrs @ 1.5x)` : ''}${takeHome===null?' · Add a withholding percentage below to estimate take-home.':` · Estimated take-home: <strong>${money(takeHome)}</strong>`}`;
     box.style.display = 'block';
   } else {
     box.style.display = 'none';
   }
+  document.getElementById('useIncomeEstimateButton').disabled=takeHome===null||takeHome<=0;
 }
 
 function useIncomeEstimate(){
   const rate = parseFloat(document.getElementById('hourlyRate').value)||0;
   const hours = parseFloat(document.getElementById('hoursPerCheck').value)||0;
   const gross = calcGrossPay(rate, hours);
-  const takeHome = gross * (MI_TAKE_HOME_RATE/100);
+  const withholding = privateWithholding('incomeWithholding');
+  if(withholding===null)return;
+  const takeHome = gross * (1-withholding/100);
   if (takeHome > 0) {
     document.getElementById('takeHome').value = takeHome.toFixed(2);
   }
   calculate();
-}
-
-// Original bonus and salary behavior, without embedded personal presets.
-function toggleKurtisMode(){calculate();}
-function togglePapaBearMode(checked){
- const hours=document.getElementById('hoursPerCheck');
- document.getElementById('hoursHint').textContent=checked?'capped at 80 (salary — no overtime)':'over 80 = 1.5x overtime';
- if(checked){hours.max='80';enforceHoursCapIfPapaBear();}else hours.removeAttribute('max');
- updateIncomeEstimateDisplay();calculate();
 }
 
 // ---- Reset ----
@@ -741,12 +709,12 @@ async function resetAll(){
   bonusInputOpenForPaycheck = null;
 
   document.getElementById('takeHome').value = '';
+  document.getElementById('incomeWithholding').value = '';
+  document.getElementById('bonusWithholding').value = '';
   document.getElementById('hourlyRate').value = '';
   document.getElementById('hoursPerCheck').value = '';
   document.getElementById('hoursHint').textContent = 'over 80 = 1.5x overtime';
   document.getElementById('incomeEstimate').style.display = 'none';
-  document.getElementById('kurtisModeCheckbox').checked = false;
-  document.getElementById('papaBearModeCheckbox').checked = false;
   document.getElementById('hoursPerCheck').removeAttribute('max');
 
   currentPayoffMethod = 'avalanche';
@@ -1007,7 +975,7 @@ function calculate(isInitialLoad){
     }
 
     balances = newBalances;
-    date = new Date(date.getTime() + 14*24*60*60*1000);
+    date.setDate(date.getDate() + 14);
   }
 
   const goalsInfo = savingsEnabled ? goalsCalc.map(g => ({
@@ -1057,19 +1025,11 @@ function toggleAddBox(id){
   }
 }
 
-// Income, Budget, Accounts, and the debt breakdown pie are all dropdowns
-// nested right inside the Debt Tracker hero card — opening one closes
-// whichever else was open, but unlike the old full-page panels, the rest
-// of the page (hero stats, savings, schedule) stays visible the whole
-// time. Every trigger button doubles as its own close button — pressing
-// it again while its dropdown is open just closes it. All four slide open
-// (an .open class driving a max-height/opacity transition) rather than
-// snapping open instantly.
-const HERO_DROPDOWN_IDS = ['incomeDropdown', 'budgetDropdown', 'accountsDropdown', 'debtBreakdownDropdown'];
+// Configuration panels live in their own tabs; opening one closes another.
+const HERO_DROPDOWN_IDS = ['incomeDropdown', 'budgetDropdown', 'debtBreakdownDropdown'];
 const HERO_DROPDOWN_BUTTONS = {
-  incomeDropdown: { btnId: 'incomeToggleBtn', label: '💰 Income' },
-  budgetDropdown: { btnId: 'budgetToggleBtn', label: '🧾 Budget' },
-  accountsDropdown: { btnId: 'accountsToggleBtn', label: '💳 Accounts' },
+  incomeDropdown: { btnId: 'incomeToggleBtn', label: 'Income' },
+  budgetDropdown: { btnId: 'budgetToggleBtn', label: 'Configure budget' },
 };
 
 const HERO_SLIDE_TRANSITION_MS = 600;
@@ -1122,7 +1082,7 @@ function toggleHeroDropdown(id){
     const meta = HERO_DROPDOWN_BUTTONS[did];
     if (meta) {
       const btn = document.getElementById(meta.btnId);
-      if (btn) btn.textContent = meta.label;
+      if (btn) { btn.textContent = meta.label; btn.setAttribute('aria-expanded', 'false'); }
     }
   });
 
@@ -1131,7 +1091,7 @@ function toggleHeroDropdown(id){
     const meta = HERO_DROPDOWN_BUTTONS[id];
     if (meta) {
       const btn = document.getElementById(meta.btnId);
-      if (btn) btn.textContent = 'Close';
+      if (btn) { btn.textContent = 'Close'; btn.setAttribute('aria-expanded', 'true'); }
     }
   }
 }
@@ -1369,7 +1329,6 @@ document.addEventListener('click', (e) => {
 
 function toggleIncomePanel(){ toggleHeroDropdown('incomeDropdown'); }
 function toggleBudgetPanel(){ toggleHeroDropdown('budgetDropdown'); }
-function toggleDebtPanel(){ toggleHeroDropdown('accountsDropdown'); }
 
 function updatePayoffMethodExplain(){
   const avalancheBtn = document.getElementById('pmBtnAvalanche');
@@ -1727,29 +1686,7 @@ function renderSpendingTracker(){
     currentDetailAccountIdx = null; // account no longer exists — fall through to the list view
   }
 
-  const addAccountBoxHTML = `
-    <button class="add-toggle-btn" data-bd-click="toggleAddBox('addCardBox')">+ Add Account</button>
-    <div class="add-item-box" id="addCardBox">
-      <div class="card-group-title">Add an account</div>
-      <div class="field-row">
-        <div class="field-name">Name</div>
-        <input type="text" id="newCardName" placeholder="e.g. Discover" style="width:130px;">
-      </div>
-      <div class="field-row">
-        <div class="field-name">Balance</div>
-        <input type="number" id="newCardBalance" step="0.01" placeholder="0.00">
-      </div>
-      <div class="field-row">
-        <div class="field-name">APR (%)</div>
-        <input type="number" id="newCardApr" step="0.01" placeholder="0.00">
-      </div>
-      <div class="field-row">
-        <div class="field-name">Min payment</div>
-        <input type="number" id="newCardMin" step="0.01" placeholder="0.00">
-      </div>
-      <button class="recalc add-btn" data-bd-click="addCard()">Add Account</button>
-    </div>
-  `;
+  const addAccountBoxHTML = '<button class="add-toggle-btn" data-open-account-add>+ Add Account</button>';
 
   if (lastDebtSpending.length === 0) {
     container.innerHTML = `
@@ -2052,7 +1989,6 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
   const startTotal = cards.reduce((a,c)=>a+c.balance,0);
   lastStartTotal = startTotal;
   const neverPaysOff = debtFreeDate === null;
-  const babyBearOn = document.getElementById('kurtisModeCheckbox').checked && !document.getElementById('papaBearModeCheckbox').checked;
 
   if (neverPaysOff) {
     document.getElementById('heroDate').textContent = 'Configure your Budget, Income, and Debt above to begin tracking';
@@ -2281,17 +2217,17 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
         </div>
         ${row.bonusAmount > 0 ? `
         <div class="check-summary-row bonus-row"><span>🎁 + Bonus (after taxes)</span><span>${money(row.bonusAmount)}</span></div>
-        ${babyBearOn ? `<div style="text-align:right;margin:2px 0 4px;"><span class="remove" data-bd-click="removeBonusFromPaycheck(${row.paycheck})">Remove bonus</span></div>` : ''}
+        <div style="text-align:right;margin:2px 0 4px;"><span class="remove" data-bd-click="removeBonusFromPaycheck(${row.paycheck})">Remove bonus</span></div>
         <div class="check-summary-row prominent-row"><span>Total this paycheck (after taxes)</span><span>${money(row.takeHomeThisCheck + row.bonusAmount)}</span></div>
-        ` : (babyBearOn ? (
+        ` : (
           bonusInputOpenForPaycheck === row.paycheck
             ? `<div class="bonus-inline-input">
-                 <span>$</span><input type="number" id="bonusInlineAmount-${row.paycheck}" placeholder="0.00 gross" step="0.01">
+                 <span>$</span><input type="number" id="bonusInlineAmount-${row.paycheck}" placeholder="${privateWithholding('bonusWithholding')===null?'After-tax amount':'Before-tax amount'}" aria-label="${privateWithholding('bonusWithholding')===null?'After-tax bonus':'Before-tax bonus'}" step="0.01">
                  <button data-bd-click="applyBonusToPaycheck(${row.paycheck})">Apply</button>
                </div>
-               <div style="font-size:0.68rem;color:var(--muted);margin:-2px 0 4px;">Taxed at 24.9%, same as your regular paycheck.</div>`
+               <div style="font-size:0.68rem;color:var(--muted);margin:-2px 0 4px;">${privateWithholding('bonusWithholding')===null?'Enter the bonus you actually receive after taxes.':`Uses your saved ${privateWithholding('bonusWithholding')}% bonus withholding estimate.`}</div>`
             : `<button class="bonus-inline-btn" data-bd-click="toggleBonusInlineInput(${row.paycheck})">🎁 Add Bonus</button>`
-        ) : '')}
+        )}
         ${budgetLines}
         ${extraExpenseLines}
         ${extraExpenseControl}
@@ -6727,21 +6663,16 @@ window.classicReady=(async function init(){
   }
   renderBudgetItems();
   if (savedState) {
-    ['takeHome','startDate','hourlyRate','hoursPerCheck'].forEach(id => {
+    ['takeHome','startDate','hourlyRate','hoursPerCheck','incomeWithholding','bonusWithholding'].forEach(id => {
       if (savedState[id] !== undefined && document.getElementById(id)) {
         document.getElementById(id).value = savedState[id];
       }
     });
+    if(savedState.incomeWithholding===undefined){
+      const gross=calcGrossPay(Number(savedState.hourlyRate)||0,Number(savedState.hoursPerCheck)||0),net=Number(savedState.takeHome);
+      if(gross>0&&net>0&&net<=gross)document.getElementById('incomeWithholding').value=(100*(1-net/gross)).toFixed(2);
+    }
     if (savedState.payoffMethod) currentPayoffMethod = savedState.payoffMethod;
-    if (savedState.babyBearMode !== false) {
-      document.getElementById('kurtisModeCheckbox').checked = true;
-    }
-    if (savedState.papaBearMode) {
-      document.getElementById('papaBearModeCheckbox').checked = true;
-      document.getElementById('hoursHint').textContent = 'capped at 80 (salary — no overtime)';
-      document.getElementById('hoursPerCheck').max = '80';
-      enforceHoursCapIfPapaBear();
-    }
     updateIncomeEstimateDisplay();
     updatePayoffMethodExplain();
   }
@@ -6760,3 +6691,32 @@ function addConnectedBill(bill,date){
 
 // Read-only snapshot for the Income overview; the original payoff engine remains authoritative.
 window.getDebtPlan=()=>({state:gatherAppState(),schedule:lastSchedule.map(r=>({...r,date:r.date.getFullYear()+'-'+String(r.date.getMonth()+1).padStart(2,'0')+'-'+String(r.date.getDate()).padStart(2,'0')}))});
+
+// Account creation uses the same payoff state as the original tracker.
+window.saveDebtAccount=async function(data){
+ await window.classicReady;
+ const name=String(data.name||'').trim(),balance=Number(data.balance),apr=Number(data.apr),min=Number(data.minimum);
+ if(!name||name.length>100||![balance,apr,min].every(Number.isFinite)||balance<0||balance>1e9||min<0||min>1e9||apr<0||apr>100)throw Error('Enter a name, balance, APR, and payment amount.');
+ const oldCards=structuredClone(cardsData),oldCounter=cardIdCounter;
+ let card=data.id===null||data.id===undefined?null:cardsData.find(c=>String(c.id)===String(data.id));
+ if(data.id!==null&&data.id!==undefined&&!card)throw Error('That debt no longer exists.');
+ if(!card){cardIdCounter=Math.max(cardIdCounter,...cardsData.map(c=>Number(c.id)||0))+1;card={id:cardIdCounter};cardsData.push(card);}
+ Object.assign(card,{name,balance,apr,min,debtKind:['credit-card','car-loan','loan','other'].includes(data.debtKind)?data.debtKind:'other'});
+ const syncInputs=()=>cardsData.forEach(c=>{for(const [prefix,key]of [['bal','balance'],['apr','apr'],['min','min']]){const input=document.getElementById(prefix+'_'+c.id);if(input)input.value=c[key];}});
+ try{syncInputs();calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));setStorageStatus('Saved');return card.id;}
+ catch(e){cardsData=oldCards;cardIdCounter=oldCounter;syncInputs();calculate();clearTimeout(saveDebounceTimer);throw e;}
+};
+
+window.applyIncomePreset=async function(preset){
+ await window.classicReady;
+ if(!Number.isFinite(preset.hourlyRate)||preset.hourlyRate<0||!Number.isFinite(preset.hoursPerCheck)||preset.hoursPerCheck<0||!Number.isSafeInteger(preset.amount)||preset.amount<=0)throw Error('Income preset is unavailable.');
+ const fields=['hourlyRate','hoursPerCheck','takeHome'],before=fields.map(id=>document.getElementById(id).value),values=[preset.hourlyRate,preset.hoursPerCheck,(preset.amount/100).toFixed(2)];
+ try{fields.forEach((id,i)=>document.getElementById(id).value=values[i]);updateIncomeEstimateDisplay();calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));setStorageStatus('Income saved');}
+ catch(e){fields.forEach((id,i)=>document.getElementById(id).value=before[i]);updateIncomeEstimateDisplay();calculate();clearTimeout(saveDebounceTimer);throw e;}
+};
+
+window.showDebtAccountHistory=function(id){
+ const index=cardsData.findIndex(c=>String(c.id)===String(id));if(index<0)return;
+ currentDetailAccountIdx=index;paymentHistoryExpanded=true;paymentHistoryShowAll=false;renderSpendingTracker();
+ document.getElementById('debtHistoryDialog').showModal();
+};

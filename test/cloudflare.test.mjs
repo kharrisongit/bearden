@@ -34,22 +34,11 @@ test('failed initial balance fetch preserves connection and manual sync recovers
  let ready=false;const f=fixture(async url=>{if(url.endsWith('/item/public_token/exchange'))return Response.json({item_id:'i',access_token:'private'});if(url.endsWith('/accounts/get')){if(!ready)return Response.json({error_code:'INSTITUTION_NOT_RESPONDING'},{status:400});return Response.json({accounts:[{account_id:'a',name:'Checking',type:'depository',subtype:'checking',balances:{available:50,current:50,iso_currency_code:'USD'}}]});}return Response.json({error_code:'PRODUCT_NOT_READY'},{status:400});});
  const response=await (await f.app.handle(f.req('/api/plaid/exchange',{public_token:'public'}))).json();assert.match(response.status,/could not load/);assert.equal(f.get('connections').items[0].token,'private');ready=true;await f.app.sync(true);assert.equal(f.get('plan').state.accounts[0].balance,5000);assert.match(f.get('connections').status,/PRODUCT_NOT_READY/);f.db.close();
 });
-test('Baby Bear import requires owner session and matching origin; source file is not public',async()=>{
- const f=fixture();assert.equal((await f.app.handle(new Request(f.env.APP_URL+'/api/import/baby-bear'))).status,401);
- assert.equal((await f.app.handle(new Request(f.env.APP_URL+'/api/import/baby-bear',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}))).status,401);
- assert.equal((await f.app.handle(f.req('/api/import/baby-bear',{date:'2026-11-01',revision:0},'https://other.example'))).status,403);
- assert.equal((await f.app.handle(new Request(f.env.APP_URL+'/baby-bear.mjs'))).status,404);f.db.close();
-});
-test('Baby Bear import preserves existing data, skips duplicate debts and rejects stale revisions',async()=>{
- const f=fixture(),s=blank();s.accounts=[{id:'cash',name:'Bank',balance:100,include:true}];s.debts=[{id:'custom',name:'Affirm',balance:100,apr:1,minimum:1,date:'2026-11-01'}];f.set('plan',{state:s,revision:5});
- assert.equal((await f.app.handle(f.req('/api/import/baby-bear',{date:'2026-11-01',revision:4}))).status,409);
- const response=await (await f.app.handle(f.req('/api/import/baby-bear',{date:'2026-11-01',revision:5}))).json();assert.equal(response.added,7);assert.equal(response.skipped,1);
- const p=f.get('plan');assert.deepEqual(p.state.accounts,s.accounts);assert.equal(p.state.debts[0].balance,100);assert.equal(p.state.debts[1].minimumRepeat,'biweekly');
- const again=await (await f.app.handle(f.req('/api/import/baby-bear',{date:'2026-11-01',revision:p.revision}))).json();assert.equal(again.added,0);assert.equal(f.get('plan').state.debts.length,8);f.db.close();
-});
-test('rerunning a debt-only import persists the missing income and budget',async()=>{
- const f=fixture();await f.app.handle(f.req('/api/import/baby-bear',{date:'2026-11-06',revision:0}));const p=f.get('plan');p.state.income=[];p.state.bills=[];f.set('plan',p);
- const result=await (await f.app.handle(f.req('/api/import/baby-bear',{date:'2026-11-20',takeHome:190000,revision:p.revision}))).json();assert.equal(result.added,0);assert.equal(result.incomeAdded,1);assert.equal(result.budgetAdded,5);assert.equal(f.get('plan').state.income[0].amount,190000);assert.equal(f.get('plan').revision,p.revision+1);f.db.close();
+test('retired preset imports cannot replace existing accounts or income',async()=>{
+ const f=fixture(),state=blank();state.accounts=[{id:'cash',name:'Checking',balance:50000,include:true}];state.debts=[{id:'saved',name:'Saved debt',balance:12300,apr:15,minimum:2500,date:'2026-11-01'}];state.income=[{id:'income',name:'My pay',amount:180000,date:'2026-11-01',repeat:'biweekly'}];f.set('plan',{state,revision:3});
+ const tracker={state:{version:1,values:{'app-state':JSON.stringify({cards:[{id:1,name:'Saved debt',balance:123}],babyBearMode:true,papaBearMode:true})}},revision:4};f.set('classic',tracker);
+ for(const method of ['GET','POST']){const r=await f.app.handle(f.req('/api/import/baby-bear',method==='GET'?undefined:{date:'2026-11-01',revision:3}));assert.equal(r.status,410);}
+ assert.deepEqual(f.get('plan'),{state,revision:3});assert.deepEqual(f.get('classic'),tracker);assert.equal((await f.app.handle(new Request(f.env.APP_URL+'/api/import/baby-bear'))).status,401);f.db.close();
 });
 test('original tracker storage is private, encrypted, revision checked, and independent of bank sync',async()=>{
  const f=fixture();const state={version:1,values:{'app-state':JSON.stringify({cards:[{id:1,name:'Private card',balance:123}],budgetItems:[],savingsGoals:[]}),notes:'[{"text":"Private note"}]'}};
@@ -105,4 +94,17 @@ test('enabling card details on an existing item never exchanges a new public tok
 test('bank pagination cannot starve a newly linked credit institution',async()=>{
  const tokens=[];const f=fixture(async(url,options)=>{if(url.endsWith('/accounts/get'))return Response.json({accounts:[]});tokens.push(JSON.parse(options.body).access_token);return Response.json({added:[],modified:[],removed:[],next_cursor:'partial',has_more:true});});
  f.set('connections',{items:[{id:'first',name:'First',token:'first'},{id:'second',name:'Second',token:'second'}],transactions:[],candidates:[],gmail:null});await f.app.sync();await f.app.sync();assert.deepEqual(tokens,['first','second']);f.db.close();
+});
+
+test('Baby Bear income shortcut is owner-only and contains only privately saved income',async()=>{
+ const f=fixture(),state=blank();state.accounts=[{id:'a',name:'Checking',balance:10000,include:true}];f.set('plan',{state,revision:5});const classic={state:{version:1,values:{'app-state':JSON.stringify({takeHome:1500,hourlyRate:24,hoursPerCheck:80,cards:[{id:1,name:'Saved debt',balance:800}],budgetItems:[]})}},revision:2};f.set('classic',classic);
+ assert.equal((await f.app.handle(new Request(f.env.APP_URL+'/api/income/baby-bear'))).status,401);
+ const preset=await (await f.app.handle(f.req('/api/income/baby-bear'))).json();assert.equal(preset.hourlyRate,24);assert.equal(preset.hoursPerCheck,80);assert.equal(preset.amount,150000);assert.equal(preset.debts,undefined);assert.equal(preset.accounts,undefined);assert.equal(preset.budgetItems,undefined);assert.deepEqual(f.get('plan'),{state,revision:5});assert.deepEqual(f.get('classic'),classic);
+ assert.equal((await f.app.handle(new Request(f.env.APP_URL+'/income-preset.mjs'))).status,404);f.db.close();
+});
+test('income snapshot survives later income edits and does not restore accounts',async()=>{
+ const f=fixture(),initial={version:1,values:{'app-state':JSON.stringify({takeHome:1500,hourlyRate:24,hoursPerCheck:80,cards:[],budgetItems:[]})}};
+ await f.app.handle(f.req('/api/classic',{state:initial,revision:0}));assert.equal(f.get('income-shortcut').amount,150000);
+ const edited={version:1,values:{'app-state':JSON.stringify({takeHome:1700,hourlyRate:26,hoursPerCheck:80,cards:[{id:1,name:'New debt',balance:900}],budgetItems:[]})}};
+ await f.app.handle(f.req('/api/classic',{state:edited,revision:1}));const before=f.get('classic'),preset=await (await f.app.handle(f.req('/api/income/baby-bear'))).json();assert.equal(preset.amount,150000);assert.deepEqual(f.get('classic'),before);assert.equal(before.state.values['app-state'],edited.values['app-state']);f.db.close();
 });

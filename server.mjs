@@ -1,8 +1,8 @@
+import {incomeFromTracker,incomeFromPlan} from './income-preset.mjs';
 import {creditLinkOptions,syncCredit,publicCredit,publicItem} from './credit.mjs';
 import {recurringBills,personalSpending} from './recurring.mjs';
 import {validateClassic} from './classic-state.mjs';
 import http from 'node:http';
-import {babyBearPreset,importBabyBear} from './baby-bear.mjs';
 import {readFileSync,mkdirSync,existsSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -81,12 +81,12 @@ const server=http.createServer(async(req,res)=>{
   }
   if(path.startsWith('/api/')){
    if(!authenticated(req))return json(res,401,{error:'Sign in to access private data.'});if(req.method==='POST'&&req.headers.origin!==origin)return json(res,403,{error:'Request origin does not match this server.'});
-   if(req.method==='GET'&&path==='/api/import/baby-bear')return json(res,200,babyBearPreset);
+   if(req.method==='GET'&&path==='/api/income/baby-bear'){const preset=read('income-shortcut',null)||incomeFromTracker(read('classic',{}).state)||incomeFromPlan(getPlan().state);return preset?json(res,200,preset):json(res,404,{error:'Set your income in the Income tab once to save your Baby Bear income shortcut.'});}
+   if(path==='/api/import/baby-bear')return json(res,410,{error:'Preset account imports have been retired. Use Accounts or the income-only shortcut.'});
    if(req.method==='GET'&&path==='/api/classic')return json(res,200,read('classic',{state:{version:1,values:{}},revision:0}));
    if(req.method==='GET'&&path==='/api/state')return json(res,200,{...getPlan(),connections:publicConnections(connections())});
    if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});const b=await body(req);
-   if(path==='/api/import/baby-bear'){if(syncing)await syncing;const p=getPlan();if(p.revision!==b.revision)return json(res,409,{error:'Your plan changed. Close the import, reload, and try again.'});const result=importBabyBear(p.state,b.date,b.takeHome);if(result.changed){p.revision++;write('plan',p);}return json(res,200,{...result,revision:p.revision});}
-   if(path==='/api/classic'){const state=validateClassic(b.state),current=read('classic',{revision:0});if(current.revision!==b.revision)return json(res,409,{error:'The tracker changed in another tab. Export your edits and reload.'});write('classic',{state,revision:current.revision+1});return json(res,200,{revision:current.revision+1});}
+   if(path==='/api/classic'){const state=validateClassic(b.state),current=read('classic',{revision:0});if(current.revision!==b.revision)return json(res,409,{error:'The tracker changed in another tab. Export your edits and reload.'});write('classic',{state,revision:current.revision+1});if(!read('income-shortcut',null)){const preset=incomeFromTracker(state)||incomeFromPlan(getPlan().state);if(preset)write('income-shortcut',preset);}return json(res,200,{revision:current.revision+1});}
    if(path==='/api/state'){const s=validate(b.state),p=getPlan();if(p.revision!==b.revision)return json(res,409,{error:'This plan changed during sync or in another tab. Export your edits, then reload before saving again.'});if(s.emailSenders.some(x=>!/^[-\w.+]+@[\w.-]+\.[a-z]{2,}$/i.test(x)))throw Error('Use full sender email addresses');write('plan',{state:s,revision:p.revision+1});return json(res,200,{revision:p.revision+1});}
    if(path==='/api/logout'){db.prepare('DELETE FROM sessions WHERE hash=?').run(hash(cookies(req).bearden));res.setHeader('Set-Cookie',cookie('bearden','',0));return json(res,200,{ok:true});}
    if(path==='/api/bank/refresh'){if(syncing)await syncing;const c=await sync(true);return json(res,200,{status:c.status});}

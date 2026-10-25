@@ -7,8 +7,18 @@ export function trackerDebtBills(plan,cardBills=[],preferences={}){
  const matched=new Set(cardBills.map(b=>String(preferences[b.id]?.trackerCardId||'')).filter(Boolean));
  return (plan.schedule||[]).filter(row=>!plan.state?.checkedPaychecks?.[row.paycheck]).flatMap(row=>(plan.state?.cards||[]).flatMap((card,index)=>{
   const amount=cents(row.payments?.[index]);if(amount<=0||matched.has(String(card.id)))return [];
-  return [{id:'tracker-debt-'+card.id+'-'+row.paycheck,name:card.name,amount,date:row.date,repeat:'once',source:'tracker-debt',billKind:'loan',covered:true}];
+  return [{id:'tracker-debt-'+card.id+'-'+row.paycheck,trackerCardId:String(card.id),name:card.name,amount,date:row.date,repeat:'once',source:'tracker-debt',billKind:'loan',covered:true}];
  }));
+}
+export const isDebtPayment=b=>['tracker-debt','plaid-credit'].includes(b.source)||['credit-card','loan','car-payment'].includes(b.billKind);
+export function accountPaymentRows(events,selected=null){
+ const seen=new Set(),rows=[];
+ for(const event of events){
+  if(selected&&event.date!==selected)continue;
+  const key=event.source==='tracker-debt'?'tracker-'+event.trackerCardId:event.id;
+  if(seen.has(key))continue;seen.add(key);rows.push(event);
+ }
+ return rows;
 }
 export function paydayEvents(plan,start,end,{billsOnly=false}={}){
  const s=plan.state||{},rows=new Map((plan.schedule||[]).map(r=>[r.paycheck,r]));

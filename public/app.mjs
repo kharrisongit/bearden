@@ -47,7 +47,7 @@ function render(){
  $('#bankStatus').textContent=remote?.items?.length?`${remote.items.length} bank connection(s) · ${server?.plaidEnvironment==='sandbox'?'SANDBOX: test data':(server?.syncDescription||'scheduled sync every 6 hours')}`:server?.plaidConfigured?'Plaid is configured. Connect your bank to begin.':'Add a bank account manually or connect when bank sync is available.';
  $('#syncStatus').textContent=remote?.status||'No connections yet.';$('#gmailBtn').textContent=remote?.gmail?'Gmail connected · reconnect':'Connect Gmail';$('#loginBtn').hidden=!server?.googleConfigured||server?.authenticated;$('#logoutBtn').hidden=!server?.authenticated;$('#disconnectGmail').hidden=!remote?.gmail;
  $('#disconnectBanks').innerHTML=(remote?.items||[]).map(i=>`<button class="full" data-disconnect="${esc(i.id)}">Disconnect ${esc(i.name)}</button>`).join('');
- $('#personalImport').innerHTML=server?.authenticated&&!demo?'<button id="babyImportBtn" class="full">Import Baby Bear setup</button><hr>':'';
+ $('#personalImport').innerHTML='';
  const reviews=(remote?.candidates||[]).filter(c=>!c.dismissed&&!state.bills.some(b=>b.sourceId===c.id));$('#reviewCount').textContent=reviews.length+' to review';$('#reviewList').innerHTML=reviews.map(c=>`<div class="review"><strong>${esc(c.sender)}</strong><p>${esc(c.subject)}</p><p>${c.amount!==null?money(c.amount):'Amount needs review'} · ${esc(c.date||'Due date needs review')}</p><p>${esc(c.reason||'Check the bill details')}</p><p>${esc(c.snippet)}</p><div class="button-row"><button data-review="${esc(c.id)}">Review bill</button><button data-dismiss="${esc(c.id)}">Dismiss</button><a href="https://mail.google.com/mail/u/0/#all/${encodeURIComponent(c.id)}" target="_blank" rel="noopener noreferrer">Email ↗</a></div></div>`).join('');
  $('#transactionsList').innerHTML=(remote?.transactions||[]).slice(0,15).map(t=>`<div class="row"><div class="info"><strong>${esc(t.name)}</strong><small>${esc(t.date)}${t.pending?' · pending':''}</small></div><span>${money(-cents(t.amount))}</span></div>`).join('')||'Connect a bank to see transactions here. Transactions do not automatically mark bills paid.';
  for(const id of openDetails){const el=document.getElementById(id);if(el)el.open=true;}
@@ -60,7 +60,6 @@ document.addEventListener('click',async e=>{const b=e.target.closest('button,[da
  if(b.dataset.expense){editing={type:'checkExpense',checkDate:b.dataset.expense};$('#editTitle').textContent='One-time expense';$('#deleteItem').hidden=true;$('#fields').innerHTML='<label>Expense name<input name="name" maxlength="200" required></label><label>Amount ($)<input name="amount" type="number" min="0" step="0.01" required></label>';$('#editDialog').showModal();}
  if(b.dataset.removeExpense){const edit=state.checkEdits?.[b.dataset.checkDate];if(edit){edit.expenses=edit.expenses.filter(x=>x.id!==b.dataset.removeExpense);save();}}
  if(b.dataset.resetCheck){if(state.checkEdits)delete state.checkEdits[b.dataset.resetCheck];save();toast('Paycheck restored to the plan defaults.');}
- if(b.id==='babyImportBtn')await openBabyImport();
  if(b.hasAttribute('data-close'))b.closest('dialog').close();if(b.dataset.add)edit(b.dataset.add);if(b.dataset.edit)edit(b.dataset.edit,b.dataset.id);if(b.dataset.method){state.settings.method=b.dataset.method;save();}if(b.dataset.paid){state.paid.push(b.dataset.paid);save();}if(b.dataset.unpay){state.paid=state.paid.filter(x=>x!==b.dataset.unpay);save();}if(b.dataset.bonus){const x=state.bonuses.find(x=>x.date===b.dataset.bonus);edit('bonuses',x?.id,{date:b.dataset.bonus,name:'Bonus'});}if(b.dataset.squash){state.squash=state.squash.includes(b.dataset.squash)?state.squash.filter(x=>x!==b.dataset.squash):[...state.squash,b.dataset.squash];save();}
  if(b.dataset.review){const c=remote.candidates.find(x=>x.id===b.dataset.review);edit('bills',null,{source:'gmail',sourceId:c.id,sourceKey:c.sourceKey,sender:c.sender,name:c.name||c.sender,amount:c.amount??0,date:c.date||today(),repeat:'once'});}if(b.dataset.dismiss){await api('/api/candidate/dismiss',{id:b.dataset.dismiss});await refreshRemote();}if(b.dataset.disconnect&&confirm('Disconnect this bank? Imported accounts and past transactions will be removed; your manual plan is kept.')){await api('/api/plaid/disconnect',{id:b.dataset.disconnect});await refreshRemote();}
  }catch(err){toast(err.message);}});
@@ -109,24 +108,6 @@ try{server=await api('/api/config');if(server.authenticated)await refreshRemote(
 if(new URLSearchParams(location.search).has('connected')){history.replaceState(null,'',location.pathname);toast('Connected successfully.');}
 if(new URLSearchParams(location.search).has('oauth_state_id'))connectBank(true);
 
-
-let babyImportRevision;
-async function openBabyImport(){
- if(!server?.authenticated||demo)return;
- await saveQueue;
- const data=await api('/api/import/baby-bear');babyImportRevision=revision;
- $('#babyImportPreview').innerHTML=data.debts.map(d=>`<div class="row"><div class="info"><strong>${esc(d.name)}</strong><small>${esc(d.apr)}% APR${d.rateAssumption?' (estimated)':''} · ${money(d.minimum)} every two weeks</small></div><span>${money(d.balance)}</span></div>`).join('')+`<p><strong>Total: ${money(data.debts.reduce((n,d)=>n+d.balance,0))}</strong></p>`;
- $('#babyImportPreview').innerHTML+=`<h3>Income</h3><p>${money(Math.round(data.income.hourlyRate*100))}/hour × ${data.income.hoursPerCheck} hours = ${money(data.income.gross)} gross, every two weeks.</p><p>${state.income.length?'Your existing income schedule will be kept.':'Estimated take-home: '+money(data.income.amount)+' per paycheck.'}</p><h3>Budget per paycheck</h3>${data.budgetItems.map(b=>`<div class="row"><span>${esc(b.name)}</span><strong>${money(b.amount)}</strong></div>`).join('')}<p>No savings goals or bonus amounts are stored in this preset. Your existing goals and bonuses are kept.</p>`;
- $('#babyImportTakeHome').value=data.income.amount/100;$('#babyImportTakeHome').disabled=!!state.income.length;
- const next=forecast(state).checks[0];$('#babyImportDate').value=next?.date||'';
- $('#settingsDialog').close();$('#babyImportDialog').showModal();
-}
-$('#babyImportForm').onsubmit=async e=>{
- e.preventDefault();if(!server?.authenticated||demo)return;
- const button=$('#babyImportSubmit');button.disabled=true;
- try{await saveQueue;const result=await api('/api/import/baby-bear',{date:$('#babyImportDate').value,takeHome:cents($('#babyImportTakeHome').value),revision:babyImportRevision});await refreshRemote();$('#babyImportDialog').close();toast(`Imported ${result.added} debts, ${result.incomeAdded} income schedule, and ${result.budgetAdded} budget items. Existing entries kept.`);}
- catch(err){toast(err.message);}finally{button.disabled=false;}
-};
 
 function showView(name,focus=false){
  const target=document.getElementById('view-'+name);if(!target)return;
