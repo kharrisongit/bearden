@@ -1033,7 +1033,7 @@ function toggleAddBox(id){
 const HERO_DROPDOWN_IDS = ['incomeDropdown', 'budgetDropdown', 'debtBreakdownDropdown'];
 const HERO_DROPDOWN_BUTTONS = {
   incomeDropdown: [{ btnId: 'incomeToggleBtn', label: 'Income' }],
-  budgetDropdown: [{ btnId: 'budgetToggleBtn', label: 'Configure budget' }, { btnId: 'incomeBudgetToggleBtn', label: 'Budget' }],
+  budgetDropdown: [{ btnId: 'incomeBudgetToggleBtn', label: 'Budget' }],
 };
 
 const HERO_SLIDE_TRANSITION_MS = 600;
@@ -1332,16 +1332,7 @@ document.addEventListener('click', (e) => {
 });
 
 function toggleIncomePanel(){ toggleHeroDropdown('incomeDropdown'); }
-function toggleBudgetPanel(location='accounts'){
-  const panel = document.getElementById('budgetDropdown');
-  const host = document.getElementById(location === 'income' ? 'incomeBudgetSlot' : 'accountBudgetCard');
-  // Reuse the same live inputs so either button edits the same paycheck budget.
-  if (panel.parentElement !== host) {
-    closeSlidingDropdown(panel);
-    host.append(panel);
-  }
-  toggleHeroDropdown('budgetDropdown');
-}
+function toggleBudgetPanel(){ toggleHeroDropdown('budgetDropdown'); }
 
 function updatePayoffMethodExplain(){
   const avalancheBtn = document.getElementById('pmBtnAvalanche');

@@ -36,14 +36,61 @@
  const billCategories={electric:'Electric',rent:'Rent',utility:'Utility','car-payment':'Car payment',insurance:'Insurance','phone-internet':'Phone & internet',subscription:'Subscription','credit-card':'Credit card',loan:'Loan payment',other:'Other bill'};
  const pencil='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg>';
  let review={rows:[],bills:[],spending:{categories:[],total:0}};
- let month=new Date(new Date().getFullYear(),new Date().getMonth(),1),selected=null,model,planner={manual:[],covered:{},paid:[],accountVisibility:{},dismissedEstimates:[],estimates:{},bankRules:{},creditCards:{}},linked={},ready=false;
+ let month=new Date(new Date().getFullYear(),new Date().getMonth(),1),selected=null,model,planner={manual:[],covered:{},paid:[],accountVisibility:{},dismissedEstimates:[],estimates:{},bankRules:{},creditCards:{},transactionLinks:{},forecastDebtMode:'full'},linked={},ready=false;
  function error(e){$('#incomeStatus').textContent=e.message||String(e);$('#accountStatus').textContent=e.message||String(e);$('#accountSaveStatus').textContent=e.message||String(e);}
  async function save(){await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();}
  let initializing;
- function initialize(){return initializing??=(async()=>{try{await window.classicReady;model=await import('./income-model.mjs');const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;await renderIncome();}catch(e){error(e);}})();}
+ function initialize(){return initializing??=(async()=>{try{await window.classicReady;model=await import('./income-model.mjs?v=forecast-links1');const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;await renderIncome();}catch(e){error(e);}})();}
  window.addEventListener('load',initialize,{once:true});
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});
+ function showTransactions(open=true){
+  window.selectBearTab('income');$('#bankActivityCard').hidden=!open;$('#incomeTransactionsToggleBtn').setAttribute('aria-expanded',String(open));
+ }
+ $('#incomeTransactionsToggleBtn').onclick=()=>{spendingCategory=null;$('#transactionFilter').value='all';showTransactions($('#bankActivityCard').hidden);renderIncome();};
+ document.addEventListener('click',async e=>{
+  const button=e.target.closest('[data-forecast-debt-mode]');if(!button)return;
+  const old=planner.forecastDebtMode;planner.forecastDebtMode=button.dataset.forecastDebtMode;
+  try{await save();}catch(e){planner.forecastDebtMode=old;await renderIncome();error(e);}
+ });
+ const linkDrafts={};let pickingLink=null;
+ const bankTransactions=()=>window.BearDen.plan?.connections?.transactions||[];
+ function setEditorLink(prefix,target,link=null,exactAmount=false){
+  linkDrafts[prefix]={target,link:link?structuredClone(link):null,exactAmount};renderEditorLink(prefix);
+ }
+ function renderEditorLink(prefix){
+  const draft=linkDrafts[prefix],link=draft.link,history=link?model.matchingPayments(bankTransactions(),link,iso(new Date())):[];
+  const account=(window.BearDen.plan?.state?.accounts||[]).find(a=>a.id==='plaid-'+link?.accountId);
+  $('#'+prefix+'TransactionLink').innerHTML='<strong>Linked bank payments</strong>'+(link?'<p class="subtle">Watching '+esc(link.name)+' · '+esc(account?.name||'selected bank account')+'</p><label class="check-label"><input type="checkbox" data-link-exact="'+prefix+'" '+(link.amount!=null?'checked':'')+'> Only payments of '+money(link.sampleAmount||link.amount||0)+'</label><p class="subtle">'+history.length+' matching posted payment'+(history.length===1?'':'s')+' in available history. Future syncs use this merchant and bank account.</p><div class="linked-payment-list">'+history.map(t=>'<div class="forecast-row"><span>'+esc(t.name)+'<small>'+esc(dateLabel(t.date))+'</small></span><strong>'+money(Math.round(t.amount*100))+'</strong></div>').join('')+'</div>':'<p class="subtle">Choose a transaction to find previous payments and watch this merchant on future bank syncs.</p>')+(link&&linkError(draft.target,link)?'<p class="subtle" role="status">'+esc(linkError(draft.target,link))+'</p>':'')+'<div class="link-actions"><button type="button" data-pick-link="'+prefix+'">'+(link?'Change transaction':'Link a transaction')+'</button>'+(link?'<button type="button" data-unlink-payment="'+prefix+'">Unlink</button>':'')+'</div>'+(prefix==='bill'?'':'<p class="subtle">Matched payments appear in your history. Starting balances and paycheck checkoffs stay as entered.</p>');
+ }
+ function linkError(target,link){
+  if(!link)return '';
+  const conflict=model.linkConflict(planner.transactionLinks,target,link);
+  if(conflict)return 'This merchant is already linked to '+(planner.transactionLinks[conflict].targetName||'another account')+'. Use an amount filter to separate payments, or unlink the other account first.';
+  const tracked=Object.values(planner.bankRules).find(r=>r.choice==='bill'&&!planner.transactionLinks['bill:'+r.id]&&'bill:'+r.id!==target&&review.bills.some(b=>b.id===r.id&&model.matchingPayments(bankTransactions(),link,iso(new Date())).some(t=>t.key===b.groupKey||model.transactionKey(t)===b.groupKey)));
+  return tracked?'This transaction already tracks '+tracked.name+'. Edit or stop tracking that bill first.':'';
+ }
+ function storeEditorLink(prefix,target,name){
+  const link=linkDrafts[prefix]?.link,message=linkError(target,link);if(message)throw Error(message);
+  if(link)planner.transactionLinks[target]={...link,targetName:name};else delete planner.transactionLinks[target];
+ }
+ function renderTransactionChoices(){
+  const query=$('#transactionLinkSearch').value.toLowerCase().trim(),draft=linkDrafts[pickingLink];
+  const rows=bankTransactions().filter(t=>model.postedPayment(t)&&t.date<=iso(new Date())&&(!query||(t.name+' '+t.amount+' '+money(Math.round(t.amount*100))).toLowerCase().includes(query))).sort((a,b)=>b.date.localeCompare(a.date));
+  $('#transactionLinkChoices').innerHTML=rows.map(t=>{
+   const account=(window.BearDen.plan?.state?.accounts||[]).find(a=>a.id==='plaid-'+t.account_id),link=model.paymentLink(t,{exactAmount:draft.exactAmount}),message=linkError(draft.target,link);
+   return '<button type="button" class="transaction-choice" data-link-transaction="'+esc(t.transaction_id)+'"><span><strong>'+esc(t.name)+'</strong><b>'+money(Math.round(t.amount*100))+'</b></span><small>'+esc(dateLabel(t.date)+' · '+(account?.name||'Bank account'))+'</small>'+(message?'<small>'+esc(message)+'</small>':'')+'</button>';
+  }).join('')||'<p class="subtle">No matching posted payments. Refresh your bank to load available history.</p>';
+ }
+ $('#transactionLinkSearch').oninput=renderTransactionChoices;
+ $('#closeTransactionLinkPicker').onclick=()=>$('#transactionLinkPicker').close();
+ document.addEventListener('change',e=>{const checkbox=e.target.closest('[data-link-exact]');if(!checkbox)return;const prefix=checkbox.dataset.linkExact,draft=linkDrafts[prefix];draft.link.amount=checkbox.checked?draft.link.sampleAmount:null;draft.exactAmount=checkbox.checked;renderEditorLink(prefix);});
+ document.addEventListener('click',e=>{
+  const pick=e.target.closest('[data-pick-link]');if(pick){pickingLink=pick.dataset.pickLink;$('#transactionLinkSearch').value='';$('#transactionLinkError').textContent='';renderTransactionChoices();$('#transactionLinkPicker').showModal();}
+  const unlink=e.target.closest('[data-unlink-payment]');if(unlink){linkDrafts[unlink.dataset.unlinkPayment].link=null;renderEditorLink(unlink.dataset.unlinkPayment);}
+  const chosen=e.target.closest('[data-link-transaction]');if(chosen){const transaction=bankTransactions().find(t=>t.transaction_id===chosen.dataset.linkTransaction);if(!transaction)return;const draft=linkDrafts[pickingLink],link=model.paymentLink(transaction,{exactAmount:draft.exactAmount}),message=linkError(draft.target,link);draft.link=link;renderEditorLink(pickingLink);$('#transactionLinkPicker').close();}
+  const linked=e.target.closest('[data-edit-linked]');if(linked){const target=linked.dataset.editLinked,[type,...parts]=target.split(':'),id=parts.join(':');if(type==='debt')openDebtEditor(id);else if(type==='credit')openCreditEditor(id);else openBillEditor(id);}
+ });
  const debtKinds={'credit-card':'Credit card','car-loan':'Car loan',loan:'Personal loan',other:'Debt'};
  const refreshIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.35 6.65M20 4v7h-7"/></svg>';
  function renderDebtAccounts(plan,connections,accounts,payments,paidPayments){
@@ -56,8 +103,8 @@
    const util=balance!==null&&c.limit>0?Math.max(0,balance/c.limit*100):null,apr=c.aprs.find(a=>a.type==='purchase_apr');
    const due=payments.find(b=>b.id===c.id),paid=paidPayments.find(b=>b.id===c.id),history=c.payments||[],dueDate=c.dueDate||p.fallbackDate;
    const state=paidOff?badge(status?.paidOff?'Paid off in plan':'Paid off'):paid?badge('Payment paid'):'';
-   const paymentLabel=paid?.paidByPaycheck?'Paid from checked paychecks':paid?'Marked paid':c.minimum===0?'No minimum due':dueDate?'Due '+dateLabel(dueDate)+(c.dueDate?'':' (est.)'):'Due date not shared';
-   const action=paid?.paidByPaycheck||status?.paidOff?'':!p.tracking?'<button data-edit-credit="'+esc(c.id)+'">Track payment</button>':paid?'<button data-bill-unpaid="'+esc(paid.key)+'">Mark unpaid</button>':due?'<button data-bill-paid="'+esc(due.key)+'">✓ Mark paid</button>':'';
+   const paymentLabel=paid?.paidByPaycheck?'Paid from checked paychecks':paid?.paidByBank?'Matched bank payment':paid?'Marked paid':c.minimum===0?'No minimum due':dueDate?'Due '+dateLabel(dueDate)+(c.dueDate?'':' (est.)'):'Due date not shared';
+   const action=paid?.paidByPaycheck||paid?.paidByBank||status?.paidOff?'':!p.tracking?'<button data-edit-credit="'+esc(c.id)+'">Track payment</button>':paid?'<button data-bill-unpaid="'+esc(paid.key)+'">Mark unpaid</button>':due?'<button data-bill-paid="'+esc(due.key)+'">✓ Mark paid</button>':'';
    let spark='';if(c.history?.length>1){const values=c.history.map(p=>p.balance),low=Math.min(...values),range=Math.max(...values)-low||1,points=values.map((v,i)=>(i/(values.length-1)*280+5).toFixed(1)+','+(52-(v-low)/range*40).toFixed(1)).join(' ');spark='<svg class="credit-spark" viewBox="0 0 290 60" role="img" aria-label="Balance history since connection"><title>Balance history since connection</title><polyline points="'+points+'" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>';}
    return '<article class="debt-account connected-debt'+(paidOff?' is-paid-off':'')+'" data-account-id="'+esc(c.id)+'">'
     +'<div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(p.name||c.name)+'</h4><small>'+esc(c.institution+(c.mask?' · ••'+c.mask:''))+'</small>'+state+'</div></div>'
@@ -77,8 +124,9 @@
   const manual=(plan.state.cards||[]).flatMap(c=>{
    if(matched.has(String(c.id)))return [];
    const status=model.trackerDebtStatus(plan,c.id),next=payments.find(b=>b.source==='tracker-debt'&&b.trackerCardId===String(c.id));
+   const bankHistory=model.matchingPayments(bankTransactions(),planner.transactionLinks['debt:'+c.id],iso(new Date()));
    const starting=Math.round(c.balance*100),progress=starting>0?Math.min(100,Math.max(0,(starting-status.balance)/starting*100)):100;
-   return '<article class="debt-account manual-debt'+(status.paidOff?' is-paid-off':'')+'" data-tracker-account="'+esc(c.id)+'"><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(c.name)+'</h4><small>'+esc(debtKinds[c.debtKind]||'Debt')+'</small>'+(status.paidOff?badge('Paid off'):status.lastPayment?badge('Payment paid · '+dateLabel(status.lastPayment.date)):'')+'</div></div>'
+   return '<article class="debt-account manual-debt'+(status.paidOff?' is-paid-off':'')+'" data-tracker-account="'+esc(c.id)+'"><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(c.name)+'</h4><small>'+esc(debtKinds[c.debtKind]||'Debt')+'</small>'+(status.paidOff?badge('Paid off'):status.lastPayment?badge('Payment paid · '+dateLabel(status.lastPayment.date)):bankHistory.length?badge('Bank payment · '+dateLabel(bankHistory[0].date)):'')+'</div></div>'
     +'<div class="debt-key-amounts"><div><span>Remaining balance</span><strong>'+money(status.balance)+'</strong></div><div class="minimum-due"><span>Min. per paycheck</span><strong>'+money(Math.round(c.min*100))+'</strong></div></div>'
     +'<div class="debt-compact-meta"><span>APR '+esc(Number(Number(c.apr).toFixed(2)))+'%</span></div>'
     +'<div class="debt-account-footer"><span class="debt-due-date">'+esc(status.paidOff?'Paid from checked paychecks':next?'Next payment '+dateLabel(next.date):'Set up paydays in Income')+(next&&!status.paidOff?'<small>'+money(next.amount)+' planned</small>':'')+'</span><div class="debt-account-tools"><button type="button" class="bill-icon-button" data-edit-debt="'+esc(c.id)+'" aria-label="Edit '+esc(c.name)+'">'+pencil+'</button></div></div>'
@@ -96,6 +144,7 @@
   $('#debtEditorTitle').textContent=debt?'Debt details':'Add debt';$('#debtConnectionChoice').hidden=!!debt;$('#debtHistoryButton').hidden=!debt;
   $('#debtExistingConnections').innerHTML=(window.BearDen.plan?.connections?.items||[]).map(i=>'<button type="button" data-credit-update="'+esc(i.id)+'" data-account-connect>Use '+esc(i.name)+' connection</button>').join('');
   const start=window.getDebtPlan().state.startDate;$('#debtPlanNote').textContent='This starting balance belongs to your payoff plan'+(start?' beginning '+dateLabel(start):'')+'. Payments use the payday schedule in Trackers.';
+  setEditorLink('debt','debt:'+editingDebt,planner.transactionLinks['debt:'+editingDebt]);
   $('#debtEditorError').textContent='';$('#debtEditor').showModal();
  }
  $('#debtHistoryButton').onclick=()=>{if(editingDebt!==null){$('#debtEditor').close();window.showDebtAccountHistory(editingDebt);}};
@@ -106,7 +155,11 @@
   const type=e.target.closest('[data-account-kind]');if(type){$('#accountTypePicker').close();if(type.dataset.accountKind==='debt'){selectAccountView('debt');openDebtEditor();}else{selectAccountView('bills');openBillEditor(null,null,true);}}
   const debt=e.target.closest('[data-edit-debt]');if(debt)openDebtEditor(debt.dataset.editDebt);
  });
- $('#debtEditorForm').onsubmit=async e=>{e.preventDefault();const form=e.currentTarget,d=new FormData(form),button=form.querySelector('[type=submit]');button.disabled=true;try{await window.saveDebtAccount({id:editingDebt,...Object.fromEntries(d)});await renderIncome();$('#debtEditor').close();sessionStorage.removeItem('bearden-debt-draft');$('#accountStatus').textContent='Debt saved to your payoff plan.';}catch(e){$('#debtEditorError').textContent=e.message;}finally{button.disabled=false;}};
+ $('#debtEditorForm').onsubmit=async e=>{
+  e.preventDefault();const form=e.currentTarget,d=new FormData(form),button=form.querySelector('[type=submit]'),snapshot=structuredClone(planner);let debtSaved=false;button.disabled=true;
+  try{const message=linkError('debt:'+editingDebt,linkDrafts.debt?.link);if(message)throw Error(message);editingDebt=await window.saveDebtAccount({id:editingDebt,...Object.fromEntries(d)});debtSaved=true;storeEditorLink('debt','debt:'+editingDebt,String(d.get('name')).trim());await save();$('#debtEditor').close();sessionStorage.removeItem('bearden-debt-draft');$('#accountStatus').textContent='Debt saved to your payoff plan.';}
+  catch(e){planner=snapshot;$('#debtEditorError').textContent=(debtSaved?'Debt details saved, but the transaction link could not be saved. Retry Save debt. ':'')+e.message;}finally{button.disabled=false;}
+ };
  window.prepareDebtConnection=()=>{const draft=Object.fromEntries(new FormData($('#debtEditorForm')));sessionStorage.setItem('bearden-debt-draft',JSON.stringify(draft));$('#debtEditor').close();return {fromAccount:true,draftName:draft.name,beforeCardIds:(window.BearDen.plan?.connections?.creditCards||[]).map(c=>c.id)};};
  window.addEventListener('bearden-credit-connected',async e=>{
   window.selectBearTab('accounts');selectAccountView('debt');await initialize();if(!ready)return;await renderIncome();
@@ -125,17 +178,18 @@
   form.elements.date.value=card.dueDate||p.fallbackDate||'';form.elements.date.disabled=!!card.dueDate;
   form.elements.trackerCardId.innerHTML='<option value="">No matching debt</option>'+cards.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>').join('');form.elements.trackerCardId.value=p.trackerCardId||'';
   form.elements.replaces.innerHTML='<option value="">Keep my other bills</option>'+[...planner.manual,...review.bills].map(b=>'<option value="'+esc(b.id)+'">'+esc(b.name)+'</option>').join('');form.elements.replaces.value=p.replaces||'';
+  setEditorLink('credit','credit:'+id,planner.transactionLinks['credit:'+id]);
   $('#creditEditorError').textContent='';$('#debtEditor').close();$('#accountTypePicker').close();$('#creditEditor').showModal();
  }
  document.addEventListener('click',e=>{const button=e.target.closest('[data-edit-credit]');if(button)openCreditEditor(button.dataset.editCredit);});
  $('#closeCreditEditor').onclick=()=>$('#creditEditor').close();
  $('#creditEditorForm').onsubmit=async e=>{
-  e.preventDefault();if(!editingCredit)return;const form=e.currentTarget,d=new FormData(form),old=planner.creditCards[editingCredit.id],button=form.querySelector('[type=submit]');
+  e.preventDefault();if(!editingCredit)return;const form=e.currentTarget,d=new FormData(form),old=planner.creditCards[editingCredit.id],oldLinks=structuredClone(planner.transactionLinks),button=form.querySelector('[type=submit]');
   const fallbackAmount=form.elements.amount.value===''?null:Math.round(Number(form.elements.amount.value)*100),fallbackDate=form.elements.date.value;
   if(d.has('tracking')&&editingCredit.currency!=='USD'){$('#creditEditorError').textContent='Only USD card bills can enter this forecast.';return;}
   if(d.has('tracking')&&((editingCredit.minimum===null&&(!Number.isSafeInteger(fallbackAmount)||fallbackAmount<0))||!editingCredit.dueDate&&!fallbackDate)){$('#creditEditorError').textContent='Add the minimum or due date your issuer has not shared.';return;}
   if(d.has('tracking')&&Object.entries(planner.creditCards).some(([id,p])=>id!==editingCredit.id&&p.tracking&&((d.get('trackerCardId')&&p.trackerCardId===d.get('trackerCardId'))||(d.get('replaces')&&p.replaces===d.get('replaces'))))){$('#creditEditorError').textContent='That debt or bill is already matched to another card.';return;}
-  button.disabled=true;try{planner.creditCards[editingCredit.id]={tracking:d.has('tracking'),name:String(d.get('name')).trim(),covered:d.has('covered'),trackerCardId:String(d.get('trackerCardId')||''),replaces:String(d.get('replaces')||''),fallbackAmount,fallbackDate};await save();$('#creditEditor').close();sessionStorage.removeItem('bearden-debt-draft');}catch(e){if(old)planner.creditCards[editingCredit.id]=old;else delete planner.creditCards[editingCredit.id];$('#creditEditorError').textContent=e.message;}finally{button.disabled=false;}
+  button.disabled=true;try{storeEditorLink('credit','credit:'+editingCredit.id,String(d.get('name')).trim());planner.creditCards[editingCredit.id]={tracking:d.has('tracking'),name:String(d.get('name')).trim(),covered:d.has('covered'),trackerCardId:String(d.get('trackerCardId')||''),replaces:String(d.get('replaces')||''),fallbackAmount,fallbackDate};await save();$('#creditEditor').close();sessionStorage.removeItem('bearden-debt-draft');}catch(e){planner.transactionLinks=oldLinks;if(old)planner.creditCards[editingCredit.id]=old;else delete planner.creditCards[editingCredit.id];$('#creditEditorError').textContent=e.message;}finally{button.disabled=false;}
  };
  async function renderIncome(){
   if(!ready)return;
@@ -153,11 +207,12 @@
    $('#debtBankUpdated').textContent=connections.bankUpdated?'Last synced '+new Date(connections.bankUpdated).toLocaleString():'';
    $('#accountChoices').innerHTML=accounts.map(a=>'<label class="check-label"><input type="checkbox" data-account-visible="'+esc(a.id)+'" '+(visible.some(v=>v.id===a.id)?'checked':'')+'> '+esc(a.name)+'</label>').join('')||'<p class="subtle">Connect a bank in Settings first.</p>';
    $('#restoreBankEstimates').hidden=true;
-   review=model.reviewBankActivity(connections.transactions||[],planner.bankRules,connections.recurringBills||[],currentDay);
+   review=model.reviewBankActivity(connections.transactions||[],planner.bankRules,connections.recurringBills||[],currentDay,planner.transactionLinks);
    const electricRule=Object.values(planner.bankRules).find(r=>r.id===planner.electricBillId&&r.choice==='bill')||planner.manual.find(b=>b.id===planner.electricBillId);
    const electricLabel=$('#electricBillSelection');if(electricLabel)electricLabel.textContent=electricRule?'Linked bill: '+electricRule.name:'Choose Electric and enable Gmail in a bill’s details to link it.';
    const estimates=review.bills.map(b=>({...b,...planner.estimates[b.id],paidByCard:accounts.some(a=>a.type==='credit'&&a.id==='plaid-'+JSON.parse(b.groupKey)[1])}));
    const credit=model.creditBills(connections.creditCards||[],planner.creditCards);
+   for(const bill of credit)bill.statementDate=(connections.creditCards||[]).find(c=>c.id===bill.id)?.statementDate;
    for(const bill of credit)if(planner.creditCards[bill.id]?.trackerCardId&&plan.state.cards?.some(c=>String(c.id)===planner.creditCards[bill.id].trackerCardId))bill.covered=true;
    const debtBills=model.trackerDebtBills(plan,credit,planner.creditCards,{includePaid:true});
    const paycheckPaid=new Set(model.paycheckPaidCreditBills(plan,credit,connections.creditCards||[],planner.creditCards));
@@ -165,10 +220,14 @@
    for(const bill of credit)bill.paidByPaycheck=paycheckPaid.has(bill.id+':'+bill.date);
    const paymentsPlanner={...planner,paid:[...new Set([...planner.paid,...paycheckPaid])]};
    const billPlan={...legacy,bills:[...(legacy.bills||[]).filter(b=>b.source!=='gmail'||b.billKind==='electric'||/consumers\s*energy|@(?:[a-z0-9-]+\.)*consumersenergy\.com/i.test((b.name||'')+' '+(b.sender||''))),...estimates,...credit,...debtBills]};
+   const allBillEvents=model.billEvents({...billPlan,paid:[]},{...planner,paid:[]},linked,modelDay(currentDay,-365),modelDay(currentDay,366));
+   const bankPaid=new Set(model.matchedBillPayments(allBillEvents.filter(b=>b.source!=='tracker-debt'),connections.transactions||[],planner.transactionLinks,currentDay));
+   paymentsPlanner.paid=[...new Set([...paymentsPlanner.paid,...bankPaid])];
+   for(const bill of billPlan.bills)bill.paidByBank=bankPaid.has(bill.id+':'+bill.date);
    $('#bankBillStatus').textContent=estimates.length+' tracked bank bill'+(estimates.length===1?'':'s')+'. The calendar includes recurring bills and scheduled debt payments.';
    $('#transactionCount').textContent=review.rows.length+' transactions';
    const filter=$('#transactionFilter').value,activity=review.rows.filter(t=>(filter==='all'||t.choice===filter)&&(!spendingCategory||t.spendingCategoryKey===spendingCategory));
-   $('#bankTransactions').innerHTML=activity.map(t=>'<div class="transaction-entry"><div class="bill-entry-top"><span>'+esc(t.name)+'</span><strong>'+money(Math.round(t.amount*100))+'</strong></div><small>'+esc(dateLabel(t.date)+' · '+t.label)+'</small><div class="bill-actions"><button type="button" data-track-transaction="'+esc(t.transaction_id)+'" '+(t.choice==='bill'?'disabled':'')+'>'+(t.choice==='bill'?'Tracking bill':'Track bill')+'</button><button type="button" data-spending-transaction="'+esc(t.transaction_id)+'" '+(planner.bankRules[t.key]?.choice==='spending'?'disabled':'')+'>Personal spending</button>'+(planner.bankRules[t.key]?'<button type="button" data-reset-transaction="'+esc(t.transaction_id)+'">Undo choice</button>':'')+'</div></div>').join('')||'<p class="subtle">'+(review.rows.length?'No transactions in this group.':'Refresh your bank to load recent outgoing transactions.')+'</p>';
+   $('#bankTransactions').innerHTML=activity.map(t=>'<div class="transaction-entry"><div class="bill-entry-top"><span>'+esc(t.name)+'</span><strong>'+money(Math.round(t.amount*100))+'</strong></div><small>'+esc(dateLabel(t.date)+' · '+t.label)+'</small><div class="bill-actions">'+(t.linkedTarget?'<button type="button" data-edit-linked="'+esc(t.linkedTarget)+'">Edit linked account</button>':'<button type="button" data-track-transaction="'+esc(t.transaction_id)+'" '+(t.choice==='bill'?'disabled':'')+'>'+(t.choice==='bill'?'Tracking bill':'Track bill')+'</button><button type="button" data-spending-transaction="'+esc(t.transaction_id)+'" '+(planner.bankRules[t.key]?.choice==='spending'?'disabled':'')+'>Personal spending</button>'+(planner.bankRules[t.key]?'<button type="button" data-reset-transaction="'+esc(t.transaction_id)+'">Undo choice</button>':''))+'</div></div>').join('')||'<p class="subtle">'+(review.rows.length?'No transactions in this group.':'Refresh your bank to load recent outgoing transactions.')+'</p>';
 
    $('#incomeBalances').innerHTML=visible.length?rows:'<p class="subtle">'+(accounts.length?'Choose accounts to show your balances.':authenticated?'Connect your bank in Settings to see your balances here.':'Sign in and connect your bank in Settings to see your balances.')+'</p>';
    $('#incomeBankUpdated').textContent=connections.bankUpdated?'Last synced '+new Date(connections.bankUpdated).toLocaleString():'';
@@ -192,8 +251,8 @@
    const calendarRows=[...bills,...paidBills.map(b=>({...b,isPaid:true}))].filter(b=>!selected||b.date===selected).sort((a,b)=>a.date.localeCompare(b.date));
    $('#calendarAgenda').innerHTML=calendarRows.map(b=>'<button type="button" class="calendar-agenda-row" data-account-view="'+(model.isDebtPayment(b)?'debt':'bills')+'"><span><strong>'+esc(b.name)+'</strong><small>'+esc(dateLabel(b.date))+' · '+(b.isPaid?'✓ Paid':model.isDebtPayment(b)?'Debt payment':'Bill')+'</small></span><strong>'+money(b.amount)+'</strong></button>').join('')||'<p class="subtle">No payments '+(selected?'on this day.':'this month.')+'</p>';
    const billTile=(b,paid=false)=>{
-    const editable=['bank-tracked','manual'].includes(b.source),d=new Date(b.date+'T12:00:00'),category=billCategories[b.billKind]||'Bill',status=paid?'Marked paid':(b.gmailConfirmed||b.source==='gmail')?'Confirmed by Gmail':planner.electricBillId===b.id?'Gmail linked · Estimated':'Estimated';
-    return '<article class="bill-tile recurring-account" data-account-id="'+esc(b.id)+'"><div class="bill-tile-main"><div class="bill-date '+(b.date<today&&!paid?'is-overdue':'')+'"><span>'+esc(d.toLocaleDateString('en-US',{month:'short'}))+'</span><strong>'+d.getDate()+'</strong></div><div class="bill-tile-info"><h4>'+esc(b.name)+'</h4><span class="bill-category">'+esc(category)+'</span><small>'+esc(b.date<today&&!paid?'Overdue':status)+'</small></div><div class="bill-tile-right"><strong>'+money(b.amount)+'</strong>'+(editable?'<button type="button" class="bill-icon-button" data-edit-bill="'+esc(b.id)+'" aria-label="Edit '+esc(b.name)+'">'+pencil+'</button>':'')+'</div></div><div class="bill-tile-footer"><span>'+esc(b.paidByCard?'Paid through credit card':({monthly:'Monthly',biweekly:'Every two weeks',weekly:'Weekly',once:'One-time bill'})[b.repeat]||'Scheduled')+'</span><button class="bill-paid-button" '+(paid?'data-bill-unpaid':'data-bill-paid')+'="'+esc(b.key)+'">'+(paid?'Mark unpaid':'✓ Mark paid')+'</button></div></article>';
+    const editable=['bank-tracked','manual'].includes(b.source),d=new Date(b.date+'T12:00:00'),category=billCategories[b.billKind]||'Bill',status=paid?(bankPaid.has(b.key)?'Matched bank payment':'Marked paid'):(b.gmailConfirmed||b.source==='gmail')?'Confirmed by Gmail':planner.electricBillId===b.id?'Gmail linked · Estimated':'Estimated';
+    return '<article class="bill-tile recurring-account" data-account-id="'+esc(b.id)+'"><div class="bill-tile-main"><div class="bill-date '+(b.date<today&&!paid?'is-overdue':'')+'"><span>'+esc(d.toLocaleDateString('en-US',{month:'short'}))+'</span><strong>'+d.getDate()+'</strong></div><div class="bill-tile-info"><h4>'+esc(b.name)+'</h4><span class="bill-category">'+esc(category)+'</span><small>'+esc(b.date<today&&!paid?'Overdue':status)+'</small></div><div class="bill-tile-right"><strong>'+money(b.amount)+'</strong>'+(editable?'<button type="button" class="bill-icon-button" data-edit-bill="'+esc(b.id)+'" aria-label="Edit '+esc(b.name)+'">'+pencil+'</button>':'')+'</div></div><div class="bill-tile-footer"><span>'+esc(b.paidByCard?'Paid through credit card':({monthly:'Monthly',biweekly:'Every two weeks',weekly:'Weekly',once:'One-time bill'})[b.repeat]||'Scheduled')+'</span>'+(paid&&bankPaid.has(b.key)?'<span>✓ Bank payment</span>':'<button class="bill-paid-button" '+(paid?'data-bill-unpaid':'data-bill-paid')+'="'+esc(b.key)+'">'+(paid?'Mark unpaid':'✓ Mark paid')+'</button>')+'</div></article>';
    };
    $('#billAgenda').innerHTML=list.map(b=>billTile(b)).join('')||'<p class="subtle">Add a recurring bill or track one from your transactions.</p>';
    $('#billAccountCount').textContent=list.length;
@@ -201,7 +260,9 @@
    if(paidRecurring.length)$('#billAgenda').insertAdjacentHTML('beforeend','<details class="add-bill"><summary>Paid this month ('+paidRecurring.length+')</summary>'+paidRecurring.map(b=>billTile(b,true)).join('')+'</details>');
    const paidAmount=paidBills.reduce((n,b)=>n+b.amount,0),unpaidAmount=bills.reduce((n,b)=>n+b.amount,0),totalBills=paidBills.length+bills.length,paidPercent=paidAmount+unpaidAmount?Math.round(paidAmount/(paidAmount+unpaidAmount)*100):0;
    $('#billVisuals').innerHTML='<div class="bill-progress"><div class="progress-ring" role="img" aria-label="'+paidPercent+' percent of bill amount paid" style="background:conic-gradient(var(--accent) '+paidPercent+'%,var(--line) 0)"><span><strong>'+paidPercent+'%</strong><small>paid</small></span></div><div><span class="chart-eyebrow">Payments this month</span><strong>'+money(unpaidAmount)+'</strong><small>remaining · '+paidBills.length+' of '+totalBills+' paid</small></div></div>';
-   const future=iso(new Date(new Date().getFullYear(),new Date().getMonth(),new Date().getDate()+30)),forecastBills=model.billEvents(billPlan,paymentsPlanner,linked,today,future),forecastPays=model.paydayEvents(plan,today,future,{billsOnly:true}),f=model.cashForecast(accounts,forecastPays,forecastBills,today);
+   const future=iso(new Date(new Date().getFullYear(),new Date().getMonth(),new Date().getDate()+30)),forecastBills=model.billEvents(billPlan,paymentsPlanner,linked,today,future),debtMode=['full','minimum','none'].includes(planner.forecastDebtMode)?planner.forecastDebtMode:'full',f=model.scenarioForecast(accounts,plan,forecastBills,today,{debtMode});
+   for(const button of document.querySelectorAll('[data-forecast-debt-mode]'))button.setAttribute('aria-pressed',String(button.dataset.forecastDebtMode===debtMode));
+   $('#forecastModeNote').textContent=({full:'Includes your full planned debt payments.',minimum:'Uses saved per-paycheck minimums for your payoff plan and scheduled minimums for other cards.',none:'Shows your estimated balance before debt payments. Regular bills, including car payments, stay included.'})[debtMode]+' This comparison does not change your payoff plan.';
    const groups=review.spending.categories||[],spendingTotal=review.spending.total;let angle=0;
    const stops=groups.map((g,i)=>{const from=angle;angle+=g.amount/spendingTotal*360;return chartColors[i%chartColors.length]+' '+from+'deg '+angle+'deg';});
    $('#spendingDonut').innerHTML='<div class="spending-chart"><div class="spending-ring" role="img" aria-label="'+esc('Personal spending total '+money(spendingTotal))+'" style="background:'+(stops.length?'conic-gradient('+stops.join(',')+')':'var(--line)')+'"><div><small>SPENT</small><strong>'+money(spendingTotal)+'</strong><span>last 30 days</span></div></div><div class="spending-highlight"><span class="chart-eyebrow">Your spending mix</span><strong>'+esc(groups[0]?.label||'A fresh start')+'</strong><p>'+(groups.length?Math.round(groups[0].amount/spendingTotal*100)+'% went to this category. Tap a category below to explore.':'Your chart fills in as bank purchases arrive.')+'</p></div></div>';
@@ -239,6 +300,8 @@
   form.elements.gmailElectric.checked=planner.electricBillId===id||(!planner.electricBillId&&b.billKind==='electric');
   $('#electricLinkOption').hidden=form.elements.billKind.value!=='electric';
   $('#billEditorTitle').textContent=newManual?'Add recurring bill':transaction?'Track a bill':'Bill details';$('#billEditorSource').textContent=transaction?'Bank transaction: '+transaction.name:raw?'Linked to your bank transactions. Your custom name stays the same after a sync.':'Your manually added bill.';
+  const seed=transaction||(raw?bankTransactions().find(t=>model.transactionKey(t)===raw.groupKey):null);
+  setEditorLink('bill','bill:'+id,planner.transactionLinks['bill:'+id]||(seed?model.paymentLink(seed,{exactAmount:b.billKind==='car-payment'}):null),b.billKind==='car-payment');
   $('#stopTrackingBill').hidden=!!transaction||newManual;$('#billEditorError').textContent='';$('#billEditor').showModal();
  }
  document.addEventListener('click',e=>{const button=e.target.closest('[data-edit-bill]');if(button)openBillEditor(button.dataset.editBill);});
@@ -258,6 +321,8 @@
     planner.bankRules[editingBill.key]={...old,choice:'bill',id,name,billKind,amount:editingBill.base.amount,lastPayment:t?.date||editingBill.base.lastPayment,repeat};
     const correction={};if(amount!==editingBill.base.amount)correction.amount=amount;if(date!==editingBill.base.date)correction.date=date;planner.estimates[id]=correction;
    }
+   storeEditorLink('bill','bill:'+id,name);
+   if(!linkDrafts.bill.link&&!editingBill.manual&&!editingBill.newManual){delete planner.bankRules[editingBill.key];delete planner.estimates[id];planner.manual.push({id,name,amount,date,repeat,billKind,source:'manual'});}
    planner.covered[id]=d.has('covered');
    if(billKind==='electric'&&d.has('gmailElectric'))planner.electricBillId=id;else if(planner.electricBillId===id)delete planner.electricBillId;
    await save();$('#billEditor').close();$('#transactionStatus').textContent='Bill saved.';$('#accountStatus').textContent='Recurring bill saved.';
@@ -265,10 +330,10 @@
  };
  $('#stopTrackingBill').onclick=async()=>{
   if(!editingBill?.id)return;const snapshot=structuredClone(planner),id=editingBill.id;
-  try{if(editingBill.manual)planner.manual=planner.manual.filter(b=>b.id!==id);else delete planner.bankRules[editingBill.key];delete planner.estimates[id];delete planner.covered[id];if(planner.electricBillId===id)delete planner.electricBillId;await save();$('#billEditor').close();}catch(e){planner=snapshot;$('#billEditorError').textContent=e.message;}
+  try{if(editingBill.manual)planner.manual=planner.manual.filter(b=>b.id!==id);else delete planner.bankRules[editingBill.key];delete planner.estimates[id];delete planner.covered[id];delete planner.transactionLinks['bill:'+id];if(planner.electricBillId===id)delete planner.electricBillId;await save();$('#billEditor').close();}catch(e){planner=snapshot;$('#billEditorError').textContent=e.message;}
  };
 
- document.addEventListener('click',e=>{const category=e.target.closest('[data-spending-category]');if(!category)return;spendingCategory=category.dataset.spendingCategory;$('#transactionFilter').value='spending';$('#bankActivityCard').open=true;window.selectBearTab('accounts');selectAccountView('bills');renderIncome();$('#bankActivityCard').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});});
+ document.addEventListener('click',e=>{const category=e.target.closest('[data-spending-category]');if(!category)return;spendingCategory=category.dataset.spendingCategory;$('#transactionFilter').value='spending';showTransactions(true);renderIncome();});
  document.addEventListener('input',e=>{if(e.target.id!=='forecastScrub')return;const index=Number(e.target.value),point=forecastPoints[index];if(!point)return;$('#forecastPoint').textContent=dateLabel(point.date)+' · '+money(point.balance);$('#forecastCursor').setAttribute('x1',12+index*9.2);$('#forecastCursor').setAttribute('x2',12+index*9.2);});
  $('#transactionFilter').onchange=()=>{spendingCategory=null;renderIncome();};
  document.addEventListener('click',async e=>{

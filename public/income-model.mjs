@@ -1,5 +1,6 @@
 export {reviewBankActivity,transactionKey} from './bank-activity.mjs';
 export {creditBills} from './credit-model.mjs';
+export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment} from './transaction-links.mjs';
 import {day,occurrences} from './engine.mjs';
 const cents=n=>Math.round((Number(n)||0)*100);
 const isPersonal=b=>/\b(food|dining|grocer(?:y|ies)|gas|fuel|transport|shopping|personal|spending|entertainment|misc(?:ellaneous)?|allowance|fun|restaurants)\b/i.test(b.name||'');
@@ -45,9 +46,12 @@ export function accountPaymentRows(events,selected=null){
  }
  return rows;
 }
-export function paydayEvents(plan,start,end,{billsOnly=false}={}){
+export function paydayEvents(plan,start,end,{billsOnly=false,debtMode='full'}={}){
  const s=plan.state||{},rows=new Map((plan.schedule||[]).map(r=>[r.paycheck,r]));
  if(!s.startDate)return [];
+ // A comparison starts from completed payments, not future full-plan payoff dates.
+ // Keep its own balances so minimums continue after the full plan would finish.
+ const remaining=debtMode==='minimum'?(s.cards||[]).map(c=>trackerDebtStatus(plan,c.id).balance):[];
  const out=[];
  for(const date of occurrences(s.startDate,'biweekly',start,end)){
   const n=Math.round((Date.parse(date+'T12:00Z')-Date.parse(s.startDate+'T12:00Z'))/86400000/14)+1;
@@ -55,10 +59,25 @@ export function paydayEvents(plan,start,end,{billsOnly=false}={}){
   const row=rows.get(n),income=cents(row?row.takeHomeThisCheck+row.bonusAmount:(s.paycheckOverrides?.[n]??s.takeHome))+(row?0:cents(s.appliedBonuses?.[n]));
   const budget=row?row.budgetLineItemsThisCheck:(s.budgetItems||[]).map(b=>({...b,amount:s.budgetItemOverrides?.[b.id]?.[n]??b.amount}));
   const extras=row?row.extrasThisCheck:(s.extraExpenses?.[n]||[]);
-  const allocations=[...(budget||[]),...(extras||[])].filter(b=>!billsOnly||!isPersonal(b)).reduce((a,b)=>a+cents(b.amount),0)+(row?(row.payments||[]).reduce((a,b)=>a+cents(b),0)+(billsOnly?0:(row.savingsByGoal||[]).reduce((a,b)=>a+cents(b.contribution),0)):0);
+  let debtAllocations=(row?.payments||[]).reduce((sum,p)=>sum+cents(p),0);
+  if(debtMode==='none')debtAllocations=0;
+  if(debtMode==='minimum')debtAllocations=(s.cards||[]).reduce((sum,card,index)=>{
+   const interest=Math.round(remaining[index]*Math.max(0,Number(card.apr)||0)/100/26);
+   const owed=remaining[index]+interest,payment=Math.min(owed,Math.max(0,cents(card.min)));
+   remaining[index]=owed-payment;return sum+payment;
+  },0);
+  const allocations=[...(budget||[]),...(extras||[])].filter(b=>!billsOnly||!isPersonal(b)).reduce((a,b)=>a+cents(b.amount),0)+debtAllocations+(row&&!billsOnly?(row.savingsByGoal||[]).reduce((a,b)=>a+cents(b.contribution),0):0);
   if(income||allocations)out.push({id:'paycheck-'+n,date,name:'Paycheck '+n,type:'income',amount:income,allocations});
  }
  return out;
+}
+export function scenarioForecast(accounts,plan,bills,start,{debtMode='full',length=30}={}){
+ const mode=['full','minimum','none'].includes(debtMode)?debtMode:'full';
+ const paydays=paydayEvents(plan,start,day(start,length),{billsOnly:true,debtMode:mode});
+ // Matched credit cards remain covered by the paycheck allocation, preventing
+ // an issuer minimum and a tracker minimum from being deducted twice.
+ const scheduled=mode==='none'?bills.filter(b=>!isDebtPayment(b)):bills;
+ return {...cashForecast(accounts,paydays,scheduled,start,length),debtMode:mode};
 }
 export function billEvents(legacy,planner,linked,start,end){
  const paid=new Set(planner.paid||[]),overrides=planner.covered||{},out=[];

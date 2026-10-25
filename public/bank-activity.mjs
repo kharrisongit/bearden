@@ -1,4 +1,5 @@
 import {day} from './engine.mjs';
+import {matchesPayment,matchingPayments} from './transaction-links.mjs';
 export const transactionKey=t=>JSON.stringify([t.itemId,t.account_id,String(t.name||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()]);
 const normalize=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 export function classifyBankTransaction(t){
@@ -30,20 +31,20 @@ export function personalSpending(transactions,today=new Date().toISOString().sli
 }
 
 
-export function reviewBankActivity(transactions,rules={},suggestions=[],today=new Date().toISOString().slice(0,10)){
+export function reviewBankActivity(transactions,rules={},suggestions=[],today=new Date().toISOString().slice(0,10),links={}){
  const start=day(today,-29),recent=(transactions||[]).filter(t=>!t.pending&&t.currency==='USD'&&t.amount>0&&t.date>=start&&t.date<=today).sort((a,b)=>b.date.localeCompare(a.date));
  const groups=new Map(),categories=new Map();
  const rows=recent.map(t=>{
-  const key=transactionKey(t),rule=rules[key],kind=classifyBankTransaction(t),choice=rule?.choice|| (kind.kind==='spending'?'spending':kind.kind==='excluded'?'excluded':'suggested');
+  const key=transactionKey(t),savedRule=rules[key],rule=savedRule&&(!links['bill:'+savedRule.id]||matchesPayment(t,links['bill:'+savedRule.id]))?savedRule:null,kind=classifyBankTransaction(t),linkedTarget=Object.keys(links).find(target=>matchesPayment(t,links[target])),choice=linkedTarget?'bill':rule?.choice|| (kind.kind==='spending'?'spending':kind.kind==='excluded'?'excluded':'suggested');
   if(!groups.has(key))groups.set(key,t);
   if(choice==='spending'){
    const cat=kind.kind==='spending'?kind:{key:'other',label:'Other spending'},g=categories.get(cat.key)||{key:cat.key,label:cat.label,amount:0,count:0};g.amount+=Math.round(t.amount*100);g.count++;categories.set(cat.key,g);
   }
-  return {...t,key,choice,spendingCategoryKey:kind.kind==='spending'?kind.key:'other',label:choice==='bill'?'Tracked bill':choice==='excluded'?'Transfer or debt payment':choice==='suggested'?'Possible bill':kind.kind==='spending'?kind.label:'Personal spending',reason:kind.reason};
+  return {...t,key,choice,linkedTarget,spendingCategoryKey:kind.kind==='spending'?kind.key:'other',label:linkedTarget?'Linked to '+(links[linkedTarget].targetName||'account'):choice==='bill'?'Tracked bill':choice==='excluded'?'Transfer or debt payment':choice==='suggested'?'Possible bill':kind.kind==='spending'?kind.label:'Personal spending',reason:kind.reason};
  });
  const bills=[];
  for(const [key,rule]of Object.entries(rules))if(rule.choice==='bill'){
-  const latest=groups.get(key),suggestion=suggestions.find(b=>b.groupKey===key),date=latest?.date||rule.lastPayment;
+  const link=links['bill:'+rule.id],latest=link?matchingPayments(transactions,link,today)[0]:groups.get(key),suggestion=suggestions.find(b=>b.groupKey===key),date=latest?.date||rule.lastPayment;
   if(!date)continue;
   const repeat=rule.repeat||'monthly';
   let next=repeat==='monthly'?nextMonth(date):day(date,repeat==='weekly'?7:repeat==='biweekly'?14:0);
