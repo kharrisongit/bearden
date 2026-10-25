@@ -1,3 +1,4 @@
+export {reviewBankActivity,transactionKey} from './bank-activity.mjs';
 import {day,occurrences} from './engine.mjs';
 const cents=n=>Math.round((Number(n)||0)*100);
 export function paydayEvents(plan,start,end){
@@ -25,10 +26,10 @@ export function billEvents(legacy,planner,linked,start,end){
   for(const date of dates){
    // Prefer a manually entered or confirmed bill over a matching bank estimate.
    const norm=s=>String(s).toLowerCase().replace(/[^a-z0-9]/g,'');
-   if(bill.source==='bank-estimate'&&bills.some(other=>other.source!=='bank-estimate'&&norm(other.name)===norm(bill.name)&&occurrences(other.date,other.repeat||'once',day(date,-7),day(date,7)).length))continue;
+   if(['bank-estimate','bank-tracked'].includes(bill.source)&&bills.some(other=>!['bank-estimate','bank-tracked'].includes(other.source)&&(norm(other.name)===norm(bill.name)||(bill.billKind==='electric'&&(other.billKind==='electric'||/consumers\s*energy/i.test(other.name))))&&occurrences(other.date,other.repeat||'once',day(date,-7),day(date,7)).length))continue;
    const key=bill.id+':'+date;
    if(paid.has(key)||legacy?.paid?.includes(key))continue;
-   const covered=Boolean(linked[bill.id])||(overrides[bill.id]??(bill.source!=='gmail'&&bill.source!=='manual'&&bill.source!=='bank-estimate'));
+   const covered=Boolean(linked[bill.id])||(overrides[bill.id]??(bill.source!=='gmail'&&bill.source!=='manual'&&bill.source!=='bank-estimate'&&bill.source!=='bank-tracked'));
    out.push({...bill,date,key,type:'bill',covered,overdue:date<start});
   }
  }
@@ -44,4 +45,24 @@ export function cashForecast(accounts,paydays,bills,start,length=30){
  let running=opening,low=opening,income=0,outgoing=0;
  const rows=events.map(e=>{if(e.type==='income'){income+=e.amount;outgoing+=e.allocations;}else outgoing+=e.amount;if(running!==null){running+=e.delta;low=Math.min(low,running);}return {...e,balance:running};});
  return {opening,endBalance:running,low,income,outgoing,rows,end};
+}
+
+// Estimate future everyday spending separately from scheduled bills. Existing
+// personal-spending allocations are deducted so they are not counted twice.
+export function spendingProjection(plan,summary,start,enabled=true,length=30){
+ const end=day(start,length),s=plan.state||{},rows=new Map((plan.schedule||[]).map(r=>[r.paycheck,r]));
+ let reserved=0;
+ const personal=/\b(food|dining|grocer(?:y|ies)|gas|fuel|transport|shopping|personal|spending|entertainment|misc(?:ellaneous)?|allowance|fun|restaurants)\b/i;
+ const matched=new Set();
+ for(const p of paydayEvents(plan,start,end)){
+  const n=Number(p.id.replace('paycheck-','')),row=rows.get(n),budget=row?row.budgetLineItemsThisCheck:(s.budgetItems||[]).map(b=>({...b,amount:s.budgetItemOverrides?.[b.id]?.[n]??b.amount}));
+  for(const b of budget||[])if(personal.test(b.name||'')){reserved+=cents(b.amount);matched.add(b.name);}
+ }
+ const baseline=Math.round((summary?.total||0)*length/30),additional=enabled?Math.max(0,baseline-reserved):0;
+ const events=[];
+ for(let n=1;n<=length;n++){
+  const amount=Math.floor(additional*n/length)-Math.floor(additional*(n-1)/length);
+  if(amount)events.push({id:'spending-'+n,name:'Personal spending estimate',date:day(start,n),type:'spending',amount,covered:false});
+ }
+ return {baseline,reserved,additional,events,matched:[...matched]};
 }

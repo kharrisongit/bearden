@@ -1,4 +1,4 @@
-import {recurringBills} from './recurring.mjs';
+import {recurringBills,personalSpending} from './recurring.mjs';
 import {validateClassic} from './classic-state.mjs';
 import http from 'node:http';
 import {babyBearPreset,importBabyBear} from './baby-bear.mjs';
@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {randomBytes,createHash,createCipheriv,createDecipheriv} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {blank,validate,cents} from './public/engine.mjs';
-import {request,plaid,transactionSync,applyTransactions,messageText,classifyBillEmail,billMailQuery} from './providers.mjs';
+import {request,plaid,transactionSync,applyTransactions,messageText,classifyElectricEmail,billMailQuery} from './providers.mjs';
 
 const root=dirname(fileURLToPath(import.meta.url)),port=Number(process.env.PORT||3000),origin=new URL(process.env.APP_URL||`http://localhost:${port}`).origin,secure=origin.startsWith('https:'),allowed=process.env.ALLOWED_EMAIL?.toLowerCase(),key=process.env.DATA_KEY?Buffer.from(process.env.DATA_KEY,'base64'):null;
 if(key&&key.length!==32)throw Error('DATA_KEY must be 32 random bytes in base64');
@@ -23,7 +23,7 @@ function write(id,data){db.prepare('INSERT INTO vault(id,value) VALUES(?,?) ON C
 function getPlan(){return read('plan',{state:blank(),revision:0});}
 function updatePlan(fn){const p=getPlan();fn(p.state);p.revision++;write('plan',p);return p;}
 function connections(){return read('connections',{items:[],transactions:[],candidates:[],seen:[],gmail:null,status:'No connections yet.'});}
-function publicConnections(c){return {...c,gmail:!!c.gmail,items:c.items.map(i=>({id:i.id,name:i.name})),seen:undefined,recurringBills:recurringBills(c.transactions),transactions:c.transactions.slice(0,100)};}
+function publicConnections(c){return {...c,gmail:!!c.gmail,electricStatus:c.gmail?.billStatus,items:c.items.map(i=>({id:i.id,name:i.name})),seen:undefined,recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-30*86400000).toISOString().slice(0,10)).slice(0,1500)};}
 function cookies(req){return Object.fromEntries((req.headers.cookie||'').split(';').map(x=>x.trim().split('=')).filter(x=>x.length===2));}
 function authenticated(req){const s=cookies(req).bearden;if(!s)return false;const r=db.prepare('SELECT expires FROM sessions WHERE hash=?').get(hash(s));return !!r&&r.expires>Date.now();}
 function cookie(name,value,seconds){return `${name}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${seconds}${secure?'; Secure':''}`;}
@@ -32,26 +32,26 @@ function redirect(res,path,headers={}){res.writeHead(302,{Location:path,...heade
 async function body(req){let n=0,parts=[];for await(const p of req){n+=p.length;if(n>1000000)throw Error('Request too large');parts.push(p);}return JSON.parse(Buffer.concat(parts).toString()||'{}');}
 async function googleToken(params){return request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:process.env.GOOGLE_CLIENT_ID,client_secret:process.env.GOOGLE_CLIENT_SECRET,...params})});}
 let syncing=null;
-async function doSync(){
+async function doSync(bankOnly=false){
  let c=connections(),errors=[],now=new Date().toISOString();
  for(const item of c.items){try{const synced=await transactionSync(item),accounts=await plaid('/accounts/get',{access_token:item.token});c.transactions=applyTransactions(c.transactions,synced.changes,item.id);item.cursor=synced.cursor;
   updatePlan(s=>{const activeIds=new Set(accounts.accounts.map(a=>'plaid-'+a.account_id));s.accounts=s.accounts.filter(a=>a.itemId!==item.id||activeIds.has(a.id));for(const a of accounts.accounts){const id='plaid-'+a.account_id,old=s.accounts.find(x=>x.id===id),balance=a.balances.available??a.balances.current;if(balance===null)continue;const eligible=a.type==='depository'&&a.subtype==='checking'&&a.balances.iso_currency_code==='USD';const entry={id,itemId:item.id,name:a.name+(a.mask?' •'+a.mask:''),balance:cents(balance),include:eligible?(old?.include??true):false,source:'plaid',type:a.type,subtype:a.subtype,currency:a.balances.iso_currency_code};if(old)Object.assign(old,entry);else s.accounts.push(entry);}});c.bankUpdated=now;
  }catch(e){errors.push(`${item.name}: ${e.message}`);}}
- if(c.gmail){try{
-  if(c.gmail.signature!=='automatic-bills-v1'){c.gmail.signature='automatic-bills-v1';c.seen=[];delete c.gmail.page;}
+ if(c.gmail&&!bankOnly){try{
+  if(c.gmail.signature!=='electric-only-v2'){c.gmail.signature='electric-only-v2';c.seen=[];delete c.gmail.page;c.candidates=[];}
   const token=await googleToken({grant_type:'refresh_token',refresh_token:c.gmail.refreshToken}),headers={Authorization:'Bearer '+token.access_token},seen=new Set(c.seen||[]);
   const q=new URLSearchParams({q:billMailQuery,maxResults:'10'});if(c.gmail.page)q.set('pageToken',c.gmail.page);
   const page=await request('https://gmail.googleapis.com/gmail/v1/users/me/messages?'+q,{headers});
   for(const m of page.messages||[]){if(seen.has(m.id))continue;
    const msg=await request('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+encodeURIComponent(m.id)+'?format=full',{headers});
    const header=n=>msg.payload?.headers?.find(h=>h.name.toLowerCase()===n)?.value||'';
-   const result=classifyBillEmail({id:m.id,from:header('from'),subject:header('subject'),snippet:msg.snippet||'',text:messageText(msg.payload).slice(0,32000)});
+   const result=classifyElectricEmail({id:m.id,from:header('from'),subject:header('subject'),snippet:msg.snippet||'',text:messageText(msg.payload).slice(0,32000)});
    if(result.action==='add'){
     const p=getPlan();if(!p.state.bills.some(b=>b.sourceId===m.id||b.sourceKey===result.bill.sourceKey)){p.state.bills.push(result.bill);validate(p.state);p.revision++;write('plan',p);}
     c.candidates=c.candidates.filter(x=>x.id!==m.id);
-   }else if(result.action==='review'&&!c.candidates.some(x=>x.id===m.id)){
-    if(c.candidates.filter(x=>!x.dismissed).length>=100)throw Error('Review or dismiss unclear emails to make room for more');
-    c.candidates.push(result.candidate);
+    c.gmail.billStatus='Consumers Energy bill updated.';
+   }else if(result.action==='review'){
+    c.gmail.billStatus='Electric bill found, but the amount or due date is unclear. Your bank estimate is still in use.';
    }
    seen.add(m.id);c.seen=[...seen];write('connections',c);
   }
@@ -59,8 +59,8 @@ async function doSync(){
  }catch(e){errors.push('Gmail: '+e.message+'; reconnect if authorization expired');}}
  c.status=errors.length?'Sync needs attention — '+errors.join(' · '):'Last sync: '+now;c.lastAttempt=now;write('connections',c);return c;
 }
-async function sync(){if(!syncing)syncing=doSync().finally(()=>syncing=null);return syncing;}
-const staticFiles={'/tabs.js':['tabs.js','text/javascript'],'/tabs.css':['tabs.css','text/css'],'/income-model.mjs':['income-model.mjs','text/javascript'],'/classic.js':['classic.js','text/javascript'],'/classic.css':['classic.css','text/css'],'/classic-theme.js':['classic-theme.js','text/javascript'],'/classic-events.js':['classic-events.js','text/javascript'],'/classic-migrate.mjs':['classic-migrate.mjs','text/javascript'],'/connections.js':['connections.js','text/javascript'],'/connections.css':['connections.css','text/css'],'/purify.min.js':['purify.min.js','text/javascript'],'/setup-key.html':['setup-key.html','text/html'],'/setup-key.mjs':['setup-key.mjs','text/javascript'],'/':['index.html','text/html'],'/plaid-return':['index.html','text/html'],'/index.html':['index.html','text/html'],'/style.css':['style.css','text/css'],'/app.mjs':['app.mjs','text/javascript'],'/engine.mjs':['engine.mjs','text/javascript']};
+async function sync(bankOnly=false){if(!syncing)syncing=doSync(bankOnly).finally(()=>syncing=null);return syncing;}
+const staticFiles={'/bank-activity.mjs':['bank-activity.mjs','text/javascript'],'/tabs.js':['tabs.js','text/javascript'],'/tabs.css':['tabs.css','text/css'],'/income-model.mjs':['income-model.mjs','text/javascript'],'/classic.js':['classic.js','text/javascript'],'/classic.css':['classic.css','text/css'],'/classic-theme.js':['classic-theme.js','text/javascript'],'/classic-events.js':['classic-events.js','text/javascript'],'/classic-migrate.mjs':['classic-migrate.mjs','text/javascript'],'/connections.js':['connections.js','text/javascript'],'/connections.css':['connections.css','text/css'],'/purify.min.js':['purify.min.js','text/javascript'],'/setup-key.html':['setup-key.html','text/html'],'/setup-key.mjs':['setup-key.mjs','text/javascript'],'/':['index.html','text/html'],'/plaid-return':['index.html','text/html'],'/index.html':['index.html','text/html'],'/style.css':['style.css','text/css'],'/app.mjs':['app.mjs','text/javascript'],'/engine.mjs':['engine.mjs','text/javascript']};
 const server=http.createServer(async(req,res)=>{
  res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Frame-Options','DENY');res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
  res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self' https://cdn.plaid.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.plaid.com; frame-src https://*.plaid.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
@@ -88,6 +88,7 @@ const server=http.createServer(async(req,res)=>{
    if(path==='/api/classic'){const state=validateClassic(b.state),current=read('classic',{revision:0});if(current.revision!==b.revision)return json(res,409,{error:'The tracker changed in another tab. Export your edits and reload.'});write('classic',{state,revision:current.revision+1});return json(res,200,{revision:current.revision+1});}
    if(path==='/api/state'){const s=validate(b.state),p=getPlan();if(p.revision!==b.revision)return json(res,409,{error:'This plan changed during sync or in another tab. Export your edits, then reload before saving again.'});if(s.emailSenders.some(x=>!/^[-\w.+]+@[\w.-]+\.[a-z]{2,}$/i.test(x)))throw Error('Use full sender email addresses');write('plan',{state:s,revision:p.revision+1});return json(res,200,{revision:p.revision+1});}
    if(path==='/api/logout'){db.prepare('DELETE FROM sessions WHERE hash=?').run(hash(cookies(req).bearden));res.setHeader('Set-Cookie',cookie('bearden','',0));return json(res,200,{ok:true});}
+   if(path==='/api/bank/refresh'){if(syncing)await syncing;const c=await sync(true);return json(res,200,{status:c.status});}
    if(path==='/api/sync'){const c=await sync();return json(res,200,{status:c.status});}
    if(path==='/api/plaid/link'){const d=await plaid('/link/token/create',{user:{client_user_id:hash(allowed)},client_name:'BearDen',products:['transactions'],transactions:{days_requested:180},country_codes:['US'],language:'en',...(process.env.PLAID_REDIRECT_URI?{redirect_uri:process.env.PLAID_REDIRECT_URI}:{})});return json(res,200,{link_token:d.link_token});}
    if(path==='/api/plaid/exchange'){if(typeof b.public_token!=='string')throw Error('Missing public token');const d=await plaid('/item/public_token/exchange',{public_token:b.public_token});if(syncing)await syncing;const c=connections();if(!c.items.some(i=>i.id===d.item_id)){c.items.push({id:d.item_id,token:d.access_token,cursor:'',name:String(b.name||'Bank').slice(0,150)});write('connections',c);}await sync();return json(res,200,{ok:true});}

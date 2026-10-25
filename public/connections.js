@@ -19,24 +19,29 @@ window.BearDen=(()=>{
  async function refresh(){legacy=await api('/api/state');renderConnections();}
  function renderConnections(){
   $('#accountMode').textContent=config.authenticated?'Signed in. Your tracker is saved privately to your account.':'Not signed in. Tracker changes are saved on this device.';
-  $('#classicLogin').hidden=!!config.authenticated;$('#classicLogout').hidden=!config.authenticated;$('#classicSync').hidden=!config.authenticated;$('#headerSync').hidden=!config.authenticated;$('#privateConnections').hidden=!config.authenticated;$('#legacyExport').hidden=!config.authenticated;
+  $('#classicLogin').hidden=!!config.authenticated;$('#classicLogout').hidden=!config.authenticated;$('#classicSync').hidden=!config.authenticated;document.querySelectorAll('[data-refresh-bank]').forEach(b=>b.hidden=!config.authenticated);$('#privateConnections').hidden=!config.authenticated;$('#legacyExport').hidden=!config.authenticated;
   bridge.config=config;bridge.plan=legacy;window.dispatchEvent(new Event('bearden-connections'));
   if(!config.authenticated)return;
   const c=legacy?.connections||{},s=legacy?.state;
   $('#classicBankStatus').textContent=c.items?.length?`${c.items.length} bank connection(s). ${config.syncDescription||''}`:'Connect a bank to see its balances here.';
   $('#classicBalances').innerHTML=(s?.accounts||[]).filter(a=>a.source==='plaid').map(a=>`<div class="connection-row"><strong>${esc(a.name)}</strong>${money(a.balance)}<small>${esc(a.currency||'USD')}${c.bankUpdated?' · Updated '+esc(new Date(c.bankUpdated).toLocaleString()):''}</small></div>`).join('');
   $('#classicBanks').innerHTML=(c.items||[]).map(i=>`<button data-bank-disconnect="${esc(i.id)}">Disconnect ${esc(i.name)}</button>`).join('');
-  $('#classicGmail').textContent=c.gmail?'Reconnect Gmail':'Connect Gmail';$('#classicDisconnectGmail').hidden=!c.gmail;$('#classicEmailStatus').textContent=c.status||'Clear bills from Gmail appear here automatically. Unclear amounts or dates need review.';
-  const linked=JSON.parse(values['linked-bills']||'{}');
-  $('#classicEmailBills').innerHTML=(s?.bills||[]).filter(b=>b.source==='gmail').map(b=>`<div class="connection-row"><strong>${esc(b.name)} · ${money(b.amount)}</strong><small>Due ${esc(b.date)}${linked[b.id]?' · Added to paycheck '+linked[b.id]:''}</small>${linked[b.id]?'':`<label>Paycheck date<input type="date" data-bill-date="${esc(b.id)}" value="${esc(b.date)}"></label><button data-use-bill="${esc(b.id)}">Add as one-time expense</button>`}<small>Use this only if the bill is not already covered by your regular budget.</small></div>`).join('')||'<p>No imported email bills yet.</p>';
-  $('#classicReviews').innerHTML=(c.candidates||[]).filter(x=>!x.dismissed).map(x=>`<div class="connection-review"><strong>${esc(x.sender)}</strong><p>${esc(x.subject)}</p><label>Amount ($)<input type="number" min="0" step="0.01" data-review-amount="${esc(x.id)}" value="${x.amount===null?'':x.amount/100}"></label><label>Due date<input type="date" data-review-date="${esc(x.id)}" value="${esc(x.date||'')}"></label><button data-review-accept="${esc(x.id)}">Save bill</button><button data-review-dismiss="${esc(x.id)}">Dismiss</button></div>`).join('');
+  $('#classicGmail').textContent=c.gmail?'Reconnect Gmail':'Connect Gmail';$('#classicDisconnectGmail').hidden=!c.gmail;
+  $('#classicEmailStatus').textContent=c.gmail?(c.electricStatus||'Connected. Checking for your monthly Consumers Energy bill.'):'Not connected';
  }
  async function connectBank(resume=false){if(!requireLogin())return;if(!config.plaidConfigured)throw Error('Bank connections are unavailable right now.');const token=resume?sessionStorage.getItem('bearden-link-token'):(await api('/api/plaid/link',{})).link_token;if(!token)throw Error('Bank sign-in expired. Please connect again.');sessionStorage.setItem('bearden-link-token',token);if(!window.Plaid)await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://cdn.plaid.com/link/v2/stable/link-initialize.js';s.onload=resolve;s.onerror=()=>reject(Error('Could not load Plaid.'));document.head.append(s);});const handler=window.Plaid.create({token,...(resume?{receivedRedirectUri:location.href}:{}),onSuccess:async(public_token,metadata)=>{try{const r=await api('/api/plaid/exchange',{public_token,name:metadata.institution?.name||'Bank'});sessionStorage.removeItem('bearden-link-token');history.replaceState(null,'','/');await refresh();message(r.status||'Bank connected.');}catch(e){message(e.message);}finally{handler.destroy();}},onExit:()=>handler.destroy()});handler.open();}
  function run(fn){return async e=>{const b=e?.currentTarget;if(b)b.disabled=true;try{await fn();}catch(err){message(err.message);}finally{if(b)b.disabled=false;}};}
- $('#connectionSettings').onclick=()=>window.selectBearTab('settings');
  $('#classicLogout').onclick=run(async()=>{await window.performSaveAppState?.();await queue;await api('/api/logout',{});location.reload();});
  $('#classicSync').onclick=run(async()=>{await queue;const r=await api('/api/sync',{});await refresh();message(r.status||'Connections synced.');});
- $('#headerSync').onclick=run(async()=>{await queue;const r=await api('/api/sync',{});await refresh();message(r.status||'Connections synced.');window.selectBearTab('settings');});
+ let refreshingBank=false;
+ document.querySelectorAll('[data-refresh-bank]').forEach(button=>button.onclick=async()=>{
+  if(refreshingBank)return;refreshingBank=true;
+  const buttons=document.querySelectorAll('[data-refresh-bank]'),statuses=document.querySelectorAll('.bank-refresh-status');
+  buttons.forEach(b=>{b.disabled=true;b.setAttribute('aria-busy','true');});statuses.forEach(s=>s.textContent='Refreshing…');
+  try{await queue;const r=await api('/api/bank/refresh',{});await refresh();statuses.forEach(s=>s.textContent=/attention|loading/i.test(r.status||'')?r.status:'Balances refreshed.');}
+  catch(e){statuses.forEach(s=>s.textContent=e.message);}
+  finally{refreshingBank=false;buttons.forEach(b=>{b.disabled=false;b.removeAttribute('aria-busy');});}
+ });
  $('#classicBank').onclick=run(()=>connectBank());$('#classicGmail').onclick=()=>{if(requireLogin())location.href='/auth/google?gmail=1';};
  $('#classicDisconnectGmail').onclick=run(async()=>{if(!confirm('Disconnect Gmail and stop checking for new bills?'))return;await api('/api/gmail/disconnect',{});await refresh();});
  $('#classicExport').onclick=()=>{const snapshot=structuredClone(values);if(bridge.loaded)snapshot['app-state']=JSON.stringify(window.gatherAppState());download('bearden-tracker-backup.json',{version:1,values:snapshot});};

@@ -15,8 +15,15 @@ export function parseBill(text){
 }
 
 
-// Search all senders, including archived mail; never include spam/trash or sent mail.
-export const billMailQuery = 'newer_than:90d -in:sent {bill invoice statement "amount due" "payment due" "balance due" "autopay" "automatic payment" "payment reminder" "renewal"}';
+// Gmail is used only to confirm the monthly Consumers Energy bill.
+export const billMailQuery = 'newer_than:60d -in:sent "Consumers Energy" {bill statement "amount due" "payment due" autopay}';
+export function classifyElectricEmail(input){
+ const sender=(input.from?.match(/<([^>]+)>/)?.[1]||input.from||'').trim().toLowerCase();
+ if(!/@(?:[a-z0-9-]+\.)*consumersenergy\.com$/.test(sender)&&!/consumers\s+energy/i.test(input.from||''))return {action:'ignore'};
+ const result=classifyBillEmail(input);
+ if(result.action==='add')Object.assign(result.bill,{name:'Consumers Energy',billKind:'electric'});
+ return result;
+}
 export function classifyBillEmail({id,from,subject='',snippet='',text='',today=new Date().toISOString().slice(0,10)}) {
  const sender=(from.match(/<([^>]+)>/)?.[1]||from).trim().toLowerCase();
  const name=(from.includes('<')?from.split('<')[0].trim().replace(/^"|"$/g,''):sender).slice(0,200)||'Email bill';

@@ -18,3 +18,12 @@ test('overdue unpaid one-time bills count once and non-USD balances do not enter
  const bills=billEvents({bills:[{id:'b',name:'Overdue',date:'2026-09-01',repeat:'once',amount:5000,source:'gmail'}]},{},{},'2026-10-23','2026-11-22');assert.equal(bills.length,1);assert.equal(bills[0].overdue,true);
  const f=cashForecast([{balance:4000,include:true,currency:'USD'},{balance:999999,include:true,currency:'EUR'}],[],bills,'2026-10-23');assert.equal(f.low,-1000);assert.equal(f.rows[0].date,'2026-10-23');
 });
+
+test('personal spending forecast spreads only spending beyond existing budget over 30 days',async()=>{
+ const {spendingProjection}=await import('../public/income-model.mjs');
+ const plan={state:{startDate:'2026-11-01',takeHome:1000,budgetItems:[{id:'g',name:'Groceries',amount:100},{id:'r',name:'Rent',amount:500}]},schedule:[]};
+ const s=spendingProjection(plan,{total:40000},'2026-10-25');assert.equal(s.reserved,20000);assert.equal(s.additional,20000);assert.equal(s.events.reduce((n,e)=>n+e.amount,0),20000);assert.equal(s.events.length,30);
+ const f=cashForecast([{balance:100000,include:true}],[],s.events,'2026-10-25');assert.equal(f.endBalance,80000);assert.equal(f.outgoing,20000);
+ assert.equal(spendingProjection(plan,{total:10000},'2026-10-25').additional,0);
+ assert.equal(spendingProjection(plan,{total:40000},'2026-10-25',false).additional,0);
+});

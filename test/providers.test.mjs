@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {classifyBillEmail,parseBill,messageText,transactionSync,applyTransactions} from '../providers.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {classifyElectricEmail,classifyBillEmail,parseBill,messageText,transactionSync,applyTransactions} from '../providers.mjs';
 test('extract explicit amount due and date',()=>{assert.deepEqual(parseBill('Amount due: $123.45 Due date: 11/05/2026'),{amount:12345,date:'2026-11-05'});assert.equal(parseBill('Payment due: November 5, 2026').date,'2026-11-05');});
 test('ambiguous or unrelated bill fields require review',()=>{assert.deepEqual(parseBill('Last payment $90.00 Statement date 11/01/2026'),{amount:null,date:null});assert.equal(parseBill('Amount due: $100.00 Total due: $200.00').amount,null);assert.equal(parseBill('Due date: 02/30/2026').date,null);});
 test('decodes nested MIME plain text in preference to HTML',()=>{assert.equal(messageText({parts:[{mimeType:'text/html',body:{data:Buffer.from('<b>wrong</b>').toString('base64url')}},{parts:[{mimeType:'text/plain',body:{data:Buffer.from('Amount due: $2.00').toString('base64url')}}]}]}),'Amount due: $2.00');});
@@ -16,3 +16,9 @@ test('automatic bill classification distinguishes receipts, unclear and past sta
  assert.equal(classifyBillEmail({...input,subject:'Hello',text:'Lunch tomorrow?'}).action,'ignore');
 });
 test('whole dollar amounts and due-on labels are recognized',()=>{assert.deepEqual(parseBill('Payment amount: $125 Due on December 1, 2026'),{amount:12500,date:'2026-12-01'});});
+
+test('electric-only scanning excludes unrelated bills and tags Consumers Energy',()=>{
+ const input={id:'electric',from:'Consumers Energy <bill@consumersenergy.com>',subject:'Monthly bill',text:'Amount due: $111.25 Due date: November 5, 2026',today:'2026-10-25'};
+ const result=classifyElectricEmail(input);assert.equal(result.action,'add');assert.equal(result.bill.name,'Consumers Energy');assert.equal(result.bill.billKind,'electric');
+ assert.equal(classifyElectricEmail({...input,from:'Shopping <store@example.com>'}).action,'ignore');
+});
