@@ -16,15 +16,19 @@ export function emailAccountStatus(messages,link,{now=Date.now(),hasPlaid=false,
    if(pending.length===1)related=pending;
   }
   for(const m of related)usedMail.add(m.id);usedMail.add(message.id);
-  let status=event.paymentStatus,estimated=false;
-  if(status==='pending'){
-   const submitted=Date.parse(event.paymentDate||event.receivedAt.slice(0,10));
+  const notices=[event,...related].filter(m=>m.paymentStatus==='pending');
+  const submittedAt=Math.min(...(notices.length?notices:[event]).map(m=>Date.parse(m.receivedAt)));
+  const paymentDate=event.paymentDate||notices.find(m=>m.paymentDate)?.paymentDate;
+  let status=event.paymentStatus,estimated=false,postedDate=null;
+  if(status==='pending'||status==='posted'&&hasPlaid){
+   const submitted=paymentDate?Date.parse(paymentDate):Date.parse(new Date(submittedAt).toISOString().slice(0,10));
    const bank=event.paymentAmount>0&&bankPayments.find(p=>!p.pending&&!usedBank.has(p.id||p.transaction_id)&&p.amount===event.paymentAmount&&Date.parse(p.date)>=submitted-86400000&&Date.parse(p.date)<=submitted+7*86400000);
-   if(bank){status='posted';usedBank.add(bank.id||bank.transaction_id);}
+   if(bank){status='posted';postedDate=bank.date;usedBank.add(bank.id||bank.transaction_id);}
    else if(!creditCard)continue;
-   else if(!hasPlaid&&now-Math.max(Date.parse(event.receivedAt),event.paymentDate?Date.parse(event.paymentDate+'T00:00:00Z'):0)>=2*86400000){status='posted';estimated=true;}
+   else if(!hasPlaid&&now-Math.max(submittedAt,paymentDate?Date.parse(paymentDate+'T00:00:00Z'):0)>=2*86400000){status='posted';estimated=true;postedDate=new Date(Math.max(submittedAt,paymentDate?Date.parse(paymentDate+'T00:00:00Z'):0)+2*86400000).toISOString().slice(0,10);}
+   else status='pending';
   }
-  payments.push({...event,status,estimated});
+  payments.push({...event,status,estimated,postedDate});
  }
  return {statement,payments,pending:payments.filter(p=>p.status==='pending').reduce((sum,p)=>sum+(p.paymentAmount||0),0)};
 }
