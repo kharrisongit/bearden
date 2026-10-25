@@ -12,6 +12,8 @@ let cardsData = [];
 
 let budgetItemIdCounter = 0;
 let budgetItems = [];
+let budgetSetupVersion=0;
+function starterBudgetItems(){return [{id:1,label:'Fixed Bills',kind:'household-bills',amount:725},{id:2,label:'Car Fuel',amount:100},{id:3,label:'Groceries',amount:100}];}
 
 let savingsGoalIdCounter = 0;
 let savingsGoals = [];
@@ -110,7 +112,8 @@ function removeCard(id){
 // ---- Budget items ----
 function renderBudgetItems(){
   const container = document.getElementById('budgetItemsList');
-  container.innerHTML = budgetItems.map(item => `
+  const fixed=budgetItems.find(item=>item.kind==='household-bills');document.getElementById('householdBillsAmount').value=fixed?.amount||0;document.getElementById('removeHouseholdBills').hidden=!fixed;
+  container.innerHTML = budgetItems.filter(item=>item.kind!=='household-bills').map(item => `
     <div class="field-row">
       <div class="field-name">${bdEscape(item.label)}${item.hint ? `<small>${bdEscape(item.hint)}</small>` : ''}<span class="remove" style="margin-left:6px;" data-bd-click="removeBudgetItem(${item.id})">Remove</span></div>
       <input type="number" id="budget_${item.id}" value="${item.amount}" step="0.01">
@@ -118,6 +121,17 @@ function renderBudgetItems(){
   `).join('');
 }
 
+async function saveHouseholdBills(){
+ const amount=Number(document.getElementById('householdBillsAmount').value),status=document.getElementById('householdBillsStatus');
+ if(!Number.isFinite(amount)||amount<0||amount>1e9){status.textContent='Enter a valid amount.';return;}
+ const before=structuredClone(budgetItems);let item=budgetItems.find(item=>item.kind==='household-bills');
+ if(amount>0){if(!item){item={id:++budgetItemIdCounter,label:'Fixed Bills',kind:'household-bills'};budgetItems.push(item);}item.amount=Math.round(amount*100)/100;}
+ else budgetItems=budgetItems.filter(item=>item.kind!=='household-bills');
+ try{calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('removeHouseholdBills').hidden=amount===0;status.textContent=amount?'Saved. Included once in each paycheck’s budget.':'Saved. No fixed bills contribution.';return true;}
+ catch(e){budgetItems=before;renderBudgetItems();calculate();clearTimeout(saveDebounceTimer);status.textContent=e.message;return false;}
+}
+
+async function removeHouseholdBills(){document.getElementById('householdBillsAmount').value=0;if(await saveHouseholdBills()){renderBudgetItems();document.getElementById('householdBillsStatus').textContent='Fixed bills removed. Enter an amount to add them again.';}}
 function addBudgetItem(){
   const label = document.getElementById('newBudgetLabel').value.trim() || 'Other';
   const amount = parseFloat(document.getElementById('newBudgetAmount').value)||0;
@@ -203,16 +217,7 @@ function toggleSavingsWithdrawPanel(id){
 }
 
 // ---- Bonus (applied inline, per paycheck card) ----
-const DEFAULT_BONUS_WITHHOLDING = 24.9; // Restore the original planner’s bonus estimate.
-function privateWithholding(id){
-  const value=document.getElementById(id).value;
-  const rate=value.trim()===''?null:Number(value);
-  return rate!==null&&Number.isFinite(rate)&&rate>=0&&rate<=100?rate:null;
-}
-
-function bonusWithholdingRate(){
-  return privateWithholding('bonusWithholding') ?? DEFAULT_BONUS_WITHHOLDING;
-}
+function bonusEstimateNote(){return 'Enter your bonus before taxes. Uses your saved state and W-4 settings with the separate bonus withholding estimate. Set those in Income first.';}
 
 function toggleBonusInlineInput(paycheckNum){
   bonusInputOpenForPaycheck = (bonusInputOpenForPaycheck === paycheckNum) ? null : paycheckNum;
@@ -223,7 +228,10 @@ function applyBonusToPaycheck(paycheckNum){
   const grossEl = document.getElementById(`bonusInlineAmount-${paycheckNum}`);
   const gross = Number(grossEl?.value);
   if (!Number.isFinite(gross) || gross <= 0) return;
-  const net = Math.round(gross * (1 - bonusWithholdingRate()/100) * 100)/100;
+  let net;
+  try{net=window.BearDenTaxes.estimatePay(gross,window.BearDenTaxes.read(),{bonus:true}).net;}
+  catch(e){setStorageStatus(e.message);grossEl.setCustomValidity(e.message);grossEl.reportValidity();return;}
+  grossEl.setCustomValidity('');
   appliedBonuses[paycheckNum] = net;
   bonusInputOpenForPaycheck = null;
   calculate();
@@ -380,13 +388,13 @@ function gatherAppState(){
     cardIdCounter,
     budgetItems: budgetItems.map(item => {
       const el = document.getElementById(`budget_${item.id}`);
-      return { id: item.id, label: item.label, amount: el ? (parseFloat(el.value)||0) : item.amount, hint: item.hint };
+      return { id: item.id, label: item.label, amount: el ? (parseFloat(el.value)||0) : item.amount, hint: item.hint, kind: item.kind };
     }),
     budgetItemIdCounter,
+    budgetSetupVersion,
     hourlyRate: document.getElementById('hourlyRate').value,
     hoursPerCheck: document.getElementById('hoursPerCheck').value,
-    incomeWithholding: document.getElementById('incomeWithholding').value,
-    bonusWithholding: document.getElementById('bonusWithholding').value,
+    taxSettings: window.BearDenTaxes?.read(),
     appliedBonuses,
     savingsGoals: savingsGoals.map(g => ({ id: g.id, name: g.name, goal: g.goal, start: g.start, contribution: g.contribution, withdrawalHistory: g.withdrawalHistory || [] })),
     savingsGoalIdCounter,
@@ -659,79 +667,21 @@ function calcGrossPay(rate, hours){
 }
 
 function updateIncomeEstimateDisplay(){
-  const rate = parseFloat(document.getElementById('hourlyRate').value)||0;
-  const hours = parseFloat(document.getElementById('hoursPerCheck').value)||0;
-  const gross = calcGrossPay(rate, hours);
-  const withholding = privateWithholding('incomeWithholding');
-  const takeHome = withholding===null?null:gross * (1-withholding/100);
-  const overtimeHours = Math.max(0, hours - 80);
-  const box = document.getElementById('incomeEstimate');
-  if (rate > 0 && hours > 0) {
-    box.innerHTML = `Estimated gross: <strong>${money(gross)}</strong>${overtimeHours > 0 ? ` (incl. ${overtimeHours.toFixed(2)} OT hrs @ 1.5x)` : ''}${takeHome===null?' · Add a withholding percentage below to estimate take-home.':` · Estimated take-home: <strong>${money(takeHome)}</strong>`}`;
-    box.style.display = 'block';
-  } else {
-    box.style.display = 'none';
-  }
-  document.getElementById('useIncomeEstimateButton').disabled=takeHome===null||takeHome<=0;
+ const rate=Number(document.getElementById('hourlyRate').value)||0,hours=Number(document.getElementById('hoursPerCheck').value)||0,gross=calcGrossPay(rate,hours),box=document.getElementById('incomeEstimate');let estimate=null,error='';
+ try{estimate=window.BearDenTaxes?.estimatePay(gross,window.BearDenTaxes.read());}catch(e){error=e.message;}
+ box.style.display=gross>0?'block':'none';
+ box.innerHTML=gross>0?`Gross: <strong>${money(gross)}</strong>${estimate?` · Estimated take-home: <strong>${money(estimate.net)}</strong><div class="tax-breakdown"><span>Federal <b>${money(estimate.federal)}</b></span><span>Michigan <b>${money(estimate.state)}</b></span><span>Social Security <b>${money(estimate.socialSecurity)}</b></span><span>Medicare <b>${money(estimate.medicare)}</b></span><span>Benefits / other deductions <b>${money(estimate.benefits+estimate.local)}</b></span></div>`:'<p>'+bdEscape(error||'Choose your state and filing status below.')+'</p>'}`:'';
+ document.getElementById('useIncomeEstimateButton').disabled=!estimate||estimate.net<=0;
 }
-
 function useIncomeEstimate(){
-  const rate = parseFloat(document.getElementById('hourlyRate').value)||0;
-  const hours = parseFloat(document.getElementById('hoursPerCheck').value)||0;
-  const gross = calcGrossPay(rate, hours);
-  const withholding = privateWithholding('incomeWithholding');
-  if(withholding===null)return;
-  const takeHome = gross * (1-withholding/100);
-  if (takeHome > 0) {
-    document.getElementById('takeHome').value = takeHome.toFixed(2);
-  }
-  calculate();
+ try{const gross=calcGrossPay(Number(document.getElementById('hourlyRate').value)||0,Number(document.getElementById('hoursPerCheck').value)||0),estimate=window.BearDenTaxes.estimatePay(gross,window.BearDenTaxes.read());if(estimate.net>0)document.getElementById('takeHome').value=estimate.net.toFixed(2);calculate();}catch(e){setStorageStatus(e.message);}
 }
 
 // ---- Reset ----
 async function resetAll(){
-  cardsData = [];
-  cardIdCounter = 0;
-  budgetItems = [];
-  budgetItemIdCounter = 0;
-  savingsGoals = [];
-  savingsGoalIdCounter = 0;
-  savingsGoalEditingId = null;
-  appliedBonuses = {};
-  paycheckOverrides = {};
-  savingsContributionOverrides = {};
-  budgetItemOverrides = {};
-  accountPaymentOverrides = {};
-  extraExpenses = {};
-  extraExpenseIdCounter = 0;
-  extraExpenseInputOpenForPaycheck = null;
-  checkedPaychecks = {};
-  loadedState = null;
-
-  renderBudgetItems();
-  bonusInputOpenForPaycheck = null;
-
-  document.getElementById('takeHome').value = '';
-  document.getElementById('incomeWithholding').value = '';
-  document.getElementById('bonusWithholding').value = '';
-  document.getElementById('hourlyRate').value = '';
-  document.getElementById('hoursPerCheck').value = '';
-  document.getElementById('hoursHint').textContent = 'over 80 = 1.5x overtime';
-  document.getElementById('incomeEstimate').style.display = 'none';
-  document.getElementById('hoursPerCheck').removeAttribute('max');
-
-  currentPayoffMethod = 'avalanche';
-  updatePayoffMethodExplain();
-  document.getElementById('savingsHeroContainer').innerHTML = '';
-
-  try { await storage.delete(APP_STATE_KEY, false); } catch (e) {}
-  try { await storage.delete('full-state', false); } catch (e) {}
-  try { await storage.delete('applied-bonuses', false); } catch (e) {}
-  try { await storage.delete('paycheck-overrides', false); } catch (e) {}
-  try { await storage.delete('savings-contribution-overrides', false); } catch (e) {}
-  try { await storage.delete('checked-paychecks', false); } catch (e) {}
-
-  calculate();
+ await window.classicReady;
+ const fresh={cards:[],cardIdCounter:0,budgetItems:starterBudgetItems(),budgetItemIdCounter:3,budgetSetupVersion:1,savingsGoals:[],savingsGoalIdCounter:0,hourlyRate:'',hoursPerCheck:'',takeHome:'',startDate:'',taxSettings:{},appliedBonuses:{},paycheckOverrides:{},savingsContributionOverrides:{},budgetItemOverrides:{},accountPaymentOverrides:{},extraExpenses:{},extraExpenseIdCounter:0,checkedPaychecks:{},payoffMethod:'avalanche'};
+ clearTimeout(saveDebounceTimer);await window.BearDen.resetSetup(fresh);location.reload();
 }
 
 // ---- Main calculation ----
@@ -2230,7 +2180,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
                  <span>$</span><input type="number" id="bonusInlineAmount-${row.paycheck}" placeholder="Before-tax amount" aria-label="Before-tax bonus" min="0.01" step="0.01">
                  <button data-bd-click="applyBonusToPaycheck(${row.paycheck})">Apply</button>
                </div>
-               <div style="font-size:0.68rem;color:var(--muted);margin:-2px 0 4px;">Enter your bonus before taxes. Automatically deducts an estimated ${bonusWithholdingRate()}% for taxes.</div>`
+               <div style="font-size:0.68rem;color:var(--muted);margin:-2px 0 4px;">${bonusEstimateNote()}</div>`
             : `<button class="bonus-inline-btn" data-bd-click="toggleBonusInlineInput(${row.paycheck})">🎁 Add Bonus</button>`
         )}
         ${budgetLines}
@@ -6652,6 +6602,7 @@ function setupPaycheckBears(){
 
 window.classicReady=(async function init(){
   await window.BearDen.ready;
+  window.BearDenTaxes=await import('./tax-ui.mjs?v=guided-setup1');window.BearDenTaxes.mount();
   applyThemeButtonIcon(); // reflect whatever the early <head> script already applied
   applyThemeBackground(document.documentElement.getAttribute('data-theme') === 'dark');
   applyHolidayMenuState();
@@ -6666,17 +6617,16 @@ window.classicReady=(async function init(){
   if (!savedState) {
     savedState = await migrateLegacyKeys();
   }
+  budgetSetupVersion=Number(savedState?.budgetSetupVersion)||0;
+  if(window.BearDen.isNew&&!budgetSetupVersion&&!budgetItems.length){budgetItems=starterBudgetItems();budgetItemIdCounter=3;budgetSetupVersion=1;}
   renderBudgetItems();
   if (savedState) {
-    ['takeHome','startDate','hourlyRate','hoursPerCheck','incomeWithholding','bonusWithholding'].forEach(id => {
+    ['takeHome','startDate','hourlyRate','hoursPerCheck'].forEach(id => {
       if (savedState[id] !== undefined && document.getElementById(id)) {
         document.getElementById(id).value = savedState[id];
       }
     });
-    if(savedState.incomeWithholding===undefined){
-      const gross=calcGrossPay(Number(savedState.hourlyRate)||0,Number(savedState.hoursPerCheck)||0),net=Number(savedState.takeHome);
-      if(gross>0&&net>0&&net<=gross)document.getElementById('incomeWithholding').value=(100*(1-net/gross)).toFixed(2);
-    }
+    window.BearDenTaxes.restore(savedState.taxSettings||{});
     if (savedState.payoffMethod) currentPayoffMethod = savedState.payoffMethod;
     updateIncomeEstimateDisplay();
     updatePayoffMethodExplain();
@@ -6685,7 +6635,7 @@ window.classicReady=(async function init(){
   window.BearDen.loaded=true;
 })();
 
-function confirmTrackerReset(){if(confirm('Reset the tracker? Export a backup first if you want to keep this plan.'))return resetAll();}
+function confirmTrackerReset(){if(confirm('Reset income, budget, manually added bills and debts, and restart setup? This replaces saved planner data and cannot be undone. Bank and Gmail connections stay connected.'))return resetAll();}
 function prepareClassicImport(){clearTimeout(saveDebounceTimer);}
 function addConnectedBill(bill,date){
  const start=document.getElementById('startDate').value;
@@ -6725,3 +6675,5 @@ window.showDebtAccountHistory=function(id){
  currentDetailAccountIdx=index;paymentHistoryExpanded=true;paymentHistoryShowAll=false;renderSpendingTracker();
  document.getElementById('debtHistoryDialog').showModal();
 };
+
+window.flushBearDenState=async()=>{clearTimeout(saveDebounceTimer);calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));};

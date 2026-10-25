@@ -1,3 +1,4 @@
+import {userScope,googleIdentity,sessionMismatch} from '../user-scope.mjs';
 import {mailboxes,connectMailbox,publicMail,forgetMailbox,scanMailbox} from '../mailboxes.mjs';
 import {incomeFromTracker,incomeFromPlan} from '../income-preset.mjs';
 import {creditLinkOptions,syncCredit,publicCredit,publicItem} from '../credit.mjs';
@@ -20,21 +21,25 @@ function redirect(path,setCookies=[]){const h=new Headers({...headers,Location:p
 async function body(req){if(!req.headers.get('content-type')?.startsWith('application/json'))throw Error('Expected JSON');let length=0,parts=[];for await(const chunk of req.body||[]){length+=chunk.length;if(length>250000)throw Error('Plan/request exceeds 250 KB');parts.push(chunk);}return JSON.parse(Buffer.concat(parts).toString()||'{}');}
 export function runtime(env,fetcher=fetch){
  const key=env.DATA_KEY?Buffer.from(env.DATA_KEY,'base64'):null,origin=env.APP_URL?new URL(env.APP_URL).origin:null,owner=env.ALLOWED_EMAIL?.toLowerCase();
+ const users=userScope(owner);
  const configured=!!(env.DB&&key?.length===32&&origin?.startsWith('https:')&&owner&&env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET);
  const run=(sql,...args)=>env.DB.prepare(sql).bind(...args).run(),first=(sql,...args)=>env.DB.prepare(sql).bind(...args).first();
  function encrypt(value){if(key?.length!==32)throw Error('Configure a 32-byte DATA_KEY');const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);return Buffer.concat([iv,cipher.update(Buffer.from(JSON.stringify(value),'utf8')),cipher.final(),cipher.getAuthTag()]).toString('base64');}
  function decrypt(value){const b=Buffer.from(value,'base64'),cipher=createDecipheriv('aes-256-gcm',key,b.subarray(0,12));cipher.setAuthTag(b.subarray(-16));return JSON.parse(Buffer.concat([cipher.update(b.subarray(12,-16)),cipher.final()]).toString());}
- async function read(id,fallback){const r=await first('SELECT value FROM vault WHERE id=?',id);return r?decrypt(r.value):fallback;}
- const write=(id,value)=>run('INSERT INTO vault VALUES(?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value',id,encrypt(value));
+ async function rawRead(id,fallback){const r=await first('SELECT value FROM vault WHERE id=?',id);return r?decrypt(r.value):fallback;}
+ const rawWrite=(id,value)=>run('INSERT INTO vault VALUES(?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value',id,encrypt(value));
+ const read=(id,fallback)=>rawRead(users.key(id),fallback),write=(id,value)=>rawWrite(users.key(id),value);
  const plan=()=>read('plan',{state:blank(),revision:0});
  const connections=()=>read('connections',{items:[],transactions:[],candidates:[],gmail:null,status:'No connections yet.'});
  async function updatePlan(fn){const p=await plan();fn(p.state);p.revision++;await write('plan',p);return p;}
- async function authorized(req){if(!configured)return false;const token=cookies(req).bearden;if(!token)return false;const s=await first('SELECT expires FROM sessions WHERE hash=?',hash(token));return !!s&&s.expires>Date.now();}
- async function locked(fn){const id=random(),now=Date.now();const r=await run("INSERT INTO locks VALUES('sync',?,?) ON CONFLICT(id) DO UPDATE SET owner=excluded.owner,expires=excluded.expires WHERE locks.expires < ?",id,now+300000,now);if(!r.meta?.changes)throw Error('A sync or save is already running. Try again in a moment.');try{return await fn();}finally{await run("DELETE FROM locks WHERE id='sync' AND owner=?",id);}}
+ async function sessionIdentity(req){if(!configured)return null;const token=cookies(req).bearden;if(!token)return null;const id=hash(token),session=await first('SELECT expires FROM sessions WHERE hash=?',id);return session&&session.expires>Date.now()?await rawRead('auth-session:'+id,token.startsWith('v2.')?null:users.legacy):null;}
+ async function authorized(req){return !!await sessionIdentity(req);}
+
+ async function locked(fn){const id=random(),now=Date.now();const r=await run("INSERT INTO locks VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET owner=excluded.owner,expires=excluded.expires WHERE locks.expires < ?",users.lock(),id,now+300000,now);if(!r.meta?.changes)throw Error('A sync or save is already running. Try again in a moment.');try{return await fn();}finally{await run("DELETE FROM locks WHERE id=? AND owner=?",users.lock(),id);}}
  async function request(url,options={}){const r=await fetcher(url,{...options,signal:AbortSignal.timeout(15000)});let d;try{d=await r.json();}catch{throw Error('Provider response unreadable');}if(!r.ok){const error=Error(d.error_code||d.error?.status||'Provider request failed ('+r.status+')');error.code=d.error_code;throw error;}return d;}
  async function plaid(path,data){if(!env.PLAID_CLIENT_ID||!env.PLAID_SECRET)throw Error('Plaid is not configured');const mode=env.PLAID_ENV||'sandbox';if(!['sandbox','production'].includes(mode))throw Error('Invalid Plaid environment');return request(`https://${mode}.plaid.com${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:env.PLAID_CLIENT_ID,secret:env.PLAID_SECRET,...data})});}
  const googleToken=data=>request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,...data})});
- function publicConnections(c){return {items:c.items.map(publicItem),creditCards:publicCredit(c),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates.filter(x=>!x.dismissed),...publicMail(c,owner),bankUpdated:c.bankUpdated,status:c.status};}
+ function publicConnections(c){return {items:c.items.map(publicItem),creditCards:publicCredit(c),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates.filter(x=>!x.dismissed),...publicMail(c,users.current().email),bankUpdated:c.bankUpdated,status:c.status};}
  async function syncBalances(c,item){
    const accounts=await plaid('/accounts/get',{access_token:item.token});
    await updatePlan(s=>{const active=new Set(accounts.accounts.map(a=>'plaid-'+a.account_id));s.accounts=s.accounts.filter(a=>a.itemId!==item.id||active.has(a.id));for(const a of accounts.accounts){const balance=['credit','loan'].includes(a.type)?a.balances.current:(a.balances.available??a.balances.current);if(balance===null)continue;const id='plaid-'+a.account_id,old=s.accounts.find(x=>x.id===id),eligible=a.type==='depository'&&a.subtype==='checking'&&a.balances.iso_currency_code==='USD',entry={id,itemId:item.id,name:a.name+(a.mask?' •'+a.mask:''),balance:cents(balance),include:eligible?(old?.include??true):false,source:'plaid',type:a.type,subtype:a.subtype,currency:a.balances.iso_currency_code};if(old)Object.assign(old,entry);else s.accounts.push(entry);}});
@@ -55,15 +60,15 @@ export function runtime(env,fetcher=fetch){
   if(bills.length){const p=await plan();let changed=false;for(const bill of bills)if(!p.state.bills.some(b=>b.sourceId===bill.sourceId||b.sourceKey===bill.sourceKey)){p.state.bills.push(bill);changed=true;}if(changed){validate(p.state);if(JSON.stringify(p.state).length>240000)throw Error('Plan storage is full.');p.revision++;await write('plan',p);}}
   return account.status;
  }
- async function sync(force=false,bankOnly=false){return locked(async()=>{const c=await connections(),now=Date.now(),bank=c.items.filter(i=>force||i.pending||!i.nextSync||i.nextSync<=now).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0],gmail=!bankOnly&&mailboxes(c,owner).filter(a=>force||a.backlog?.length||a.page||!a.nextSync||a.nextSync<=now).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0];
+ async function sync(force=false,bankOnly=false){return locked(async()=>{const c=await connections(),now=Date.now(),bank=c.items.filter(i=>force||i.pending||!i.nextSync||i.nextSync<=now).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0],gmail=!bankOnly&&mailboxes(c,users.current().email).filter(a=>force||a.backlog?.length||a.page||!a.nextSync||a.nextSync<=now).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0];
    if(!bank&&!gmail)return {status:c.status};try{if(force&&bank)await syncBalances(c,bank);if(gmail&&(!bank||c.lastTask==='bank')){c.lastTask='gmail';c.status=await syncGmail(c,gmail);}else{c.lastTask='bank';c.status=await syncBank(c,bank,force);}}catch(e){c.status='Sync needs attention: '+e.message;if(c.lastTask==='gmail'&&gmail){gmail.nextSync=now+sixHours;gmail.status=c.status;}}
    c.lastAttempt=new Date().toISOString();c.candidates=c.candidates.filter(x=>!x.dismissed);await write('connections',c);return {status:c.status};});}
- async function handle(req){
+ async function handleScoped(req){
   const u=new URL(req.url),path=u.pathname;
   if(path==='/health')return json({ok:true,hosting:'cloudflare-free',configured});
-  if(path==='/api/config'&&req.method==='GET')return json({authenticated:await authorized(req),googleConfigured:configured,plaidConfigured:!!(env.PLAID_CLIENT_ID&&env.PLAID_SECRET),plaidEnvironment:env.PLAID_ENV||'sandbox',syncDescription:'balances loaded on connection; background updates about every 6 hours'});
+  if(path==='/api/config'&&req.method==='GET')return json({authenticated:await authorized(req),accountId:await authorized(req)?users.current().accountId:null,email:await authorized(req)?users.current().email:null,googleConfigured:configured,plaidConfigured:!!(env.PLAID_CLIENT_ID&&env.PLAID_SECRET),plaidEnvironment:env.PLAID_ENV||'sandbox',syncDescription:'balances loaded on connection; background updates about every 6 hours'});
   if(path==='/auth/google'&&req.method==='GET'){
-   if(!configured)return json({error:'Configure Cloudflare D1 and the Google/owner/encryption secrets first.'},503);const gmail=u.searchParams.has('gmail');if(gmail&&!await authorized(req))return redirect('/auth/google');
+   if(!configured)return json({error:'Configure Cloudflare D1 and the Google/owner/encryption secrets first.'},503);const gmail=u.searchParams.has('gmail');if(gmail&&!await authorized(req))return redirect('/auth/google');if(gmail&&sessionMismatch(users.current(),u.searchParams.get('account'),'POST'))return json({error:'Your BearDen account changed. Reload before adding Gmail.'},409);
    const state=random(),verifier=random();await run('DELETE FROM oauth WHERE expires < ?',Date.now());await run('INSERT INTO oauth VALUES(?,?,?,?)',hash(state),encrypt(gmail?{verifier,ownerSession:hash(cookies(req).bearden)}:verifier),gmail?1:0,Date.now()+600000);
    const q=new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,redirect_uri:origin+'/auth/google/callback',response_type:'code',scope:'openid email'+(gmail?' https://www.googleapis.com/auth/gmail.readonly':''),state,code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256',access_type:'offline',prompt:gmail?'consent select_account':'select_account'});return redirect('https://accounts.google.com/o/oauth2/v2/auth?'+q,[cookie('bearden_oauth',state,600)]);
   }
@@ -71,15 +76,16 @@ export function runtime(env,fetcher=fetch){
    if(!configured)return json({error:'Server setup incomplete'},503);const state=u.searchParams.get('state')||'';if(!state||cookies(req).bearden_oauth!==state)return json({error:'Invalid sign-in state. Start again.'},400);
    // DELETE RETURNING consumes the state atomically across Worker instances.
    const record=await first('DELETE FROM oauth WHERE hash=? RETURNING *',hash(state));if(!record||record.expires<Date.now()||!u.searchParams.get('code'))return json({error:'Sign-in cancelled or expired'},400);
-   const binding=decrypt(record.verifier);if(record.gmail&&(!await authorized(req)||binding.ownerSession!==hash(cookies(req).bearden||'')))return json({error:'Sign in as the owner before adding a Gmail account.'},403);
+   const binding=decrypt(record.verifier);if(record.gmail&&(!await authorized(req)||binding.ownerSession!==hash(cookies(req).bearden||'')))return json({error:'Sign in to your BearDen account before adding Gmail.'},403);
    const token=await googleToken({grant_type:'authorization_code',code:u.searchParams.get('code'),redirect_uri:origin+'/auth/google/callback',code_verifier:typeof binding==='string'?binding:binding.verifier}),user=await request('https://openidconnect.googleapis.com/v1/userinfo',{headers:{Authorization:'Bearer '+token.access_token}});
-   if(!user.email_verified||!record.gmail&&user.email?.toLowerCase()!==owner)return json({error:'This BearDen is restricted to its owner.'},403);
-   if(record.gmail){if(!token.scope?.split(' ').includes('https://www.googleapis.com/auth/gmail.readonly')||!token.refresh_token)throw Error('Gmail read-only/offline access was not granted. Reconnect.');await locked(async()=>{const c=await connections();connectMailbox(c,user,token.refresh_token,owner);await write('connections',c);});}
+   if(!user.email_verified)return json({error:'Google must verify your email before signing in.'},403);
+   if(record.gmail){if(!token.scope?.split(' ').includes('https://www.googleapis.com/auth/gmail.readonly')||!token.refresh_token)throw Error('Gmail read-only/offline access was not granted. Reconnect.');await locked(async()=>{const c=await connections();connectMailbox(c,user,token.refresh_token,users.current().email);await write('connections',c);});}
    if(record.gmail)return redirect('/?connected=1',[cookie('bearden_oauth','',0)]);
-   const session=random();await run('DELETE FROM sessions WHERE expires < ?',Date.now());await run('INSERT INTO sessions VALUES(?,?)',hash(session),Date.now()+7*86400000);return redirect('/?connected=1',[cookie('bearden',session,7*86400),cookie('bearden_oauth','',0)]);
+   const identity=googleIdentity(user,owner),session='v2.'+random();await rawWrite('auth-session:'+hash(session),identity);const profile=await rawRead('user-index:'+identity.accountId,{lastSync:0});await rawWrite('user-index:'+identity.accountId,{...profile,...identity});await run('DELETE FROM sessions WHERE expires < ?',Date.now());await run('INSERT INTO sessions VALUES(?,?)',hash(session),Date.now()+7*86400000);return redirect('/?connected=1',[cookie('bearden',session,7*86400),cookie('bearden_oauth','',0)]);
   }
   if(path.startsWith('/api/')){
    if(!await authorized(req))return json({error:'Sign in to access private data.'},401);
+   if(sessionMismatch(users.current(),req.headers.get('X-BearDen-Account'),req.method))return json({error:'The signed-in account changed. Reload before continuing; your edits have not been saved to the other account.'},409);
    if(req.method==='GET'&&path==='/api/income/baby-bear'){const saved=await read('income-shortcut',null),classic=await read('classic',{}),preset=saved||incomeFromTracker(classic.state)||incomeFromPlan((await plan()).state);return preset?json(preset):json({error:'Set your income in the Income tab once to save your Baby Bear income shortcut.'},404);}
    if(path==='/api/import/baby-bear')return json({error:'Preset account imports have been retired. Use Accounts or the income-only shortcut.'},410);
    if(req.method==='GET'&&path==='/api/classic')return json(await read('classic',{state:{version:1,values:{}},revision:0}));
@@ -88,10 +94,10 @@ export function runtime(env,fetcher=fetch){
    if(path==='/api/logout'){await run('DELETE FROM sessions WHERE hash=?',hash(cookies(req).bearden));const response=json({ok:true});response.headers.append('Set-Cookie',cookie('bearden','',0));return response;}
    if(path==='/api/bank/refresh')return json(await sync(true,true));
    if(path==='/api/sync')return json(await sync(true));
-   if(path==='/api/plaid/link'){const c=await connections(),item=c.items.find(i=>i.id===b.itemId);const d=await plaid('/link/token/create',{user:{client_user_id:hash(owner)},client_name:'BearDen',...creditLinkOptions(b,item),country_codes:['US'],language:'en',...(env.PLAID_REDIRECT_URI?{redirect_uri:env.PLAID_REDIRECT_URI}:{})});return json({link_token:d.link_token});}
+   if(path==='/api/plaid/link'){const c=await connections(),item=c.items.find(i=>i.id===b.itemId);const d=await plaid('/link/token/create',{user:{client_user_id:hash(users.current().scope||owner)},client_name:'BearDen',...creditLinkOptions(b,item),country_codes:['US'],language:'en',...(env.PLAID_REDIRECT_URI?{redirect_uri:env.PLAID_REDIRECT_URI}:{})});return json({link_token:d.link_token});}
    return locked(async()=>{
-    if(path==='/api/classic'){const state=validateClassic(b.state),current=await read('classic',{revision:0});if(current.revision!==b.revision)return json({error:'The tracker changed in another tab. Export your edits and reload.'},409);await write('classic',{state,revision:current.revision+1});if(!await read('income-shortcut',null)){const preset=incomeFromTracker(state)||incomeFromPlan((await plan()).state);if(preset)await write('income-shortcut',preset);}return json({revision:current.revision+1});}
-    if(path==='/api/state'){const state=validate(b.state);if(state.emailSenders.length>20||state.emailSenders.some(s=>!/^[-\w.+]+@[\w.-]+\.[a-z]{2,}$/i.test(s)))throw Error('Use up to 20 full sender email addresses');const current=await plan();if(current.revision!==b.revision)return json({error:'Plan changed during sync or in another tab. Export edits and reload before saving.'},409);await write('plan',{state,revision:current.revision+1});const c=await connections(),accepted=new Set(state.bills.map(b=>b.sourceId).filter(Boolean));if(c.candidates.some(x=>accepted.has(x.id))){c.candidates=c.candidates.filter(x=>!accepted.has(x.id));await write('connections',c);}return json({revision:current.revision+1});}
+    if(path==='/api/classic'){const state=validateClassic(b.state),current=await read('classic',{revision:0});if(current.revision!==b.revision)return json({error:'The tracker changed in another tab. Reload before editing again.'},409);await write('classic',{state,revision:current.revision+1});if(!await read('income-shortcut',null)){const preset=incomeFromTracker(state)||incomeFromPlan((await plan()).state);if(preset)await write('income-shortcut',preset);}return json({revision:current.revision+1});}
+    if(path==='/api/state'){const state=validate(b.state);if(state.emailSenders.length>20||state.emailSenders.some(s=>!/^[-\w.+]+@[\w.-]+\.[a-z]{2,}$/i.test(s)))throw Error('Use up to 20 full sender email addresses');const current=await plan();if(current.revision!==b.revision)return json({error:'Plan changed during sync or in another tab. Reload before editing again.'},409);await write('plan',{state,revision:current.revision+1});const c=await connections(),accepted=new Set(state.bills.map(b=>b.sourceId).filter(Boolean));if(c.candidates.some(x=>accepted.has(x.id))){c.candidates=c.candidates.filter(x=>!accepted.has(x.id));await write('connections',c);}return json({revision:current.revision+1});}
     if(path==='/api/plaid/exchange'){if(typeof b.public_token!=='string')throw Error('Missing public token');const c=await connections();if(c.items.length>=10)throw Error('This personal setup supports up to 10 bank connections');const d=await plaid('/item/public_token/exchange',{public_token:b.public_token});let item=c.items.find(i=>i.id===d.item_id);if(!item){item={id:d.item_id,token:d.access_token,name:String(b.name||'Bank').slice(0,150),cursor:'',liabilities:b.kind==='credit'};c.items.push(item);}
      // Persist the exchanged token before fetching balances so a provider failure is recoverable.
      c.status='Bank connected. Loading balances.';await write('connections',c);
@@ -109,26 +115,31 @@ export function runtime(env,fetcher=fetch){
     if(path==='/api/plaid/disconnect'){const c=await connections(),item=c.items.find(i=>i.id===b.id);if(!item)return json({error:'Bank not found'},404);await plaid('/item/remove',{access_token:item.token});c.items=c.items.filter(i=>i.id!==b.id);c.transactions=c.transactions.filter(t=>t.itemId!==b.id);c.creditCards=(c.creditCards||[]).filter(card=>card.itemId!==b.id);await write('connections',c);await updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.itemId!==b.id);});return json({ok:true});}
     if(path==='/api/gmail/search'){
      if(typeof b.query!=='string'||b.query.length>100)throw Error('Use a merchant name of up to 100 characters.');
-     const c=await connections();for(const account of mailboxes(c,owner)){try{await syncGmail(c,account,b.query);}catch(e){account.status='Gmail needs attention: '+e.message;}}
-     await write('connections',c);return json(publicMail(c,owner));
+     const c=await connections();for(const account of mailboxes(c,users.current().email)){try{await syncGmail(c,account,b.query);}catch(e){account.status='Gmail needs attention: '+e.message;}}
+     await write('connections',c);return json(publicMail(c,users.current().email));
     }
     if(path==='/api/gmail/disconnect'){
-     const c=await connections(),accounts=mailboxes(c,owner),id=b.id||(accounts.length===1?accounts[0].id:null),account=accounts.find(a=>a.id===id);if(!account)return json({error:'Choose the Gmail account to disconnect.'},400);
+     const c=await connections(),accounts=mailboxes(c,users.current().email),id=b.id||(accounts.length===1?accounts[0].id:null),account=accounts.find(a=>a.id===id);if(!account)return json({error:'Choose the Gmail account to disconnect.'},400);
      const r=await fetcher('https://oauth2.googleapis.com/revoke',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({token:account.refreshToken}),signal:AbortSignal.timeout(15000)});if(!r.ok&&r.status!==400)throw Error('Could not revoke Google access; try again.');
-     forgetMailbox(c,id,owner);await write('connections',c);return json({ok:true});
+     forgetMailbox(c,id,users.current().email);await write('connections',c);return json({ok:true});
     }
     if(path==='/api/candidate/dismiss'){const c=await connections();c.candidates=c.candidates.filter(x=>x.id!==b.id);await write('connections',c);return json({ok:true});}
     return json({error:'Not found'},404);
    });
   }
   if(!['GET','HEAD'].includes(req.method))return json({error:'Method not allowed'},405);
-  if(!['/','/index.html','/plaid-return','/style.css','/app.mjs','/engine.mjs','/setup-key','/setup-key.html','/setup-key.mjs','/favicon.ico','/tabs.js','/tabs.css','/income-model.mjs','/credit-model.mjs','/transaction-links.mjs','/email-model.mjs','/bank-activity.mjs','/classic.js','/classic.css','/classic-theme.js','/classic-events.js','/classic-migrate.mjs','/connections.js','/connections.css','/purify.min.js'].includes(path))return json({error:'Not found'},404);
+  if(!['/','/index.html','/plaid-return','/style.css','/app.mjs','/engine.mjs','/setup-key','/setup-key.html','/setup-key.mjs','/favicon.ico','/tabs.js','/tabs.css','/income-model.mjs','/credit-model.mjs','/transaction-links.mjs','/email-model.mjs','/tax-model.mjs','/tax-ui.mjs','/onboarding.js','/bank-activity.mjs','/classic.js','/classic.css','/classic-theme.js','/classic-events.js','/classic-migrate.mjs','/connections.js','/connections.css','/purify.min.js'].includes(path))return json({error:'Not found'},404);
   const target=new URL(req.url);if(path==='/plaid-return')target.pathname='/';const asset=await env.ASSETS.fetch(new Request(target,req)),response=new Response(asset.body,asset);for(const [k,v]of Object.entries(headers))response.headers.set(k,v);return response;
  }
- return {handle,sync,configured,encrypt,decrypt};
+ async function handle(req){const identity=await sessionIdentity(req);return users.run(identity,()=>handleScoped(req));}
+ async function syncNextAccount(){
+  const rows=await env.DB.prepare("SELECT value FROM vault WHERE id LIKE 'user-index:%'").bind().all();const profiles=rows.results.map(r=>decrypt(r.value));if(!profiles.some(p=>!p.scope))profiles.push({...users.legacy,lastSync:0});
+  const identity=profiles.sort((a,b)=>(a.lastSync||0)-(b.lastSync||0))[0];return users.run(identity,async()=>{const result=await sync();await rawWrite('user-index:'+identity.accountId,{...identity,lastSync:Date.now()});return result;});
+ }
+ return {handle,sync,syncNextAccount,configured,encrypt,decrypt};
 }
 export default {
  async fetch(req,env){try{return await runtime(env).handle(req);}catch(e){return json({error:e.message||'Request failed'},400);}},
- async scheduled(_event,env,ctx){const app=runtime(env);if(app.configured)ctx.waitUntil(app.sync().catch(()=>{/* Connection errors are stored in the private status. Do not log tokens or payloads. */}));}
+ async scheduled(_event,env,ctx){const app=runtime(env);if(app.configured)ctx.waitUntil(app.syncNextAccount().catch(()=>{/* Connection errors are stored in the private status. Do not log tokens or payloads. */}));}
 };
 
