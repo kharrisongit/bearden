@@ -1,14 +1,15 @@
 const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 export const emailLink=message=>({mailboxId:message.mailboxId,sender:message.sender,accountLast4:message.accountLast4||'',selectedAt:new Date().toISOString(),selectedMessage:Object.fromEntries(['id','mailboxId','sender','accountLast4','receivedAt','amount','minimum','balance','dueDate','paymentStatus'].map(key=>[key,message[key]??null]))});
 export const matchesEmail=(message,link)=>!!link&&message.mailboxId===link.mailboxId&&message.sender===link.sender&&(!link.accountLast4||message.accountLast4===link.accountLast4);
-export const completeBillStatement=m=>!!m&&!m.paymentStatus&&Number.isSafeInteger(m.amount)&&m.amount>=0&&/^\d{4}-\d{2}-\d{2}$/.test(m.dueDate||'')&&Number.isFinite(Date.parse(m.dueDate+'T12:00:00Z'))&&new Date(m.dueDate+'T12:00:00Z').toISOString().slice(0,10)===m.dueDate;
+export const usableBillAmount=m=>!!m&&!m.paymentStatus&&Number.isSafeInteger(m.amount)&&m.amount>=0;
+export const completeBillStatement=m=>usableBillAmount(m)&&/^\d{4}-\d{2}-\d{2}$/.test(m.dueDate||'')&&Number.isFinite(Date.parse(m.dueDate+'T12:00:00Z'))&&new Date(m.dueDate+'T12:00:00Z').toISOString().slice(0,10)===m.dueDate;
 export function billStatement(messages,link,{now=Date.now()}={}){
  const matched=messages.filter(m=>matchesEmail(m,link)&&Date.parse(m.receivedAt)<=now);
  const selected=matched.find(m=>m.id===link?.selectedMessage?.id)||link?.selectedMessage;
- const anchor=matchesEmail(selected||{},link)&&Date.parse(selected.receivedAt)<=now&&completeBillStatement(selected)?selected:null;
+ const anchor=matchesEmail(selected||{},link)&&Date.parse(selected.receivedAt)<=now&&usableBillAmount(selected)?selected:null;
  const candidates=matched.filter(completeBillStatement).sort((a,b)=>b.dueDate.localeCompare(a.dueDate)||b.receivedAt.localeCompare(a.receivedAt));
  if(!anchor)return candidates[0];
- return candidates.find(m=>Date.parse(m.receivedAt)>Date.parse(link.selectedAt||anchor.receivedAt)&&m.dueDate>=anchor.dueDate)||anchor;
+ return candidates.find(m=>Date.parse(m.receivedAt)>Date.parse(link.selectedAt||anchor.receivedAt)&&m.dueDate>=(anchor.dueDate||''))||anchor;
 }
 export function emailSuggestions(messages,name){const words=norm(name).split(' ').filter(w=>w.length>=4&&!['payment','credit','account','card','bill','loan','monthly','manual','personal'].includes(w));return messages.filter(m=>words.some(w=>norm(m.senderName+' '+m.sender+' '+m.subject).split(' ').includes(w)));}
 export function emailAccountStatus(messages,link,{now=Date.now(),hasPlaid=false,bankPayments=[],creditCard=true}={}){
@@ -41,4 +42,4 @@ export function emailAccountStatus(messages,link,{now=Date.now(),hasPlaid=false,
  }
  return {statement,payments,pending:payments.filter(p=>p.status==='pending').reduce((sum,p)=>sum+(p.paymentAmount||0),0)};
 }
-export function emailBillUpdate(bill,messages,links){const statement=billStatement(messages,links['bill:'+bill.id]);return statement?{...bill,amount:statement.amount,date:statement.dueDate,emailConfirmed:true,emailDueDate:statement.dueDate,emailMessageId:statement.id}:bill;}
+export function emailBillUpdate(bill,messages,links){const statement=billStatement(messages,links['bill:'+bill.id]);return statement?{...bill,amount:statement.amount,date:completeBillStatement(statement)?statement.dueDate:bill.date,emailConfirmed:completeBillStatement(statement),emailAmountConfirmed:true,emailDueDate:completeBillStatement(statement)?statement.dueDate:null,emailMessageId:statement.id}:bill;}

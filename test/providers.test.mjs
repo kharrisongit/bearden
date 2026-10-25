@@ -35,3 +35,6 @@ test('utility due dates support short years and omitted years using the received
 test('HTML utility labels decode dollar and colon entities',()=>{
  const text=messageText({mimeType:'text/html',body:{data:Buffer.from('<p>Bill amount&colon; &dollar;187.42</p><p>Due date&colon; 10/30/2026</p>').toString('base64url')}});assert.deepEqual(parseBill(text),{amount:18742,date:'2026-10-30'});
 });
+test('bill details in HTML are used when the plain-text part only contains a view-online notice',()=>{
+ const text=messageText({parts:[{mimeType:'text/plain',body:{data:Buffer.from('Your bill is ready. View it online.').toString('base64url')}},{mimeType:'text/html',body:{data:Buffer.from('<p>Amount due is $275.00</p><p>Due date: October 29th, 2026</p>').toString('base64url')}}]});assert.deepEqual(parseBill(text),{amount:27500,date:'2026-10-29'});
+});

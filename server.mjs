@@ -1,5 +1,5 @@
 import {userScope,googleIdentity,sessionMismatch} from './user-scope.mjs';
-import {mailboxes,connectMailbox,publicMail,forgetMailbox,scanMailbox} from './mailboxes.mjs';
+import {mailboxes,connectMailbox,publicMail,forgetMailbox,scanMailbox,refreshSelectedEmail} from './mailboxes.mjs';
 import {incomeFromTracker,incomeFromPlan} from './income-preset.mjs';
 import {creditLinkOptions,syncCredit,publicCredit,publicItem} from './credit.mjs';
 import {recurringBills,personalSpending} from './recurring.mjs';
@@ -87,6 +87,10 @@ async function handle(req,res){
    if(path==='/api/plaid/exchange'){if(typeof b.public_token!=='string')throw Error('Missing public token');const d=await plaid('/item/public_token/exchange',{public_token:b.public_token});if(runningSync())await runningSync();const c=connections();if(!c.items.some(i=>i.id===d.item_id)){c.items.push({id:d.item_id,token:d.access_token,cursor:'',name:String(b.name||'Bank').slice(0,150),liabilities:b.kind==='credit'});write('connections',c);}await sync();return json(res,200,{ok:true});}
    if(path==='/api/plaid/updated'||path==='/api/cards/refresh'){if(runningSync())await runningSync();const c=connections(),item=c.items.find(i=>i.id===b.itemId);if(!item)return json(res,404,{error:'Bank connection not found'});if(path==='/api/plaid/updated')item.liabilities=true;await syncCredit(c,item,plaid,true);write('connections',c);const result=await sync(true);return json(res,200,{status:result.status});}
    if(path==='/api/plaid/disconnect'){if(runningSync())await runningSync();let c=connections();const item=c.items.find(i=>i.id===b.id);if(!item)return json(res,404,{error:'Bank not found'});await plaid('/item/remove',{access_token:item.token});if(runningSync())await runningSync();c=connections();c.items=c.items.filter(i=>i.id!==b.id);c.transactions=c.transactions.filter(t=>t.itemId!==b.id);c.creditCards=(c.creditCards||[]).filter(card=>card.itemId!==b.id);write('connections',c);updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.itemId!==b.id);});return json(res,200,{ok:true});}
+   if(path==='/api/gmail/message'){
+    if(runningSync())await runningSync();const c=connections();let message;
+    syncs.set(users.current().accountId,(async()=>{message=await refreshSelectedEmail(c,b,{request,googleToken,owner:users.current().email});write('connections',c);})().finally(()=>syncs.delete(users.current().accountId)));await runningSync();return json(res,200,{message});
+   }
    if(path==='/api/gmail/search'){
     if(typeof b.query!=='string'||b.query.length>100)throw Error('Use a merchant name of up to 100 characters.');if(runningSync())await runningSync();
     const c=connections();syncs.set(users.current().accountId,(async()=>{for(const account of mailboxes(c,users.current().email)){try{await syncMailbox(c,account,b.query);}catch(e){account.status='Gmail needs attention: '+e.message;}}write('connections',c);})().finally(()=>syncs.delete(users.current().accountId)));await runningSync();return json(res,200,publicMail(c,users.current().email));

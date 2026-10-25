@@ -5,9 +5,9 @@ export function parseAccountEmail({id,mailboxId,from='',subject='',text='',recei
  if(!/^[^\s<>]+@[^\s<>]+\.[^\s<>]+$/.test(sender))return null;
  const content=subject+'\n'+text;
  if(!/\b(bill|invoice|statement|balance|payment|autopay|paid|receipt)\b/i.test(content))return null;
- const amount=uniqueAmount(content,/(?<!minimum\s)(?:total\s+amount\s+due|amount\s+due|total\s+due|balance\s+due|(?:total\s+)?bill\s+amount)\s*:?\s*\$\s*([\d,]+(?:\.\d{2})?)(?![\d.])/gi);
- const minimum=uniqueAmount(content,/(?:minimum\s+(?:payment(?:\s+due)?|amount\s+due|due))\s*:?\s*\$\s*([\d,]+(?:\.\d{2})?)(?![\d.])/gi);
- const balance=uniqueAmount(content,/(?:statement\s+balance|new\s+balance|current\s+balance)\s*:?\s*\$\s*([\d,]+(?:\.\d{2})?)(?![\d.])/gi);
+ const amount=uniqueAmount(content,/(?<!minimum\s)(?:total\s+amount\s+due|amount\s+due|total\s+due|balance\s+due|(?:total\s+)?bill\s+amount|current\s+bill|bill\s+total)\s*(?:is\s*)?:?\s*\$\s*([\d,]+(?:\.\d{2})?)(?!\d|\.\d)/gi);
+ const minimum=uniqueAmount(content,/(?:minimum\s+(?:payment(?:\s+due)?|amount\s+due|due))\s*(?:is\s*)?:?\s*\$\s*([\d,]+(?:\.\d{2})?)(?!\d|\.\d)/gi);
+ const balance=uniqueAmount(content,/(?:statement\s+balance|new\s+balance|current\s+balance)\s*(?:is\s*)?:?\s*\$\s*([\d,]+(?:\.\d{2})?)(?!\d|\.\d)/gi);
  const accountLast4=content.match(/(?:account|card)\s*(?:number|no\.?|#|ending(?:\s+in)?)?\s*[:*xX•-]*\s*(\d{4,})\b/i)?.[1]?.slice(-4)||'';
  const reference=content.match(/(?:confirmation|reference|payment)\s*(?:number|no\.?|#|id)\s*:?\s*([a-z0-9-]{5,})/i)?.[1]?.toLowerCase()||'';
  // Prefer the subject. Terms in a generic footer must not turn a statement into
@@ -21,8 +21,8 @@ export function parseAccountEmail({id,mailboxId,from='',subject='',text='',recei
  };
  let paymentStatus=statusFor(subject);
  if(!paymentStatus&&!/\b(statement|bill|invoice|balance|amount due|minimum due)\b/i.test(subject))paymentStatus=statusFor(text.slice(0,1800));
- let paymentAmount=uniqueAmount(content,/(?:payment\s+(?:of|amount)|amount\s+(?:paid|received))\s*:?\s*\$\s*([\d,]+(?:\.\d{2})?)(?![\d.])/gi);
- if(paymentStatus&&paymentAmount===null)paymentAmount=uniqueAmount(content,/\$\s*([\d,]+(?:\.\d{2})?)(?![\d.])/g);
+ let paymentAmount=uniqueAmount(content,/(?:payment\s+(?:of|amount)|amount\s+(?:paid|received))\s*(?:is\s*)?:?\s*\$\s*([\d,]+(?:\.\d{2})?)(?!\d|\.\d)/gi);
+ if(paymentStatus&&paymentAmount===null)paymentAmount=uniqueAmount(content,/\$\s*([\d,]+(?:\.\d{2})?)(?!\d|\.\d)/g);
  const dueDate=parseBill(content,{referenceDate:receivedAt}).date;
  const paymentDates=[...new Set([...content.matchAll(/\b(?:payment date|scheduled for|payment scheduled on|payment received on|payment posted on)\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})/gi)].map(m=>parseBill('Due date: '+m[1]).date).filter(Boolean))];
  const paymentDate=paymentStatus&&paymentDates.length===1?paymentDates[0]:null;

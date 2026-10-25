@@ -1,3 +1,5 @@
+import {householdEnabled,sharedBill,spouseEvents,householdForecast} from './household-model.mjs?v=household1';
+export {householdEnabled,sharedBill,spouseEvents};
 export {reviewBankActivity,transactionKey} from './bank-activity.mjs';
 export {creditBills} from './credit-model.mjs';
 export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment} from './transaction-links.mjs';
@@ -71,13 +73,13 @@ export function paydayEvents(plan,start,end,{billsOnly=false,debtMode='full'}={}
  }
  return out;
 }
-export function scenarioForecast(accounts,plan,bills,start,{debtMode='full',length=30}={}){
+export function scenarioForecast(accounts,plan,bills,start,{debtMode='full',length=30,household,scope,transactions=[]}={}){
  const mode=['full','minimum','none'].includes(debtMode)?debtMode:'full';
  const paydays=paydayEvents(plan,start,day(start,length),{billsOnly:true,debtMode:mode});
  // Matched credit cards remain covered by the paycheck allocation, preventing
  // an issuer minimum and a tracker minimum from being deducted twice.
  const scheduled=mode==='none'?bills.filter(b=>!isDebtPayment(b)):bills;
- return {...cashForecast(accounts,paydays,scheduled,start,length),debtMode:mode};
+ return {...(householdEnabled(household)?householdForecast(accounts,plan,paydays,scheduled,start,{household,scope,length,transactions}):cashForecast(accounts,paydays,scheduled,start,length)),debtMode:mode};
 }
 export function billEvents(legacy,planner,linked,start,end){
  const paid=new Set(planner.paid||[]),overrides=planner.covered||{},out=[];
@@ -103,7 +105,8 @@ export function billEvents(legacy,planner,linked,start,end){
    const key=bill.id+':'+date;
    if(paid.has(key)||legacy?.paid?.includes(key)||(bill.gmailConfirmed&&[...paid,...(legacy?.paid||[])].some(k=>k.startsWith(bill.id+':'+date.slice(0,7)))))continue;
    const covered=Boolean(linked[bill.id])||bill.paidByCard||bill.source==='tracker-debt'||(bill.source==='plaid-credit'?bill.covered:(overrides[bill.id]??(bill.source!=='gmail'&&bill.source!=='manual'&&bill.source!=='bank-estimate'&&bill.source!=='bank-tracked')));
-   out.push({...bill,date,key,type:'bill',covered,overdue:date<start,emailConfirmed:!!bill.emailConfirmed&&date===(bill.emailDueDate||bill.date)});
+   const shared=sharedBill(bill,planner);
+   out.push({...bill,date,key,type:'bill',covered:shared?false:covered,shared,overdue:date<start,emailConfirmed:!!bill.emailConfirmed&&date===(bill.emailDueDate||bill.date)});
   }
  }
  return out.sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name));
@@ -126,7 +129,10 @@ export function cashForecast(accounts,paydays,bills,start,length=30){
 export function paycheckBillItems({legacy,planner,linked},date,paycheck){
  const start=paycheck===1?day(date,-14):date,end=day(date,13);
  const paid=new Set(planner.paid||[]);
- return billEvents({...legacy,paid:[]},{...planner,paid:[]},linked,start,end)
+ const bills=billEvents({...legacy,paid:[]},{...planner,paid:[]},linked,start,end)
   .filter(b=>!b.covered&&(b.date>=date||(paycheck===1&&!paid.has(b.key))))
   .filter((b,index,rows)=>rows.findIndex(other=>other.key===b.key)===index);
+ const personal=bills.filter(b=>!b.shared),h=planner.household;
+ if(householdEnabled(h))personal.unshift({id:'household-contribution',key:'household:'+date,name:'Fixed Bills',date,amount:h.personalAmount,transfer:true,sharedBills:bills.filter(b=>b.shared),spouseContributions:spouseEvents(h,date,end)});
+ return personal;
 }

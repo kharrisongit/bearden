@@ -92,3 +92,23 @@ test('email-confirmed amounts override bank estimates in the calendar and foreca
  assert.equal(cashForecast([{balance:50000,include:true}],[],events,'2026-10-25').outgoing,18742);
  const next=billEvents({bills:[updated]},{manual:[],paid:[]},{},'2026-11-01','2026-11-30');assert.equal(next[0].emailConfirmed,false);
 });
+
+test('October 21 bill for $275 due October 29 replaces September bank amount and carries into November estimate',async()=>{
+ const {billEvents}=await import('../public/income-model.mjs');
+ const m=mail({subject:'Your Consumers Energy bill is ready',receivedAt:'2026-10-21T12:00:00Z',text:'Amount due: $275.00 Due date: 10/29/2026'});
+ const bill={id:'electric',name:'Electric',source:'bank-tracked',amount:35300,date:'2026-10-29',repeat:'monthly'};
+ const updated=emailBillUpdate(bill,[m],{'bill:electric':emailLink(m)});assert.equal(updated.amount,27500);assert.equal(updated.date,'2026-10-29');
+ const november=billEvents({bills:[updated]},{manual:[]},{},'2026-11-01','2026-11-30');assert.equal(november.length,1);assert.equal(november[0].amount,27500);assert.equal(november[0].date,'2026-11-29');assert.equal(november[0].emailConfirmed,false);
+});
+test('an explicitly selected email with a readable amount updates the estimate without inventing its missing due date',()=>{
+ const m=mail({subject:'Your electric bill',receivedAt:'2026-10-21T12:00:00Z',text:'Bill total is $275.00. Visit your account for the due date.'});
+ const bill={id:'electric',amount:35300,date:'2026-11-03'},link=emailLink(m),old={...m,id:'older',receivedAt:'2026-10-10T12:00:00Z',amount:35300,dueDate:'2026-10-29'};
+ const updated=emailBillUpdate(bill,[old,m],{'bill:electric':link});assert.equal(updated.amount,27500);assert.equal(updated.date,'2026-11-03');assert.equal(updated.emailConfirmed,false);assert.equal(updated.emailAmountConfirmed,true);
+ assert.equal(emailBillUpdate(bill,[],{'bill:electric':link}).amount,27500);
+});
+test('selecting an email rereads its exact private mailbox message instead of reusing stale parsed cache',async()=>{
+ const {refreshSelectedEmail}=await import('../mailboxes.mjs');const c={gmailAccounts:[{id:'mailbox',refreshToken:'private'}],gmailMessages:[{id:'mailbox:abc123',amount:null}]};let calls=0;
+ const message=await refreshSelectedEmail(c,{mailboxId:'mailbox',id:'mailbox:abc123'},{googleToken:async()=>({access_token:'token'}),request:async url=>{calls++;assert.match(url,/messages\/abc123\?format=full$/);return {internalDate:String(Date.parse('2026-10-21T12:00:00Z')),payload:{headers:[{name:'From',value:'Consumers Energy <billing@consumersenergy.com>'},{name:'Subject',value:'Your bill is ready'}],mimeType:'text/plain',body:{data:Buffer.from('Amount due: $275.00 Due date: October 29th, 2026').toString('base64url')}}};}});
+ assert.equal(calls,1);assert.equal(message.amount,27500);assert.equal(message.dueDate,'2026-10-29');assert.equal(c.gmailMessages.length,1);assert.equal(c.gmailMessages[0].amount,27500);
+ await assert.rejects(refreshSelectedEmail(c,{mailboxId:'other',id:'other:abc123'},{googleToken:async()=>{throw Error('Must not access another mailbox');}}),/connected Gmail/);
+});

@@ -19,6 +19,7 @@ let savingsGoalIdCounter = 0;
 let savingsGoals = [];
 
 let appliedBonuses = {};
+let bonusControlsEnabled=true;
 let paycheckOverrides = {};
 let savingsContributionOverrides = {}; // { [goalId]: { [paycheckNum]: amount } }
 let checkedPaychecks = {};
@@ -384,6 +385,7 @@ function gatherAppState(){
     hoursPerCheck: document.getElementById('hoursPerCheck').value,
     taxSettings: window.BearDenTaxes?.read(),
     appliedBonuses,
+    bonusControlsEnabled,
     savingsGoals: savingsGoals.map(g => ({ id: g.id, name: g.name, goal: g.goal, start: g.start, contribution: g.contribution, withdrawalHistory: g.withdrawalHistory || [] })),
     savingsGoalIdCounter,
     takeHome: document.getElementById('takeHome').value,
@@ -668,7 +670,7 @@ function useIncomeEstimate(){
 // ---- Reset ----
 async function resetAll(){
  await window.classicReady;
- const fresh={cards:[],cardIdCounter:0,budgetItems:starterBudgetItems(),budgetItemIdCounter:3,budgetSetupVersion:2,savingsGoals:[],savingsGoalIdCounter:0,hourlyRate:'',hoursPerCheck:'',takeHome:'',startDate:'',taxSettings:{},appliedBonuses:{},paycheckOverrides:{},savingsContributionOverrides:{},budgetItemOverrides:{},accountPaymentOverrides:{},extraExpenses:{},extraExpenseIdCounter:0,checkedPaychecks:{},payoffMethod:'avalanche'};
+ const fresh={cards:[],cardIdCounter:0,budgetItems:starterBudgetItems(),budgetItemIdCounter:3,budgetSetupVersion:2,savingsGoals:[],savingsGoalIdCounter:0,hourlyRate:'',hoursPerCheck:'',takeHome:'',startDate:'',taxSettings:{},bonusControlsEnabled:false,appliedBonuses:{},paycheckOverrides:{},savingsContributionOverrides:{},budgetItemOverrides:{},accountPaymentOverrides:{},extraExpenses:{},extraExpenseIdCounter:0,checkedPaychecks:{},payoffMethod:'avalanche'};
  clearTimeout(saveDebounceTimer);await window.BearDen.resetSetup(fresh);location.reload();
 }
 
@@ -2084,7 +2086,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
       </div>
     `).join('');
 
-    const accountBillLines=(row.accountBillsThisCheck||[]).map(bill=>`<div class="check-summary-row paycheck-account-bill"><span>− ${bdEscape(bill.name)}<small>Due ${fmtDate(new Date(bill.date+'T00:00:00'))}</small></span><span>${money(bill.amount/100)}</span></div>`).join('');
+    const accountBillLines=(row.accountBillsThisCheck||[]).map(bill=>`<div class="check-summary-row paycheck-account-bill"><span>− ${bdEscape(bill.name)}<small>${bill.transfer?'Transfer to shared bills account':'Due '+fmtDate(new Date(bill.date+'T00:00:00'))}</small></span><span>${money(bill.amount/100)}</span></div>${bill.transfer?`<details class="paycheck-shared-details"><summary>Shared bills & contributions</summary><p>Your Fixed Bills amount above is your only deduction for these shared bills.</p>${(bill.sharedBills||[]).map(b=>`<div class="check-summary-row"><span>${bdEscape(b.name)} · ${fmtDate(new Date(b.date+'T00:00:00'))}</span><span>${money(b.amount/100)}</span></div>`).join('')}${(bill.spouseContributions||[]).map(c=>`<div class="check-summary-row"><span>Spouse contribution · ${fmtDate(new Date(c.date+'T00:00:00'))}</span><span>+${money(c.amount/100)}</span></div>`).join('')}</details>`:''}`).join('');
     const extraExpenseLines = row.extrasThisCheck.map(e => `
       <div class="check-summary-row"><span>− ${bdEscape(e.label)} <span class="edited-tag" style="background:#fdf1e6;color:#a15f22;">one-time</span></span><span class="amount-input-wrap">${money(e.amount)}<span class="remove" style="margin-left:6px;" data-bd-click="removeExtraExpense(${row.paycheck}, ${e.id})">✕</span></span></div>
     `).join('');
@@ -2170,10 +2172,10 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
         </div>
         ${row.bonusAmount > 0 ? `
         <div class="check-summary-row bonus-row"><span>🎁 + Bonus (after taxes)</span><span>${money(row.bonusAmount)}</span></div>
-        <div style="text-align:right;margin:2px 0 4px;"><span class="remove" data-bd-click="removeBonusFromPaycheck(${row.paycheck})">Remove bonus</span></div>
+        ${bonusControlsEnabled?`<div style="text-align:right;margin:2px 0 4px;"><span class="remove" data-bd-click="removeBonusFromPaycheck(${row.paycheck})">Remove bonus</span></div>`:''}
         <div class="check-summary-row prominent-row"><span>Total this paycheck (after taxes)</span><span>${money(row.takeHomeThisCheck + row.bonusAmount)}</span></div>
         ` : (
-          bonusInputOpenForPaycheck === row.paycheck
+          !bonusControlsEnabled ? '' : bonusInputOpenForPaycheck === row.paycheck
             ? `<div class="bonus-inline-input">
                  <span>$</span><input type="number" id="bonusInlineAmount-${row.paycheck}" placeholder="Before-tax amount" aria-label="Before-tax bonus" min="0.01" step="0.01">
                  <button data-bd-click="applyBonusToPaycheck(${row.paycheck})">Apply</button>
@@ -6617,6 +6619,8 @@ window.classicReady=(async function init(){
   if (!savedState) {
     savedState = await migrateLegacyKeys();
   }
+  bonusControlsEnabled=savedState?savedState.bonusControlsEnabled!==false:false;
+  document.getElementById('bonusControlsToggle').checked=bonusControlsEnabled;
   budgetSetupVersion=Number(savedState?.budgetSetupVersion)||0;
   if(window.BearDen.isNew&&!budgetSetupVersion&&!budgetItems.length){budgetItems=starterBudgetItems();budgetItemIdCounter=3;budgetSetupVersion=1;}
   if(budgetSetupVersion<2){
@@ -6689,4 +6693,11 @@ let paycheckBillSignature;
 window.setPaycheckBills=(signature,resolve)=>{
  if(signature===paycheckBillSignature)return false;
  paycheckBillSignature=signature;window.accountBillsForPaycheck=resolve;calculate();return true;
+};
+
+document.getElementById('bonusControlsToggle').onchange=async e=>{
+ const before=bonusControlsEnabled;bonusControlsEnabled=e.target.checked;bonusInputOpenForPaycheck=null;e.target.disabled=true;
+ try{calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('featureSettingsStatus').textContent='Bonus preference saved.';}
+ catch(error){bonusControlsEnabled=before;e.target.checked=before;calculate();clearTimeout(saveDebounceTimer);document.getElementById('featureSettingsStatus').textContent=error.message;}
+ finally{e.target.disabled=false;}
 };

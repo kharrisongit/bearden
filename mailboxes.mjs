@@ -16,7 +16,7 @@ export function forgetMailbox(c,id,owner){const account=mailboxes(c,owner).find(
 export async function scanMailbox(c,account,{request,googleToken,query=null,limit=3}){
  account.lastSyncAttempt=Date.now();
  const token=await googleToken({grant_type:'refresh_token',refresh_token:account.refreshToken}),headers={Authorization:'Bearer '+token.access_token};
- if(account.signature!=='all-bills-v4'){account.signature='all-bills-v4';delete account.backlog;delete account.page;account.seen=[];}
+ if(account.signature!=='all-bills-v5'){account.signature='all-bills-v5';delete account.backlog;delete account.page;account.seen=[];}
  let queue;
  if(query!==null||!account.backlog?.length){
   const search=query===null?'':String(query).replace(/[^\p{L}\p{N}\s@.-]/gu,' ').trim().slice(0,100);
@@ -43,4 +43,19 @@ export async function scanMailbox(c,account,{request,googleToken,query=null,limi
  if(query===null)account.nextSync=account.backlog.length||account.page?0:Date.now()+6*3600000;
  account.status='Checked bills and payments'+(query!==null?'; '+processed+' matching email'+(processed===1?'':'s'):'')+'.';
  return electricBills;
+}
+
+// Re-read the exact selected message; a bounded background/search cache may still
+// contain an older parser result for an email outside the most recent batch.
+export async function refreshSelectedEmail(c,{mailboxId,id},{request,googleToken,owner=''}){
+ const account=mailboxes(c,owner).find(a=>a.id===mailboxId);
+ if(!account||typeof id!=='string'||!id.startsWith(mailboxId+':'))throw Error('Choose an email from a connected Gmail account.');
+ const sourceId=id.slice(mailboxId.length+1);if(!/^[A-Za-z0-9_-]{1,200}$/.test(sourceId))throw Error('Invalid email identifier.');
+ const token=await googleToken({grant_type:'refresh_token',refresh_token:account.refreshToken});
+ const msg=await request('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+encodeURIComponent(sourceId)+'?format=full',{headers:{Authorization:'Bearer '+token.access_token}});
+ const header=n=>msg.payload?.headers?.find(h=>h.name.toLowerCase()===n)?.value||'';
+ const parsed=parseAccountEmail({id,mailboxId,from:header('from'),subject:header('subject'),text:messageText(msg.payload).slice(0,32000),receivedAt:new Date(Number(msg.internalDate)||Date.parse(header('date'))||Date.now()).toISOString()});
+ if(!parsed)throw Error('This email has no readable bill or payment details.');
+ c.gmailMessages=[...(c.gmailMessages||[]).filter(m=>m.id!==id),parsed].sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt)).slice(0,300);
+ return parsed;
 }
