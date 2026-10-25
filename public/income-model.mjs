@@ -1,5 +1,5 @@
-import {householdEnabled,sharedBill,spouseEvents,householdForecast} from './household-model.mjs?v=household-fix2';
-export {householdEnabled,sharedBill,spouseEvents};
+import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=shared-bill-list3';
+export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
 export {reviewBankActivity,transactionKey} from './bank-activity.mjs';
 export {creditBills} from './credit-model.mjs';
 export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment} from './transaction-links.mjs';

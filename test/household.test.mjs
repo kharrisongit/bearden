@@ -53,3 +53,11 @@ test('only a posted pair in the selected accounts confirms your transfer; equal 
 test('a missing selected account produces an unknown balance instead of using unrelated money',()=>{
  assert.equal(householdForecast(accounts.slice(0,1),plan,[],[],'2026-11-06',{household:h,scope:'shared'}).opening,null);
 });
+test('shared bill choices exclude old budget categories and the Fixed Bills contribution while preserving actual Accounts bills',async()=>{
+ const {householdBillChoices}=await import('../public/household-model.mjs');
+ const oldBudget=['Fixed bills','Medications','Food','Gas','Personal spending'].map((name,i)=>({id:'budget-'+i,name,source:i%2?'budget':'baby-bear-budget',amount:10000}));
+ const accounts=[{id:'spectrum',name:'Spectrum Internet/Phone',source:'manual'},{id:'car',name:'Richard’s Car',source:'bank-tracked',billKind:'car-payment'},{id:'rent',name:'Rent',source:'manual'},{id:'electric',name:'Electric',source:'gmail'}];
+ const inputs=[...oldBudget,...accounts,{id:'old-fixed',name:'Fixed Bills'},{id:'household-contribution',name:'Fixed Bills',transfer:true},{id:'card',name:'Visa',source:'plaid-credit'},accounts[0]],snapshot=structuredClone(inputs);
+ assert.deepEqual(householdBillChoices(inputs).map(b=>b.id),accounts.map(b=>b.id));assert.deepEqual(inputs,snapshot);
+ for(const b of oldBudget)assert.equal(sharedBill(b,{household:h,billFunding:{[b.id]:'shared'}}),false);
+});

@@ -41,7 +41,7 @@
  async function save(){if(!ready)throw Error('Accounts have not loaded. Reload before saving changes.');await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();}
  let initializing;
  $('#configureHousehold').disabled=true;$('#sharedBillsToggle').disabled=true;
- function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel]=await Promise.all([import('./income-model.mjs?v=household-fix2'),import('./email-model.mjs?v=household-fix2')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#sharedBillsToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
+ function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel]=await Promise.all([import('./income-model.mjs?v=shared-bill-list3'),import('./email-model.mjs?v=shared-bill-list3')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#sharedBillsToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
  window.addEventListener('load',initialize,{once:true});
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});
@@ -330,7 +330,7 @@
    // status stays in the forecast, where cash leaves on the actual due date.
    const paycheckInputs=structuredClone({legacy:{bills:billPlan.bills.filter(b=>b.source!=='tracker-debt')},planner:{manual:paymentsPlanner.manual,covered:planner.covered,electricBillId:planner.electricBillId,emailLinks:planner.emailLinks,paid:paymentsPlanner.paid,household:planner.household,billFunding:planner.billFunding,transactionLinks:planner.transactionLinks},linked,today:currentDay});
    if(window.setPaycheckBills(JSON.stringify(paycheckInputs),(date,n)=>model.paycheckBillItems(paycheckInputs,date,n)))return;
-   householdBills=[...new Map([...billPlan.bills,...paymentsPlanner.manual].filter(b=>!model.isDebtPayment(b)).map(b=>[b.id,b])).values()];
+   householdBills=model.householdBillChoices([...billPlan.bills,...paymentsPlanner.manual]);
    const householdActive=model.householdEnabled(planner.household);
    $('#configureHousehold').textContent=householdActive?'Edit':'Set up';$('#sharedBillsToggle').checked=householdActive;
    $('#householdSummary').textContent=householdActive?money(planner.household.personalAmount)+' from each of your paychecks; '+money(planner.household.spouseAmount)+' from your spouse '+({weekly:'each week',biweekly:'every two weeks',monthly:'each month'})[planner.household.spouseRepeat]+'. Select shared bills here or in each bill’s editor.':'Send a set amount from each paycheck to a shared bills account.';

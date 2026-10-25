@@ -1,7 +1,9 @@
 import {day,occurrences} from './engine.mjs';
 export const householdEnabled=h=>!!(h?.enabled&&h.personalAccountId&&h.billsAccountId&&h.personalAccountId!==h.billsAccountId);
+export const isSharedBillCandidate=bill=>!['budget','baby-bear-budget','tracker-debt','plaid-credit'].includes(bill.source)&&!['credit-card','loan'].includes(bill.billKind)&&bill.kind!=='household-bills'&&!bill.transfer&&bill.id!=='household-contribution'&&!/^fixed\s+bills$/i.test(String(bill.name||'').trim());
+export function householdBillChoices(bills){return [...new Map(bills.filter(isSharedBillCandidate).map(b=>[b.id,b])).values()];}
 export function sharedBill(bill,planner){
- if(!householdEnabled(planner.household)||['tracker-debt','plaid-credit'].includes(bill.source)||['credit-card','loan'].includes(bill.billKind))return false;
+ if(!householdEnabled(planner.household)||!isSharedBillCandidate(bill))return false;
  const choice=planner.billFunding?.[bill.id];if(choice)return choice==='shared';
  let account=planner.transactionLinks?.['bill:'+bill.id]?.accountId;
  if(!account&&bill.groupKey){try{account=JSON.parse(bill.groupKey)[1];}catch{}}
