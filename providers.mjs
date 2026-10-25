@@ -15,8 +15,7 @@ export function parseBill(text){
 }
 
 
-// Gmail is used only to confirm the monthly Consumers Energy bill.
-export const billMailQuery = 'newer_than:60d -in:sent "Consumers Energy" {bill statement "amount due" "payment due" autopay}';
+// Legacy electric-bill import; general statement/payment parsing lives in email-parser.mjs.
 export function classifyElectricEmail(input){
  const sender=(input.from?.match(/<([^>]+)>/)?.[1]||input.from||'').trim().toLowerCase();
  if(!/@(?:[a-z0-9-]+\.)*consumersenergy\.com$/.test(sender)&&!/consumers\s+energy/i.test(input.from||''))return {action:'ignore'};

@@ -43,3 +43,7 @@ test('connected card minimums reconcile only posted payments after the statement
  const t=transaction(),bill={id:'card',key:'card:2026-11-05',date:'2026-11-05',statementDate:'2026-10-10',amount:30000,repeat:'once',source:'plaid-credit'},links={'credit:card':paymentLink(t)};
  assert.deepEqual(matchedBillPayments([bill],[t],links,'2026-10-25'),[bill.key]);assert.deepEqual(matchedBillPayments([bill],[{...t,date:'2026-10-09'}],links,'2026-10-25'),[]);
 });
+test('paid bills retain the actual matched bank transaction date',()=>{
+ const t=transaction(),bill={id:'car',key:'car:2026-10-25',date:'2026-10-25',amount:30000,repeat:'monthly',source:'manual'};
+ assert.deepEqual(matchedBillPayments([bill],[t],{'bill:car':paymentLink(t)},'2026-10-25',{details:true}),[{key:bill.key,paidDate:'2026-10-24'}]);
+});

@@ -8,9 +8,9 @@ test('encryption is authenticated and wrong keys cannot read it',()=>{const f=fi
 test('public state never includes refresh or bank access tokens',async()=>{const f=fixture();f.set('connections',{items:[{id:'i',name:'Bank',token:'sensitive-bank',pending:{transactions:[]}}],transactions:[],candidates:[],gmail:{refreshToken:'sensitive-gmail'},status:'Ready'});const text=await (await f.app.handle(f.req('/api/state'))).text();assert.ok(!text.includes('sensitive'));assert.equal(JSON.parse(text).connections.items[0].pending,undefined);f.db.close();});
 test('bank pagination keeps committed cursor until last page and retries original after mutation',async()=>{let count=0;const f=fixture(async url=>{if(url.endsWith('/accounts/get'))return Response.json({accounts:[]});if(url.endsWith('/transactions/sync')){count++;if(count===2)return Response.json({error_code:'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION'},{status:400});return Response.json({added:[],modified:[],removed:[],next_cursor:'partial',has_more:true});}throw Error('Unexpected URL');});f.set('connections',{items:[{id:'i',name:'Bank',token:'t',cursor:'old'}],transactions:[],candidates:[],gmail:null});await f.app.sync();let c=f.get('connections');assert.equal(c.items[0].cursor,'old');assert.equal(c.items[0].pending.cursor,'partial');await f.app.sync(true);c=f.get('connections');assert.equal(c.items[0].cursor,'old');assert.equal(c.items[0].pending,undefined);f.db.close();});
 test('completed bank sync merges balances without erasing manual plan',async()=>{const f=fixture(async url=>url.endsWith('/transactions/sync')?Response.json({added:[],modified:[],removed:[],next_cursor:'new',has_more:false}):Response.json({accounts:[{account_id:'a',type:'depository',subtype:'checking',name:'Bank',balances:{available:123.45,current:200,iso_currency_code:'USD'}}]}));const s=blank();s.accounts=[{id:'manual',name:'Cash',balance:100,include:true}];f.set('plan',{state:s,revision:2});f.set('connections',{items:[{id:'i',name:'Bank',token:'t',cursor:''}],transactions:[],candidates:[],gmail:null});await f.app.sync();const p=f.get('plan');assert.equal(p.state.accounts.length,2);assert.equal(p.state.accounts[1].balance,12345);assert.equal(p.revision,3);assert.equal(f.get('connections').items[0].cursor,'new');assert.ok(f.queries<50);f.db.close();});
-test('Gmail scans only electric bills, ignores other senders, deduplicates reminders and resumes batches',async()=>{
+test('Gmail scans bills and payments while preserving electric bill imports and bounded batches',async()=>{
  const calls=[];const f=fixture(async url=>{calls.push(url);if(url.includes('/token'))return Response.json({access_token:'access'});
- if(url.includes('messages?')){assert.match(new URL(url).searchParams.get('q'),/Consumers Energy/);return Response.json({messages:[1,2,3,4,5].map(id=>({id:String(id)}))});}
+ if(url.includes('messages?')){assert.match(new URL(url).searchParams.get('q'),/statement/);return Response.json({messages:[1,2,3,4,5].map(id=>({id:String(id)}))});}
  const id=url.match(/messages\/(\d)/)?.[1];return Response.json({snippet:'bill',payload:{mimeType:'text/plain',headers:[{name:'From',value:id==='2'?'Water <water@example.com>':'Consumers Energy <bills@consumersenergy.com>'},{name:'Subject',value:'Your bill'}],body:{data:Buffer.from('Amount due: $12.34 Due date: 11/01/2099').toString('base64url')}}});});
  f.set('connections',{items:[],transactions:[],candidates:[],gmail:{refreshToken:'refresh'}});
  await f.app.sync();let c=f.get('connections');assert.equal(c.candidates.length,0);assert.deepEqual(c.gmail.backlog,['4','5']);
@@ -55,7 +55,7 @@ test('original tracker storage is private, encrypted, revision checked, and inde
 test('all scripts and styles used by the original tracker are publicly served with strict script CSP',async()=>{
  const f=fixture(),html=readFileSync('public/index.html','utf8');
  const urls=[...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css)(?:\?[^"]*)?)"/g)].map(m=>m[1]);
- urls.push('classic-migrate.mjs','income-model.mjs','bank-activity.mjs','credit-model.mjs');
+ urls.push('classic-migrate.mjs','income-model.mjs','bank-activity.mjs','credit-model.mjs','transaction-links.mjs','email-model.mjs');
  for(const url of urls){const r=await f.app.handle(new Request(f.env.APP_URL+'/'+url));assert.equal(r.status,200,url);assert.match(r.headers.get('Content-Security-Policy'),/script-src 'self' https:\/\/cdn.plaid.com;/);}
  f.db.close();
 });
@@ -107,4 +107,40 @@ test('income snapshot survives later income edits and does not restore accounts'
  await f.app.handle(f.req('/api/classic',{state:initial,revision:0}));assert.equal(f.get('income-shortcut').amount,150000);
  const edited={version:1,values:{'app-state':JSON.stringify({takeHome:1700,hourlyRate:26,hoursPerCheck:80,cards:[{id:1,name:'New debt',balance:900}],budgetItems:[]})}};
  await f.app.handle(f.req('/api/classic',{state:edited,revision:1}));const before=f.get('classic'),preset=await (await f.app.handle(f.req('/api/income/baby-bear'))).json();assert.equal(preset.amount,150000);assert.deepEqual(f.get('classic'),before);assert.equal(before.state.values['app-state'],edited.values['app-state']);f.db.close();
+});
+
+test('owner can attach a second Gmail without changing the BearDen login or replacing the first mailbox',async()=>{
+ const f=fixture(async url=>url.includes('/token')?Response.json({access_token:'access',refresh_token:'second-private',scope:'openid email https://www.googleapis.com/auth/gmail.readonly'}):Response.json({email_verified:true,email:'bills@example.com',sub:'second'}));
+ f.set('connections',{items:[],transactions:[],candidates:[],gmail:{refreshToken:'first-private'}});
+ const start=await f.app.handle(f.req('/auth/google?gmail=1')),oauth=new URL(start.headers.get('location')),state=oauth.searchParams.get('state');assert.equal(oauth.searchParams.get('prompt'),'consent select_account');
+ const response=await f.app.handle(new Request(f.env.APP_URL+'/auth/google/callback?state='+state+'&code=code',{headers:{Cookie:'bearden='+f.token+'; bearden_oauth='+state}}));
+ assert.equal(response.status,302);assert.ok(!response.headers.get('set-cookie').includes('bearden='));
+ const c=f.get('connections');assert.equal(c.gmailAccounts.length,2);assert.equal(c.gmailAccounts[0].refreshToken,'first-private');assert.equal(c.gmailAccounts[1].email,'bills@example.com');
+ const publicState=await (await f.app.handle(f.req('/api/state'))).text();assert.ok(!publicState.includes('private'));assert.equal(JSON.parse(publicState).connections.gmailAccounts.length,2);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM sessions').get().n,1);f.db.close();
+});
+test('additional Gmail authorization requires the same still-active owner session at callback',async()=>{
+ for(const mode of ['absent','different','expired']){
+  let fetched=false;const f=fixture(async()=>{fetched=true;throw Error('Must reject before token exchange');});
+  const start=await f.app.handle(f.req('/auth/google?gmail=1')),state=new URL(start.headers.get('location')).searchParams.get('state');
+  if(mode==='different')f.db.prepare('INSERT INTO sessions VALUES(?,?)').run(createHash('sha256').update('another').digest('hex'),Date.now()+60000);
+  if(mode==='expired')f.db.prepare('UPDATE sessions SET expires=0').run();
+  const cookie='bearden_oauth='+state+(mode==='absent'?'':'; bearden='+(mode==='different'?'another':f.token));
+  const r=await f.app.handle(new Request(f.env.APP_URL+'/auth/google/callback?state='+state+'&code=code',{headers:{Cookie:cookie}}));assert.equal(r.status,403);assert.equal(fetched,false);f.db.close();
+ }
+});
+test('Gmail searches every connected account, namespaces message IDs, and never exposes tokens or bodies',async()=>{
+ const calls=[];const f=fixture(async(url,options)=>{
+  calls.push(url);if(url.includes('/token'))return Response.json({access_token:new URLSearchParams(options.body).get('refresh_token')});
+  if(url.includes('messages?')){assert.match(new URL(url).searchParams.get('q'),/"Example"/);return Response.json({messages:[{id:'same'}]});}
+  return Response.json({internalDate:String(Date.now()),payload:{mimeType:'text/plain',headers:[{name:'From',value:'Example <billing@example.com>'},{name:'Subject',value:'Payment submitted'}],body:{data:Buffer.from('Payment amount: $50.00. Private full email body.').toString('base64url')}}});
+ });
+ f.set('connections',{items:[],transactions:[],candidates:[],gmailAccounts:[{id:'one',email:'one@example.com',refreshToken:'private-one'},{id:'two',email:'two@example.com',refreshToken:'private-two'}]});
+ const r=await f.app.handle(f.req('/api/gmail/search',{query:'Example'}));assert.equal(r.status,200);const raw=await r.text(),data=JSON.parse(raw);assert.equal(data.gmailMessages.length,2);assert.deepEqual(data.gmailMessages.map(m=>m.id).sort(),['one:same','two:same']);assert.ok(data.gmailMessages.every(m=>m.paymentStatus==='pending'));assert.ok(!raw.includes('private-'));assert.ok(!raw.includes('Private full email'));assert.ok(f.queries+calls.length<50);
+ assert.equal((await f.app.handle(f.req('/api/gmail/search',{query:'Example'},'https://evil.example'))).status,403);f.db.close();
+});
+test('disconnecting one Gmail revokes only that token and preserves other accounts and their messages',async()=>{
+ const revoked=[];const f=fixture(async(url,options)=>{assert.ok(url.endsWith('/revoke'));revoked.push(new URLSearchParams(options.body).get('token'));return new Response('{}');});
+ f.set('connections',{items:[],transactions:[],candidates:[],gmailAccounts:[{id:'one',email:'one@example.com',refreshToken:'first-token'},{id:'two',email:'two@example.com',refreshToken:'second-token'}],gmailMessages:[{id:'one:m',mailboxId:'one'},{id:'two:m',mailboxId:'two'}]});
+ assert.equal((await f.app.handle(f.req('/api/gmail/disconnect',{}))).status,400);
+ assert.equal((await f.app.handle(f.req('/api/gmail/disconnect',{id:'two'}))).status,200);const c=f.get('connections');assert.deepEqual(revoked,['second-token']);assert.equal(c.gmailAccounts.length,1);assert.equal(c.gmailAccounts[0].id,'one');assert.deepEqual(c.gmailMessages,[{id:'one:m',mailboxId:'one'}]);f.db.close();
 });

@@ -25,20 +25,20 @@ export const paymentTarget=bill=>bill.source==='tracker-debt'?'debt:'+bill.track
 
 // Recomputed from posted transactions, so a removed/corrected bank transaction
 // cannot leave a permanent paid flag. One transaction can settle only one date.
-export function matchedBillPayments(events,transactions,links,today){
+export function matchedBillPayments(events,transactions,links,today,{details=false}={}){
  const paid=new Set(),groups=new Map();
  for(const event of events){const target=paymentTarget(event);if(!links[target])continue;if(!groups.has(target))groups.set(target,[]);groups.get(target).push(event);}
  for(const [target,bills]of groups){
-  const totals=new Map();
+  const totals=new Map(),dates=new Map();
   for(const transaction of matchingPayments(transactions,links[target],today)){
    const candidates=bills.filter(b=>{
     const early=b.repeat==='weekly'?3:b.source==='tracker-debt'?6:7,late=b.repeat==='weekly'?3:b.source==='tracker-debt'?7:14;
     const start=b.source==='plaid-credit'&&b.statementDate&&b.statementDate<b.date?day(b.statementDate,1):day(b.date,-early);
     return transaction.date>=start&&transaction.date<=day(b.date,late);
    }).sort((a,b)=>Math.abs(Date.parse(a.date)-Date.parse(transaction.date))-Math.abs(Date.parse(b.date)-Date.parse(transaction.date))||a.date.localeCompare(b.date));
-   const bill=candidates[0];if(bill)totals.set(bill.key,(totals.get(bill.key)||0)+Math.round(transaction.amount*100));
+   const bill=candidates[0];if(bill){totals.set(bill.key,(totals.get(bill.key)||0)+Math.round(transaction.amount*100));if(!dates.has(bill.key)||dates.get(bill.key)<transaction.date)dates.set(bill.key,transaction.date);}
   }
-  for(const bill of bills)if((totals.get(bill.key)||0)>=bill.amount&&bill.amount>0)paid.add(bill.key);
+  for(const bill of bills)if((totals.get(bill.key)||0)>=bill.amount&&bill.amount>0)paid.add(details?{key:bill.key,paidDate:dates.get(bill.key)}:bill.key);
  }
  return [...paid];
 }

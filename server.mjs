@@ -1,3 +1,4 @@
+import {mailboxes,connectMailbox,publicMail,forgetMailbox,scanMailbox} from './mailboxes.mjs';
 import {incomeFromTracker,incomeFromPlan} from './income-preset.mjs';
 import {creditLinkOptions,syncCredit,publicCredit,publicItem} from './credit.mjs';
 import {recurringBills,personalSpending} from './recurring.mjs';
@@ -9,7 +10,7 @@ import {fileURLToPath} from 'node:url';
 import {randomBytes,createHash,createCipheriv,createDecipheriv} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {blank,validate,cents} from './public/engine.mjs';
-import {request,plaid,transactionSync,applyTransactions,messageText,classifyElectricEmail,billMailQuery} from './providers.mjs';
+import {request,plaid,transactionSync,applyTransactions} from './providers.mjs';
 
 const root=dirname(fileURLToPath(import.meta.url)),port=Number(process.env.PORT||3000),origin=new URL(process.env.APP_URL||`http://localhost:${port}`).origin,secure=origin.startsWith('https:'),allowed=process.env.ALLOWED_EMAIL?.toLowerCase(),key=process.env.DATA_KEY?Buffer.from(process.env.DATA_KEY,'base64'):null;
 if(key&&key.length!==32)throw Error('DATA_KEY must be 32 random bytes in base64');
@@ -24,7 +25,7 @@ function write(id,data){db.prepare('INSERT INTO vault(id,value) VALUES(?,?) ON C
 function getPlan(){return read('plan',{state:blank(),revision:0});}
 function updatePlan(fn){const p=getPlan();fn(p.state);p.revision++;write('plan',p);return p;}
 function connections(){return read('connections',{items:[],transactions:[],candidates:[],seen:[],gmail:null,status:'No connections yet.'});}
-function publicConnections(c){return {...c,gmail:!!c.gmail,electricStatus:c.gmail?.billStatus,items:c.items.map(publicItem),creditCards:publicCredit(c),seen:undefined,recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500)};}
+function publicConnections(c){return {items:c.items.map(publicItem),creditCards:publicCredit(c),...publicMail(c,allowed),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates,bankUpdated:c.bankUpdated,status:c.status};}
 function cookies(req){return Object.fromEntries((req.headers.cookie||'').split(';').map(x=>x.trim().split('=')).filter(x=>x.length===2));}
 function authenticated(req){const s=cookies(req).bearden;if(!s)return false;const r=db.prepare('SELECT expires FROM sessions WHERE hash=?').get(hash(s));return !!r&&r.expires>Date.now();}
 function cookie(name,value,seconds){return `${name}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${seconds}${secure?'; Secure':''}`;}
@@ -38,30 +39,15 @@ async function doSync(bankOnly=false){
  for(const item of c.items){await syncCredit(c,item,plaid);if(item.liabilitiesError)errors.push(item.liabilitiesStatus);try{const synced=await transactionSync(item),accounts=await plaid('/accounts/get',{access_token:item.token});c.transactions=applyTransactions(c.transactions,synced.changes,item.id);item.cursor=synced.cursor;
   updatePlan(s=>{const activeIds=new Set(accounts.accounts.map(a=>'plaid-'+a.account_id));s.accounts=s.accounts.filter(a=>a.itemId!==item.id||activeIds.has(a.id));for(const a of accounts.accounts){const id='plaid-'+a.account_id,old=s.accounts.find(x=>x.id===id),balance=['credit','loan'].includes(a.type)?a.balances.current:(a.balances.available??a.balances.current);if(balance===null)continue;const eligible=a.type==='depository'&&a.subtype==='checking'&&a.balances.iso_currency_code==='USD';const entry={id,itemId:item.id,name:a.name+(a.mask?' •'+a.mask:''),balance:cents(balance),include:eligible?(old?.include??true):false,source:'plaid',type:a.type,subtype:a.subtype,currency:a.balances.iso_currency_code};if(old)Object.assign(old,entry);else s.accounts.push(entry);}});c.bankUpdated=now;
  }catch(e){errors.push(`${item.name}: ${e.message}`);}}
- if(c.gmail&&!bankOnly){try{
-  if(c.gmail.signature!=='electric-only-v2'){c.gmail.signature='electric-only-v2';c.seen=[];delete c.gmail.page;c.candidates=[];}
-  const token=await googleToken({grant_type:'refresh_token',refresh_token:c.gmail.refreshToken}),headers={Authorization:'Bearer '+token.access_token},seen=new Set(c.seen||[]);
-  const q=new URLSearchParams({q:billMailQuery,maxResults:'10'});if(c.gmail.page)q.set('pageToken',c.gmail.page);
-  const page=await request('https://gmail.googleapis.com/gmail/v1/users/me/messages?'+q,{headers});
-  for(const m of page.messages||[]){if(seen.has(m.id))continue;
-   const msg=await request('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+encodeURIComponent(m.id)+'?format=full',{headers});
-   const header=n=>msg.payload?.headers?.find(h=>h.name.toLowerCase()===n)?.value||'';
-   const result=classifyElectricEmail({id:m.id,from:header('from'),subject:header('subject'),snippet:msg.snippet||'',text:messageText(msg.payload).slice(0,32000)});
-   if(result.action==='add'){
-    const p=getPlan();if(!p.state.bills.some(b=>b.sourceId===m.id||b.sourceKey===result.bill.sourceKey)){p.state.bills.push(result.bill);validate(p.state);p.revision++;write('plan',p);}
-    c.candidates=c.candidates.filter(x=>x.id!==m.id);
-    c.gmail.billStatus='Consumers Energy bill updated.';
-   }else if(result.action==='review'){
-    c.gmail.billStatus='Electric bill found, but the amount or due date is unclear. Your bank estimate is still in use.';
-   }
-   seen.add(m.id);c.seen=[...seen];write('connections',c);
-  }
-  c.gmail.page=page.nextPageToken||'';c.gmailUpdated=now;
- }catch(e){errors.push('Gmail: '+e.message+'; reconnect if authorization expired');}}
+ if(!bankOnly)for(const account of mailboxes(c,allowed)){try{await syncMailbox(c,account);}catch(e){account.status='Gmail needs attention: '+e.message;errors.push(account.email+': '+account.status);}}
  c.status=errors.length?'Sync needs attention — '+errors.join(' · '):'Last sync: '+now;c.lastAttempt=now;write('connections',c);return c;
 }
+async function syncMailbox(c,account,query=null){
+ const bills=await scanMailbox(c,account,{request,googleToken,query,limit:query===null?3:4});
+ if(bills.length){const p=getPlan();let changed=false;for(const bill of bills)if(!p.state.bills.some(b=>b.sourceId===bill.sourceId||b.sourceKey===bill.sourceKey)){p.state.bills.push(bill);changed=true;}if(changed){validate(p.state);p.revision++;write('plan',p);}}
+}
 async function sync(bankOnly=false){if(!syncing)syncing=doSync(bankOnly).finally(()=>syncing=null);return syncing;}
-const staticFiles={'/transaction-links.mjs':['transaction-links.mjs','text/javascript'],'/credit-model.mjs':['credit-model.mjs','text/javascript'],'/bank-activity.mjs':['bank-activity.mjs','text/javascript'],'/tabs.js':['tabs.js','text/javascript'],'/tabs.css':['tabs.css','text/css'],'/income-model.mjs':['income-model.mjs','text/javascript'],'/classic.js':['classic.js','text/javascript'],'/classic.css':['classic.css','text/css'],'/classic-theme.js':['classic-theme.js','text/javascript'],'/classic-events.js':['classic-events.js','text/javascript'],'/classic-migrate.mjs':['classic-migrate.mjs','text/javascript'],'/connections.js':['connections.js','text/javascript'],'/connections.css':['connections.css','text/css'],'/purify.min.js':['purify.min.js','text/javascript'],'/setup-key.html':['setup-key.html','text/html'],'/setup-key.mjs':['setup-key.mjs','text/javascript'],'/':['index.html','text/html'],'/plaid-return':['index.html','text/html'],'/index.html':['index.html','text/html'],'/style.css':['style.css','text/css'],'/app.mjs':['app.mjs','text/javascript'],'/engine.mjs':['engine.mjs','text/javascript']};
+const staticFiles={'/email-model.mjs':['email-model.mjs','text/javascript'],'/transaction-links.mjs':['transaction-links.mjs','text/javascript'],'/credit-model.mjs':['credit-model.mjs','text/javascript'],'/bank-activity.mjs':['bank-activity.mjs','text/javascript'],'/tabs.js':['tabs.js','text/javascript'],'/tabs.css':['tabs.css','text/css'],'/income-model.mjs':['income-model.mjs','text/javascript'],'/classic.js':['classic.js','text/javascript'],'/classic.css':['classic.css','text/css'],'/classic-theme.js':['classic-theme.js','text/javascript'],'/classic-events.js':['classic-events.js','text/javascript'],'/classic-migrate.mjs':['classic-migrate.mjs','text/javascript'],'/connections.js':['connections.js','text/javascript'],'/connections.css':['connections.css','text/css'],'/purify.min.js':['purify.min.js','text/javascript'],'/setup-key.html':['setup-key.html','text/html'],'/setup-key.mjs':['setup-key.mjs','text/javascript'],'/':['index.html','text/html'],'/plaid-return':['index.html','text/html'],'/index.html':['index.html','text/html'],'/style.css':['style.css','text/css'],'/app.mjs':['app.mjs','text/javascript'],'/engine.mjs':['engine.mjs','text/javascript']};
 const server=http.createServer(async(req,res)=>{
  res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Frame-Options','DENY');res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
  res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self' https://cdn.plaid.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.plaid.com; frame-src https://*.plaid.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
@@ -69,14 +55,16 @@ const server=http.createServer(async(req,res)=>{
   if(req.method==='GET'&&path==='/api/config')return json(res,200,{authenticated:authenticated(req),googleConfigured,plaidConfigured:!!(process.env.PLAID_CLIENT_ID&&process.env.PLAID_SECRET),plaidEnvironment:process.env.PLAID_ENV||'sandbox'});
   if(req.method==='GET'&&path==='/auth/google'){
    if(!googleConfigured)return json(res,503,{error:'Configure Google credentials, ALLOWED_EMAIL, APP_URL and DATA_KEY on the server first.'});const gmail=u.searchParams.has('gmail');if(gmail&&!authenticated(req))return redirect(res,'/auth/google');
-   db.prepare('DELETE FROM oauth WHERE expires < ?').run(Date.now());const state=random(),verifier=random();db.prepare('INSERT INTO oauth VALUES(?,?,?,?)').run(hash(state),encrypt(verifier),gmail?1:0,Date.now()+600000);
-   const params=new URLSearchParams({client_id:process.env.GOOGLE_CLIENT_ID,redirect_uri:origin+'/auth/google/callback',response_type:'code',scope:'openid email'+(gmail?' https://www.googleapis.com/auth/gmail.readonly':''),state,code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256',access_type:'offline',prompt:gmail?'consent':'select_account'});return redirect(res,'https://accounts.google.com/o/oauth2/v2/auth?'+params,{'Set-Cookie':cookie('bearden_oauth',state,600)});
+   db.prepare('DELETE FROM oauth WHERE expires < ?').run(Date.now());const state=random(),verifier=random();db.prepare('INSERT INTO oauth VALUES(?,?,?,?)').run(hash(state),encrypt(gmail?{verifier,ownerSession:hash(cookies(req).bearden)}:verifier),gmail?1:0,Date.now()+600000);
+   const params=new URLSearchParams({client_id:process.env.GOOGLE_CLIENT_ID,redirect_uri:origin+'/auth/google/callback',response_type:'code',scope:'openid email'+(gmail?' https://www.googleapis.com/auth/gmail.readonly':''),state,code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256',access_type:'offline',prompt:gmail?'consent select_account':'select_account'});return redirect(res,'https://accounts.google.com/o/oauth2/v2/auth?'+params,{'Set-Cookie':cookie('bearden_oauth',state,600)});
   }
   if(req.method==='GET'&&path==='/auth/google/callback'){
    const state=u.searchParams.get('state')||'',binding=cookies(req).bearden_oauth;if(!binding||binding!==state)return json(res,400,{error:'Invalid sign-in state. Start sign-in again.'});const record=db.prepare('SELECT * FROM oauth WHERE hash=?').get(hash(state));db.prepare('DELETE FROM oauth WHERE hash=?').run(hash(state));if(!record||record.expires<Date.now()||!u.searchParams.get('code'))return json(res,400,{error:'Sign-in cancelled or expired. Start again.'});
-   const token=await googleToken({grant_type:'authorization_code',code:u.searchParams.get('code'),redirect_uri:origin+'/auth/google/callback',code_verifier:decrypt(record.verifier)}),user=await request('https://openidconnect.googleapis.com/v1/userinfo',{headers:{Authorization:'Bearer '+token.access_token}});
-   if(!user.email_verified||user.email?.toLowerCase()!==allowed)return json(res,403,{error:'This BearDen is restricted to its owner.'});
-   if(record.gmail){if(!token.scope?.split(' ').includes('https://www.googleapis.com/auth/gmail.readonly')||!token.refresh_token)throw Error('Gmail read-only and offline access were not granted. Reconnect and allow Gmail access.');if(syncing)await syncing;const c=connections();c.gmail={refreshToken:token.refresh_token};write('connections',c);}
+   const proof=decrypt(record.verifier);if(record.gmail&&(!authenticated(req)||proof.ownerSession!==hash(cookies(req).bearden||'')))return json(res,403,{error:'Sign in as the owner before adding a Gmail account.'});
+   const token=await googleToken({grant_type:'authorization_code',code:u.searchParams.get('code'),redirect_uri:origin+'/auth/google/callback',code_verifier:typeof proof==='string'?proof:proof.verifier}),user=await request('https://openidconnect.googleapis.com/v1/userinfo',{headers:{Authorization:'Bearer '+token.access_token}});
+   if(!user.email_verified||!record.gmail&&user.email?.toLowerCase()!==allowed)return json(res,403,{error:'This BearDen is restricted to its owner.'});
+   if(record.gmail){if(!token.scope?.split(' ').includes('https://www.googleapis.com/auth/gmail.readonly')||!token.refresh_token)throw Error('Gmail read-only and offline access were not granted. Reconnect and allow Gmail access.');if(syncing)await syncing;const c=connections();connectMailbox(c,user,token.refresh_token,allowed);write('connections',c);}
+   if(record.gmail)return redirect(res,'/?connected=1',{'Set-Cookie':cookie('bearden_oauth','',0)});
    db.prepare('DELETE FROM sessions WHERE expires < ?').run(Date.now());const session=random();db.prepare('INSERT INTO sessions VALUES(?,?)').run(hash(session),Date.now()+7*86400000);return redirect(res,'/?connected=1',{'Set-Cookie':[cookie('bearden',session,7*86400),cookie('bearden_oauth','',0)]});
   }
   if(path.startsWith('/api/')){
@@ -95,7 +83,14 @@ const server=http.createServer(async(req,res)=>{
    if(path==='/api/plaid/exchange'){if(typeof b.public_token!=='string')throw Error('Missing public token');const d=await plaid('/item/public_token/exchange',{public_token:b.public_token});if(syncing)await syncing;const c=connections();if(!c.items.some(i=>i.id===d.item_id)){c.items.push({id:d.item_id,token:d.access_token,cursor:'',name:String(b.name||'Bank').slice(0,150),liabilities:b.kind==='credit'});write('connections',c);}await sync();return json(res,200,{ok:true});}
    if(path==='/api/plaid/updated'||path==='/api/cards/refresh'){if(syncing)await syncing;const c=connections(),item=c.items.find(i=>i.id===b.itemId);if(!item)return json(res,404,{error:'Bank connection not found'});if(path==='/api/plaid/updated')item.liabilities=true;await syncCredit(c,item,plaid,true);write('connections',c);const result=await sync(true);return json(res,200,{status:result.status});}
    if(path==='/api/plaid/disconnect'){if(syncing)await syncing;let c=connections();const item=c.items.find(i=>i.id===b.id);if(!item)return json(res,404,{error:'Bank not found'});await plaid('/item/remove',{access_token:item.token});if(syncing)await syncing;c=connections();c.items=c.items.filter(i=>i.id!==b.id);c.transactions=c.transactions.filter(t=>t.itemId!==b.id);c.creditCards=(c.creditCards||[]).filter(card=>card.itemId!==b.id);write('connections',c);updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.itemId!==b.id);});return json(res,200,{ok:true});}
-   if(path==='/api/gmail/disconnect'){if(syncing)await syncing;let c=connections();if(c.gmail){const r=await fetch('https://oauth2.googleapis.com/revoke',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({token:c.gmail.refreshToken}),signal:AbortSignal.timeout(25000)});if(!r.ok&&r.status!==400)throw Error('Could not revoke Google access; try again');}if(syncing)await syncing;c=connections();c.gmail=null;c.candidates=[];c.seen=[];write('connections',c);return json(res,200,{ok:true});}
+   if(path==='/api/gmail/search'){
+    if(typeof b.query!=='string'||b.query.length>100)throw Error('Use a merchant name of up to 100 characters.');if(syncing)await syncing;
+    const c=connections();syncing=(async()=>{for(const account of mailboxes(c,allowed)){try{await syncMailbox(c,account,b.query);}catch(e){account.status='Gmail needs attention: '+e.message;}}write('connections',c);})().finally(()=>syncing=null);await syncing;return json(res,200,publicMail(c,allowed));
+   }
+   if(path==='/api/gmail/disconnect'){
+    if(syncing)await syncing;const c=connections(),accounts=mailboxes(c,allowed),id=b.id||(accounts.length===1?accounts[0].id:null),account=accounts.find(a=>a.id===id);if(!account)return json(res,400,{error:'Choose the Gmail account to disconnect.'});
+    const r=await fetch('https://oauth2.googleapis.com/revoke',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({token:account.refreshToken}),signal:AbortSignal.timeout(25000)});if(!r.ok&&r.status!==400)throw Error('Could not revoke Google access; try again');forgetMailbox(c,id,allowed);write('connections',c);return json(res,200,{ok:true});
+   }
    if(path==='/api/candidate/dismiss'){if(syncing)await syncing;const c=connections(),candidate=c.candidates.find(x=>x.id===b.id);if(candidate)candidate.dismissed=true;write('connections',c);return json(res,200,{ok:true});}
    return json(res,404,{error:'Not found'});
   }
@@ -105,6 +100,6 @@ const server=http.createServer(async(req,res)=>{
 });
 server.listen(port,()=>console.log('BearDen listening on port '+port+' ('+(googleConfigured?'secure connections configured':'manual mode')+')'));
 // An always-on single server is required. Sync continues with no browser open.
-const timer=setInterval(()=>{if(!googleConfigured)return;const c=connections();if(c.lastAttempt&&Date.now()-Date.parse(c.lastAttempt)<6*3600000)return;if(c.gmail||c.items.length)sync().catch(()=>console.error('Background sync failed; check provider setup.'));},60000);timer.unref();
+const timer=setInterval(()=>{if(!googleConfigured)return;const c=connections();if(c.lastAttempt&&Date.now()-Date.parse(c.lastAttempt)<6*3600000)return;if(mailboxes(c,allowed).length||c.items.length)sync().catch(()=>console.error('Background sync failed; check provider setup.'));},60000);timer.unref();
 process.on('SIGTERM',()=>{clearInterval(timer);server.close(()=>{db.close();process.exit(0);});});
 

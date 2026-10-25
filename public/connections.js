@@ -26,8 +26,9 @@ window.BearDen=(()=>{
   $('#classicBankStatus').textContent=c.items?.length?`${c.items.length} bank connection(s). ${config.syncDescription||''}`:'Connect a bank to see its balances here.';
   $('#classicBalances').innerHTML=(s?.accounts||[]).filter(a=>a.source==='plaid').map(a=>`<div class="connection-row"><strong>${esc(a.name)}</strong>${money(a.balance)}<small>${esc(a.currency||'USD')}${c.bankUpdated?' · Updated '+esc(new Date(c.bankUpdated).toLocaleString()):''}</small></div>`).join('');
   $('#classicBanks').innerHTML=(c.items||[]).map(i=>`<div class="connection-row"><strong>${esc(i.name)}</strong><button data-credit-update="${esc(i.id)}">${i.liabilities?'Update card access':'Enable card details'}</button><button data-bank-disconnect="${esc(i.id)}">Disconnect</button>${i.liabilitiesStatus?'<small>'+esc(i.liabilitiesStatus)+'</small>':''}</div>`).join('');
-  $('#classicGmail').textContent=c.gmail?'Reconnect Gmail':'Connect Gmail';$('#classicDisconnectGmail').hidden=!c.gmail;
-  $('#classicEmailStatus').textContent=c.gmail?(c.electricStatus||'Connected. Checking for your monthly Consumers Energy bill.'):'Not connected';
+  $('#classicGmail').textContent='Add Gmail account';$('#classicDisconnectGmail').hidden=true;$('#checkGmailAccounts').hidden=!c.gmail;
+  $('#classicEmailStatus').textContent=c.gmail?'Connected. Bills and payment notices update in the background.':'Connect Gmail to find bills and payment notices.';
+  $('#gmailAccountList').innerHTML=(c.gmailAccounts||[]).map(a=>'<div class="connection-row"><strong>'+esc(a.email||'Gmail account')+'</strong><small>'+esc(a.status||'Connected')+(a.updated?' · '+esc(new Date(a.updated).toLocaleString()):'')+'</small><button type="button" data-gmail-disconnect="'+esc(a.id)+'">Disconnect</button></div>').join('');
  }
  async function connectBank(resume=false,options={}){
   if(!requireLogin())return;if(!config.plaidConfigured)throw Error('Bank connections are unavailable right now.');
@@ -64,7 +65,10 @@ window.BearDen=(()=>{
  });
  $('#babyBearIncome').onclick=run(async()=>{const preset=await api('/api/income/baby-bear');await window.applyIncomePreset(preset);window.dispatchEvent(new Event('bearden-connections'));$('#babyBearIncomeStatus').textContent='Income filled: '+money(preset.hourlyRate*100)+'/hour, '+preset.hoursPerCheck+' hours per paycheck; '+money(preset.amount)+(preset.estimated?' estimated':'')+' take-home. Your accounts and per-paycheck edits are unchanged.';});
  $('#classicBank').onclick=run(()=>connectBank());$('#classicGmail').onclick=()=>{if(requireLogin())location.href='/auth/google?gmail=1';};
- $('#classicDisconnectGmail').onclick=run(async()=>{if(!confirm('Disconnect Gmail and stop checking for new bills?'))return;await api('/api/gmail/disconnect',{});await refresh();});
+ bridge.searchGmail=async query=>{await queue;const result=await api('/api/gmail/search',{query:String(query||'').slice(0,100)});Object.assign(legacy.connections,result);renderConnections();return result;};
+ $('#checkGmailAccounts').onclick=run(async()=>{$('#classicEmailStatus').textContent='Checking Gmail…';await bridge.searchGmail('');});
+ document.addEventListener('click',async e=>{const button=e.target.closest('[data-gmail-disconnect]');if(!button)return;const account=legacy?.connections?.gmailAccounts?.find(a=>a.id===button.dataset.gmailDisconnect);if(!account||!confirm('Disconnect '+account.email+' and stop watching its bill emails?'))return;button.disabled=true;try{await api('/api/gmail/disconnect',{id:account.id});await refresh();}catch(e){message(e.message);}finally{button.disabled=false;}});
+
  $('#classicExport').onclick=()=>{const snapshot=structuredClone(values);if(bridge.loaded)snapshot['app-state']=JSON.stringify(window.gatherAppState());download('bearden-tracker-backup.json',{version:1,values:snapshot});};
  $('#legacyExport').onclick=()=>download('bearden-previous-plan.json',legacy?.state);
  $('#classicImport').onchange=run(async()=>{const file=$('#classicImport').files[0];if(!file)return;if(file.size>230000)throw Error('Backup is too large.');let data=JSON.parse(await file.text());if(data.cards&&data.budgetItems)data={version:1,values:{'app-state':JSON.stringify(data)}};if(data.version!==1||!data.values||!data.values['app-state'])throw Error('Choose a tracker backup.');for(const[k,v]of Object.entries(data.values))if(!keys.has(k)||typeof v!=='string')throw Error('Invalid backup.');const app=JSON.parse(data.values['app-state']);if(!Array.isArray(app.cards)||!Array.isArray(app.budgetItems)||!Array.isArray(app.savingsGoals))throw Error('Invalid tracker data.');if(!confirm('Replace your tracker with this backup?'))return;window.prepareClassicImport();await queue;values=data.values;await persist();location.reload();});
