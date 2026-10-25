@@ -203,10 +203,15 @@ function toggleSavingsWithdrawPanel(id){
 }
 
 // ---- Bonus (applied inline, per paycheck card) ----
+const DEFAULT_BONUS_WITHHOLDING = 24.9; // Restore the original planner’s bonus estimate.
 function privateWithholding(id){
   const value=document.getElementById(id).value;
   const rate=value.trim()===''?null:Number(value);
   return rate!==null&&Number.isFinite(rate)&&rate>=0&&rate<=100?rate:null;
+}
+
+function bonusWithholdingRate(){
+  return privateWithholding('bonusWithholding') ?? DEFAULT_BONUS_WITHHOLDING;
 }
 
 function toggleBonusInlineInput(paycheckNum){
@@ -216,12 +221,10 @@ function toggleBonusInlineInput(paycheckNum){
 
 function applyBonusToPaycheck(paycheckNum){
   const grossEl = document.getElementById(`bonusInlineAmount-${paycheckNum}`);
-  const gross = grossEl ? (parseFloat(grossEl.value)||0) : 0;
-  const withholding = privateWithholding('bonusWithholding');
-  const net = gross * (1 - (withholding ?? 0)/100);
-  if (net > 0) {
-    appliedBonuses[paycheckNum] = net;
-  }
+  const gross = Number(grossEl?.value);
+  if (!Number.isFinite(gross) || gross <= 0) return;
+  const net = Math.round(gross * (1 - bonusWithholdingRate()/100) * 100)/100;
+  appliedBonuses[paycheckNum] = net;
   bonusInputOpenForPaycheck = null;
   calculate();
 }
@@ -2233,10 +2236,10 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
         ` : (
           bonusInputOpenForPaycheck === row.paycheck
             ? `<div class="bonus-inline-input">
-                 <span>$</span><input type="number" id="bonusInlineAmount-${row.paycheck}" placeholder="${privateWithholding('bonusWithholding')===null?'After-tax amount':'Before-tax amount'}" aria-label="${privateWithholding('bonusWithholding')===null?'After-tax bonus':'Before-tax bonus'}" step="0.01">
+                 <span>$</span><input type="number" id="bonusInlineAmount-${row.paycheck}" placeholder="Before-tax amount" aria-label="Before-tax bonus" min="0.01" step="0.01">
                  <button data-bd-click="applyBonusToPaycheck(${row.paycheck})">Apply</button>
                </div>
-               <div style="font-size:0.68rem;color:var(--muted);margin:-2px 0 4px;">${privateWithholding('bonusWithholding')===null?'Enter the bonus you actually receive after taxes.':`Uses your saved ${privateWithholding('bonusWithholding')}% bonus withholding estimate.`}</div>`
+               <div style="font-size:0.68rem;color:var(--muted);margin:-2px 0 4px;">Enter your bonus before taxes. Automatically deducts an estimated ${bonusWithholdingRate()}% for taxes.</div>`
             : `<button class="bonus-inline-btn" data-bd-click="toggleBonusInlineInput(${row.paycheck})">🎁 Add Bonus</button>`
         )}
         ${budgetLines}

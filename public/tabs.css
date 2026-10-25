@@ -53,3 +53,5 @@ body{background:radial-gradient(ellipse at 0 0,#aad3bc16,transparent 38%),var(--
 .debt-key-amounts>div{padding:10px;border-radius:10px;background:var(--paper);min-width:0}.debt-key-amounts>.minimum-due{background:var(--accent-soft)}
 .debt-key-amounts span{display:block;font-size:.68rem;font-weight:600;color:var(--muted);margin-bottom:6px}.debt-key-amounts strong{display:block;color:var(--ink);font-size:1.35rem;font-weight:800;letter-spacing:-.035em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.debt-key-amounts .minimum-due strong{color:var(--accent)}
 .debt-key-amounts+.debt-compact-meta{margin:8px 0}.debt-key-amounts+.debt-compact-meta span{font-size:.63rem}@media(max-width:370px){.debt-key-amounts>div{padding:9px}.debt-key-amounts strong{font-size:1.13rem}.debt-key-amounts span{font-size:.61rem}}
+
+.debt-account-footer>.debt-due-date{font-size:.9rem;font-weight:750;line-height:1.4;color:var(--ink)}.debt-due-date small{display:block;font-size:.68rem;font-weight:400;color:var(--muted);margin-top:3px}
