@@ -985,6 +985,7 @@ function calculate(isInitialLoad){
 
   renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo, debtFreeDate, debtFreePaycheck, budgetItemsSnapshot);
   queueSaveAppState(isInitialLoad ? 1500 : 500);
+  window.dispatchEvent(new Event('bearden-plan-changed'));
 }
 
 function fmtDate(d){
@@ -1845,6 +1846,7 @@ function dismissCelebration(){
 
 function toggleChecked(paycheckNum, checked){
   checkedPaychecks[paycheckNum] = checked;
+  window.dispatchEvent(new Event('bearden-plan-changed'));
   performSaveAppState(); // Persist completion before the celebration or leaving animation.
   if (checked) {
     const payoff = paycheckCompletesAPayoff(paycheckNum);
@@ -2310,8 +2312,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
 // Peeking hero bear: pops up in a random spot along the top of the debt
 // box each cycle, and glares angrily (a sharp shake + "Grrr" bubble) on tap.
 function setupHeroBear(){
-  const bear = document.querySelector('.hero-bear');
-  if (!bear) return;
+  document.querySelectorAll('.hero-bear').forEach(bear => {
 
   function moveToRandomSpot(){
     // Keep clear of the rounded corners at either end (roughly 6%-78%
@@ -2347,6 +2348,7 @@ function setupHeroBear(){
         bear.classList.remove('resting');
       }, 10000);
     }, 3200);
+  });
   });
 }
 

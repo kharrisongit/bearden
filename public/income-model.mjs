@@ -3,14 +3,39 @@ export {creditBills} from './credit-model.mjs';
 import {day,occurrences} from './engine.mjs';
 const cents=n=>Math.round((Number(n)||0)*100);
 const isPersonal=b=>/\b(food|dining|grocer(?:y|ies)|gas|fuel|transport|shopping|personal|spending|entertainment|misc(?:ellaneous)?|allowance|fun|restaurants)\b/i.test(b.name||'');
-export function trackerDebtBills(plan,cardBills=[],preferences={}){
+// Derive completion from checked payments so undo/reset never leaves a stale paid flag.
+export function trackerDebtStatus(plan,id){
+ const index=(plan.state?.cards||[]).findIndex(c=>String(c.id)===String(id));
+ if(index<0)return null;
+ const card=plan.state.cards[index],checked=(plan.schedule||[]).filter(r=>plan.state?.checkedPaychecks?.[r.paycheck]);
+ const payments=checked.filter(r=>cents(r.payments?.[index])>0);
+ const paid=checked.reduce((sum,r)=>sum+cents(r.payments?.[index]),0);
+ const interest=checked.reduce((sum,r)=>sum+cents(r.interestByAccount?.[index]),0);
+ const balance=Math.max(0,cents(card.balance)+interest-paid);
+ return {index,balance,paid,paidOff:balance<=1,lastPayment:payments.at(-1)||null};
+}
+export function paycheckPaidCreditBills(plan,cardBills=[],cards=[],preferences={}){
+ return cardBills.flatMap(bill=>{
+  const status=trackerDebtStatus(plan,preferences[bill.id]?.trackerCardId);
+  if(!status)return [];
+  const card=cards.find(c=>c.id===bill.id),due=new Date(bill.date+'T12:00:00Z');
+  // Use the statement boundary when shared; otherwise use one billing month.
+  const previous=new Date(Date.UTC(due.getUTCFullYear(),due.getUTCMonth(),0,12));
+  previous.setUTCDate(Math.min(due.getUTCDate(),previous.getUTCDate()));
+  const start=card?.statementDate&&card.statementDate<bill.date?card.statementDate:previous.toISOString().slice(0,10);
+  const rows=(plan.schedule||[]).filter(r=>plan.state?.checkedPaychecks?.[r.paycheck]&&r.date>start);
+  const paid=rows.reduce((sum,r)=>sum+cents(r.payments?.[status.index]),0);
+  return paid>=bill.amount||status.paidOff&&paid>0?[bill.id+':'+bill.date]:[];
+ });
+}
+export function trackerDebtBills(plan,cardBills=[],preferences={}, {includePaid=false}={}){
  const matched=new Set(cardBills.map(b=>String(preferences[b.id]?.trackerCardId||'')).filter(Boolean));
- return (plan.schedule||[]).filter(row=>!plan.state?.checkedPaychecks?.[row.paycheck]).flatMap(row=>(plan.state?.cards||[]).flatMap((card,index)=>{
+ return (plan.schedule||[]).filter(row=>includePaid||!plan.state?.checkedPaychecks?.[row.paycheck]).flatMap(row=>(plan.state?.cards||[]).flatMap((card,index)=>{
   const amount=cents(row.payments?.[index]);if(amount<=0||matched.has(String(card.id)))return [];
-  return [{id:'tracker-debt-'+card.id+'-'+row.paycheck,trackerCardId:String(card.id),name:card.name,amount,date:row.date,repeat:'once',source:'tracker-debt',billKind:'loan',covered:true}];
+  return [{id:'tracker-debt-'+card.id+'-'+row.paycheck,trackerCardId:String(card.id),name:card.name,amount,date:row.date,repeat:'once',source:'tracker-debt',billKind:'loan',covered:true,paidByPaycheck:!!plan.state?.checkedPaychecks?.[row.paycheck]}];
  }));
 }
-export const isDebtPayment=b=>['tracker-debt','plaid-credit'].includes(b.source)||['credit-card','loan','car-payment'].includes(b.billKind);
+export const isDebtPayment=b=>b.billKind!=='car-payment'&&(['tracker-debt','plaid-credit'].includes(b.source)||['credit-card','loan'].includes(b.billKind));
 export function accountPaymentRows(events,selected=null){
  const seen=new Set(),rows=[];
  for(const event of events){
