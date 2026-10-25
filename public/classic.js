@@ -13,7 +13,7 @@ let cardsData = [];
 let budgetItemIdCounter = 0;
 let budgetItems = [];
 let budgetSetupVersion=0;
-function starterBudgetItems(){return [{id:1,label:'Fixed Bills',kind:'household-bills',amount:725},{id:2,label:'Car Fuel',amount:100},{id:3,label:'Groceries',amount:100}];}
+function starterBudgetItems(){return [{id:2,label:'Car Fuel',amount:100},{id:3,label:'Groceries',amount:100}];}
 
 let savingsGoalIdCounter = 0;
 let savingsGoals = [];
@@ -112,8 +112,7 @@ function removeCard(id){
 // ---- Budget items ----
 function renderBudgetItems(){
   const container = document.getElementById('budgetItemsList');
-  const fixed=budgetItems.find(item=>item.kind==='household-bills');document.getElementById('householdBillsAmount').value=fixed?.amount||0;document.getElementById('removeHouseholdBills').hidden=!fixed;
-  container.innerHTML = budgetItems.filter(item=>item.kind!=='household-bills').map(item => `
+  container.innerHTML = budgetItems.map(item => `
     <div class="field-row">
       <div class="field-name">${bdEscape(item.label)}${item.hint ? `<small>${bdEscape(item.hint)}</small>` : ''}<span class="remove" style="margin-left:6px;" data-bd-click="removeBudgetItem(${item.id})">Remove</span></div>
       <input type="number" id="budget_${item.id}" value="${item.amount}" step="0.01">
@@ -121,17 +120,6 @@ function renderBudgetItems(){
   `).join('');
 }
 
-async function saveHouseholdBills(){
- const amount=Number(document.getElementById('householdBillsAmount').value),status=document.getElementById('householdBillsStatus');
- if(!Number.isFinite(amount)||amount<0||amount>1e9){status.textContent='Enter a valid amount.';return;}
- const before=structuredClone(budgetItems);let item=budgetItems.find(item=>item.kind==='household-bills');
- if(amount>0){if(!item){item={id:++budgetItemIdCounter,label:'Fixed Bills',kind:'household-bills'};budgetItems.push(item);}item.amount=Math.round(amount*100)/100;}
- else budgetItems=budgetItems.filter(item=>item.kind!=='household-bills');
- try{calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('removeHouseholdBills').hidden=amount===0;status.textContent=amount?'Saved. Included once in each paycheck’s budget.':'Saved. No fixed bills contribution.';return true;}
- catch(e){budgetItems=before;renderBudgetItems();calculate();clearTimeout(saveDebounceTimer);status.textContent=e.message;return false;}
-}
-
-async function removeHouseholdBills(){document.getElementById('householdBillsAmount').value=0;if(await saveHouseholdBills()){renderBudgetItems();document.getElementById('householdBillsStatus').textContent='Fixed bills removed. Enter an amount to add them again.';}}
 function addBudgetItem(){
   const label = document.getElementById('newBudgetLabel').value.trim() || 'Other';
   const amount = parseFloat(document.getElementById('newBudgetAmount').value)||0;
@@ -680,7 +668,7 @@ function useIncomeEstimate(){
 // ---- Reset ----
 async function resetAll(){
  await window.classicReady;
- const fresh={cards:[],cardIdCounter:0,budgetItems:starterBudgetItems(),budgetItemIdCounter:3,budgetSetupVersion:1,savingsGoals:[],savingsGoalIdCounter:0,hourlyRate:'',hoursPerCheck:'',takeHome:'',startDate:'',taxSettings:{},appliedBonuses:{},paycheckOverrides:{},savingsContributionOverrides:{},budgetItemOverrides:{},accountPaymentOverrides:{},extraExpenses:{},extraExpenseIdCounter:0,checkedPaychecks:{},payoffMethod:'avalanche'};
+ const fresh={cards:[],cardIdCounter:0,budgetItems:starterBudgetItems(),budgetItemIdCounter:3,budgetSetupVersion:2,savingsGoals:[],savingsGoalIdCounter:0,hourlyRate:'',hoursPerCheck:'',takeHome:'',startDate:'',taxSettings:{},appliedBonuses:{},paycheckOverrides:{},savingsContributionOverrides:{},budgetItemOverrides:{},accountPaymentOverrides:{},extraExpenses:{},extraExpenseIdCounter:0,checkedPaychecks:{},payoffMethod:'avalanche'};
  clearTimeout(saveDebounceTimer);await window.BearDen.resetSetup(fresh);location.reload();
 }
 
@@ -751,11 +739,14 @@ function calculate(isInitialLoad){
   let paycheck = 0;
   const maxPaychecks = 780; // 30 years of biweekly checks — a generous ceiling, not a realistic target
 
+  const todayForSchedule=new Date();todayForSchedule.setHours(0,0,0,0);
+  const currentPaycheck=Math.max(1,Math.floor((todayForSchedule-date)/86400000/14)+1);
+  const incomeHorizon=startDateVal&&takeHome>0?Math.min(maxPaychecks,Math.max(26,currentPaycheck+25,...Object.keys(checkedPaychecks).filter(n=>checkedPaychecks[n]).map(n=>Number(n)+2))):0;
   const anyGoalStillTracking = () => savingsEnabled && goalsCalc.some(g => g.reachedDate === null && g.goal > 0);
   let debtFreeDate = null;
   let debtFreePaycheck = null;
 
-  while ((balances.reduce((a,b)=>a+b,0) > 0.01 || anyGoalStillTracking()) && paycheck < maxPaychecks) {
+  while ((paycheck < incomeHorizon || balances.reduce((a,b)=>a+b,0) > 0.01 || anyGoalStillTracking()) && paycheck < maxPaychecks) {
     paycheck++;
     const thisCheckTakeHome = paycheckOverrides[paycheck] !== undefined ? paycheckOverrides[paycheck] : takeHome;
     const bonusThisCheck = appliedBonuses[paycheck] || 0;
@@ -769,6 +760,10 @@ function calculate(isInitialLoad){
       expensesThisCheck += amt;
       return { id: item.id, label: item.label, amount: amt, isOverridden: overrideMap[paycheck] !== undefined };
     });
+
+    const dateKey=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+    const accountBillsThisCheck=window.accountBillsForPaycheck?.(dateKey,paycheck)||[];
+    expensesThisCheck+=accountBillsThisCheck.reduce((sum,bill)=>sum+bill.amount/100,0);
 
     // One-time unexpected expenses only apply to the specific paycheck they
     // were added to — they don't recur like regular budget items.
@@ -907,6 +902,8 @@ function calculate(isInitialLoad){
       isBonus: bonusThisCheck > 0,
       bonusAmount: bonusThisCheck,
       budgetLineItemsThisCheck,
+      accountBillsThisCheck,
+      budgetShortfall:Math.max(0,expensesThisCheck+extrasTotal-thisCheckTakeHome-bonusThisCheck),
       extrasThisCheck,
       savingsByGoal,
       availAfterSavings,
@@ -2087,6 +2084,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
       </div>
     `).join('');
 
+    const accountBillLines=(row.accountBillsThisCheck||[]).map(bill=>`<div class="check-summary-row paycheck-account-bill"><span>− ${bdEscape(bill.name)}<small>Due ${fmtDate(new Date(bill.date+'T00:00:00'))}</small></span><span>${money(bill.amount/100)}</span></div>`).join('');
     const extraExpenseLines = row.extrasThisCheck.map(e => `
       <div class="check-summary-row"><span>− ${bdEscape(e.label)} <span class="edited-tag" style="background:#fdf1e6;color:#a15f22;">one-time</span></span><span class="amount-input-wrap">${money(e.amount)}<span class="remove" style="margin-left:6px;" data-bd-click="removeExtraExpense(${row.paycheck}, ${e.id})">✕</span></span></div>
     `).join('');
@@ -2184,9 +2182,11 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
             : `<button class="bonus-inline-btn" data-bd-click="toggleBonusInlineInput(${row.paycheck})">🎁 Add Bonus</button>`
         )}
         ${budgetLines}
+        ${accountBillLines?`<div class="paycheck-bills-heading">Bills from Accounts</div>${accountBillLines}`:''}
         ${extraExpenseLines}
         ${extraExpenseControl}
-        <div class="check-summary-row prominent-row"><span>Left over after budget</span><span>${money(row.avail)}</span></div>
+        <div class="check-summary-row prominent-row"><span>Left over after budget and bills</span><span>${money(row.avail)}</span></div>
+        ${row.budgetShortfall>0?`<p class="forecast-warning">Budget and bills exceed this paycheck by ${money(row.budgetShortfall)}.</p>`:''}
         ${savingsEnabled ? `
         ${savingsLines}
         <div class="check-summary-row prominent-row"><span>Left over after savings</span><span>${money(row.availAfterSavings)}</span></div>
@@ -6619,6 +6619,12 @@ window.classicReady=(async function init(){
   }
   budgetSetupVersion=Number(savedState?.budgetSetupVersion)||0;
   if(window.BearDen.isNew&&!budgetSetupVersion&&!budgetItems.length){budgetItems=starterBudgetItems();budgetItemIdCounter=3;budgetSetupVersion=1;}
+  if(budgetSetupVersion<2){
+    const removed=budgetItems.filter(item=>item.kind==='household-bills'||item.label==='Fixed Bills');
+    budgetItems=budgetItems.filter(item=>!removed.includes(item));
+    for(const item of removed)delete budgetItemOverrides[item.id];
+    budgetSetupVersion=2;
+  }
   renderBudgetItems();
   if (savedState) {
     ['takeHome','startDate','hourlyRate','hoursPerCheck'].forEach(id => {
@@ -6677,3 +6683,10 @@ window.showDebtAccountHistory=function(id){
 };
 
 window.flushBearDenState=async()=>{clearTimeout(saveDebounceTimer);calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));};
+
+// Accounts publishes bill inputs; a stable signature prevents render/recalculate loops.
+let paycheckBillSignature;
+window.setPaycheckBills=(signature,resolve)=>{
+ if(signature===paycheckBillSignature)return false;
+ paycheckBillSignature=signature;window.accountBillsForPaycheck=resolve;calculate();return true;
+};

@@ -119,3 +119,14 @@ export function cashForecast(accounts,paydays,bills,start,length=30){
  const rows=events.map(e=>{if(e.type==='income'){income+=e.amount;outgoing+=e.allocations;}else outgoing+=e.amount;if(running!==null){running+=e.delta;low=Math.min(low,running);}return {...e,balance:running};});
  return {opening,endBalance:running,low,income,outgoing,rows,end};
 }
+
+// Each occurrence belongs to exactly one biweekly pay window. Keep paid bills
+// in their original window so checking a paycheck does not inflate debt money.
+// Forecasts still deduct unpaid bills separately on their actual due dates.
+export function paycheckBillItems({legacy,planner,linked},date,paycheck){
+ const start=paycheck===1?day(date,-14):date,end=day(date,13);
+ const paid=new Set(planner.paid||[]);
+ return billEvents({...legacy,paid:[]},{...planner,paid:[]},linked,start,end)
+  .filter(b=>!b.covered&&(b.date>=date||(paycheck===1&&!paid.has(b.key))))
+  .filter((b,index,rows)=>rows.findIndex(other=>other.key===b.key)===index);
+}
