@@ -38,9 +38,10 @@
  let review={rows:[],bills:[],spending:{categories:[],total:0}};
  let month=new Date(new Date().getFullYear(),new Date().getMonth(),1),selected=null,model,mailModel,planner={manual:[],covered:{},paid:[],accountVisibility:{},dismissedEstimates:[],estimates:{},bankRules:{},creditCards:{},transactionLinks:{},emailLinks:{},billFunding:{},household:{},forecastDebtMode:'full'},linked={},ready=false;
  function error(e){$('#incomeStatus').textContent=e.message||String(e);$('#accountStatus').textContent=e.message||String(e);$('#accountSaveStatus').textContent=e.message||String(e);}
- async function save(){await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();}
+ async function save(){if(!ready)throw Error('Accounts have not loaded. Reload before saving changes.');await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();}
  let initializing;
- function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel]=await Promise.all([import('./income-model.mjs?v=household1'),import('./email-model.mjs?v=household1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;await renderIncome();}catch(e){error(e);}})();}
+ $('#configureHousehold').disabled=true;$('#sharedBillsToggle').disabled=true;
+ function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel]=await Promise.all([import('./income-model.mjs?v=household-fix2'),import('./email-model.mjs?v=household-fix2')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#sharedBillsToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
  window.addEventListener('load',initialize,{once:true});
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});

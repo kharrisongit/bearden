@@ -205,3 +205,21 @@ test('background sync selects a profile and never merges its Gmail with the orig
  const base={items:[],transactions:[],candidates:[]};f.set('connections',{...base,gmail:{refreshToken:'owner-private'}});f.set('user:'+member.identity.scope+':connections',{...base,gmailAccounts:[{id:'member-mail',email:'member@example.com',refreshToken:'member-private'}]});
  await f.app.syncNextAccount();assert.deepEqual(tokens,['member-private']);assert.ok(f.get('user:'+member.identity.scope+':connections').gmailUpdated);assert.equal(f.get('connections').gmailUpdated,undefined);f.db.close();
 });
+
+test('Cloudflare serves every shipped public JavaScript module, including dynamic dependencies',async()=>{
+ const {readdirSync}=await import('node:fs');const f=fixture();
+ for(const name of readdirSync('public').filter(n=>/\.(?:mjs|js)$/.test(n))){const r=await f.app.handle(new Request(f.env.APP_URL+'/'+name+'?v=deployment-check'));assert.equal(r.status,200,'Cloudflare must serve '+name);assert.equal(await r.text(),'test asset');}
+ assert.equal((await f.app.handle(new Request(f.env.APP_URL+'/server.mjs'))).status,404);f.db.close();
+});
+test('Cloudflare selected-message reread updates the private email cache and preserves saved cards and bills',async()=>{
+ const calls=[];const f=fixture(async(url,options)=>{calls.push(url);if(url.includes('/token'))return Response.json({access_token:'private-access'});assert.match(url,/messages\/oct21\?format=full$/);return Response.json({internalDate:String(Date.parse('2026-10-21T12:00:00Z')),payload:{mimeType:'text/plain',headers:[{name:'From',value:'Consumers Energy <billing@consumersenergy.com>'},{name:'Subject',value:'Your bill is ready'}],body:{data:Buffer.from('Amount due: $275.00. Due date: 10/29/2026').toString('base64url')}}});});
+ const saved={state:{version:1,values:{'app-state':JSON.stringify({cards:[{id:1,name:'Visa',balance:500}],budgetItems:[],takeHome:2000}),'income-planner':JSON.stringify({manual:[{id:'electric',amount:35300,date:'2026-10-29'}]})}},revision:7};f.set('classic',saved);f.set('connections',{items:[],transactions:[],candidates:[],gmailAccounts:[{id:'mail',email:'owner@example.com',refreshToken:'private-refresh'}],gmailMessages:[{id:'mail:oct21',mailboxId:'mail',amount:null}]});
+ const r=await f.app.handle(f.req('/api/gmail/message',{mailboxId:'mail',id:'mail:oct21'}));assert.equal(r.status,200);const raw=await r.text(),data=JSON.parse(raw);assert.equal(data.message.amount,27500);assert.equal(data.message.dueDate,'2026-10-29');assert.ok(!raw.includes('private-'));assert.deepEqual(f.get('classic'),saved);assert.equal(f.get('connections').gmailMessages[0].amount,27500);
+ assert.equal((await f.app.handle(f.req('/api/gmail/message',{mailboxId:'mail',id:'mail:oct21'},'https://evil.example'))).status,403);
+ const member=privateSession(f);await assert.rejects(f.app.handle(member.req('/api/gmail/message',{mailboxId:'mail',id:'mail:oct21'})),/connected Gmail/);assert.equal(calls.length,2);f.db.close();
+});
+test('saving shared-bills preferences through Cloudflare retains existing accounts, cards, and bills',async()=>{
+ const f=fixture(),values={'app-state':JSON.stringify({cards:[{id:1,name:'Visa',balance:500}],budgetItems:[],takeHome:2000}),'income-planner':JSON.stringify({manual:[{id:'power',name:'Electric',amount:35300,date:'2026-10-29'}],bankRules:{merchant:{id:'car',choice:'bill'}}})};f.set('classic',{state:{version:1,values},revision:4});
+ const planner=JSON.parse(values['income-planner']);planner.household={enabled:true,personalAccountId:'plaid-own',billsAccountId:'plaid-shared',personalAmount:72500,spouseAmount:72500,spouseStartDate:'2026-11-06',spouseRepeat:'biweekly'};planner.billFunding={power:'shared'};
+ const next={...values,'income-planner':JSON.stringify(planner)},r=await f.app.handle(f.req('/api/classic',{state:{version:1,values:next},revision:4}));assert.equal(r.status,200);const restored=await(await f.app.handle(f.req('/api/classic'))).json();assert.equal(restored.state.values['app-state'],values['app-state']);assert.deepEqual(JSON.parse(restored.state.values['income-planner']),planner);assert.equal(restored.revision,5);f.db.close();
+});

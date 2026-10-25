@@ -1,4 +1,4 @@
-import {householdEnabled,sharedBill,spouseEvents,householdForecast} from './household-model.mjs?v=household1';
+import {householdEnabled,sharedBill,spouseEvents,householdForecast} from './household-model.mjs?v=household-fix2';
 export {householdEnabled,sharedBill,spouseEvents};
 export {reviewBankActivity,transactionKey} from './bank-activity.mjs';
 export {creditBills} from './credit-model.mjs';

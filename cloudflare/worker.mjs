@@ -1,5 +1,5 @@
 import {userScope,googleIdentity,sessionMismatch} from '../user-scope.mjs';
-import {mailboxes,connectMailbox,publicMail,forgetMailbox,scanMailbox} from '../mailboxes.mjs';
+import {mailboxes,connectMailbox,publicMail,forgetMailbox,scanMailbox,refreshSelectedEmail} from '../mailboxes.mjs';
 import {incomeFromTracker,incomeFromPlan} from '../income-preset.mjs';
 import {creditLinkOptions,syncCredit,publicCredit,publicItem} from '../credit.mjs';
 import {recurringBills,personalSpending} from '../recurring.mjs';
@@ -113,6 +113,9 @@ export function runtime(env,fetcher=fetch){
      await write('connections',c);return json({status:c.status});
     }
     if(path==='/api/plaid/disconnect'){const c=await connections(),item=c.items.find(i=>i.id===b.id);if(!item)return json({error:'Bank not found'},404);await plaid('/item/remove',{access_token:item.token});c.items=c.items.filter(i=>i.id!==b.id);c.transactions=c.transactions.filter(t=>t.itemId!==b.id);c.creditCards=(c.creditCards||[]).filter(card=>card.itemId!==b.id);await write('connections',c);await updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.itemId!==b.id);});return json({ok:true});}
+    if(path==='/api/gmail/message'){
+     const c=await connections(),message=await refreshSelectedEmail(c,b,{request,googleToken,owner:users.current().email});await write('connections',c);return json({message});
+    }
     if(path==='/api/gmail/search'){
      if(typeof b.query!=='string'||b.query.length>100)throw Error('Use a merchant name of up to 100 characters.');
      const c=await connections();for(const account of mailboxes(c,users.current().email)){try{await syncGmail(c,account,b.query);}catch(e){account.status='Gmail needs attention: '+e.message;}}
@@ -128,7 +131,7 @@ export function runtime(env,fetcher=fetch){
    });
   }
   if(!['GET','HEAD'].includes(req.method))return json({error:'Method not allowed'},405);
-  if(!['/','/index.html','/plaid-return','/style.css','/app.mjs','/engine.mjs','/setup-key','/setup-key.html','/setup-key.mjs','/favicon.ico','/tabs.js','/tabs.css','/income-model.mjs','/credit-model.mjs','/transaction-links.mjs','/email-model.mjs','/tax-model.mjs','/tax-ui.mjs','/onboarding.js','/bank-activity.mjs','/classic.js','/classic.css','/classic-theme.js','/classic-events.js','/classic-migrate.mjs','/connections.js','/connections.css','/purify.min.js'].includes(path))return json({error:'Not found'},404);
+  if(!['/','/index.html','/plaid-return','/style.css','/app.mjs','/engine.mjs','/setup-key','/setup-key.html','/setup-key.mjs','/favicon.ico','/tabs.js','/tabs.css','/income-model.mjs','/household-model.mjs','/credit-model.mjs','/transaction-links.mjs','/email-model.mjs','/tax-model.mjs','/tax-ui.mjs','/onboarding.js','/bank-activity.mjs','/classic.js','/classic.css','/classic-theme.js','/classic-events.js','/classic-migrate.mjs','/connections.js','/connections.css','/purify.min.js'].includes(path))return json({error:'Not found'},404);
   const target=new URL(req.url);if(path==='/plaid-return')target.pathname='/';const asset=await env.ASSETS.fetch(new Request(target,req)),response=new Response(asset.body,asset);for(const [k,v]of Object.entries(headers))response.headers.set(k,v);return response;
  }
  async function handle(req){const identity=await sessionIdentity(req);return users.run(identity,()=>handleScoped(req));}
