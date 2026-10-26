@@ -214,7 +214,8 @@ dialog[open]{max-height:85dvh;overflow-y:auto;overscroll-behavior:contain;-webki
 dialog::backdrop{touch-action:none}
 .celebration-overlay{overflow-y:auto;overscroll-behavior:contain}
 
-.account-total-card{background:var(--accent-soft);border-color:var(--line)}
+/* Match summary text to the shared card surface in both light and dark themes. */
+.account-total-card{background:var(--card);border-color:var(--line);color:var(--ink)}
 .account-total-card h3{font-size:.85rem;color:var(--muted);margin:0 0 8px}
 .account-total-amount{display:block;color:var(--accent);font-size:1.8rem;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .account-total-card .subtle{margin:8px 0 0}
@@ -387,9 +388,6 @@ body{background:var(--paper);color:var(--ink)}
 .bill-tile>.account-card-footer,.bill-tile-footer{background:var(--surface-subtle)}
 .account-connection{color:var(--muted)}
 .debt-account-footer>.debt-due-date{background:var(--surface-subtle);color:var(--ink);border-radius:8px;border-color:var(--line)}
-:root .account-total-card{background:var(--header);border-color:var(--header);color:var(--on-dark)}
-.account-total-card h3,.account-total-card .subtle{color:var(--on-dark-muted)}
-.account-total-amount{color:var(--on-dark)}
 .forecast-chart,.bill-progress,.forecast-stats>div{background:var(--surface-subtle);border-radius:10px}
 .income-card button,#connectionDialog button,.connection-button{border-radius:10px}
 .income-card .bill-save{background:var(--accent);color:var(--card);border-color:var(--accent);box-shadow:none}
