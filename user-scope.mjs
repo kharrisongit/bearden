@@ -8,6 +8,10 @@ export function googleIdentity(user,owner){
  if(typeof user.sub!=='string'||!user.sub)throw Error('Google did not provide a stable account identifier. Try signing in again.');
  const scope=hash('google:'+user.sub);return {scope,accountId:scope,email,sessionVersion:2};
 }
+export function microsoftIdentity(user){
+ if(typeof user.id!=='string'||!user.id||typeof user.email!=='string'||!user.email.includes('@'))throw Error('Microsoft account identity is missing.');
+ const scope=hash('microsoft:'+user.id);return {scope,accountId:scope,email:user.email.toLowerCase(),sessionVersion:2};
+}
 export function userScope(owner){
  const context=new AsyncLocalStorage(),legacy={scope:'',accountId:'owner',email:owner||'',sessionVersion:1};
  const current=()=>context.getStore()||legacy;

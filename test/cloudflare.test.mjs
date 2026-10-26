@@ -216,7 +216,7 @@ test('Cloudflare selected-message reread updates the private email cache and pre
  const saved={state:{version:1,values:{'app-state':JSON.stringify({cards:[{id:1,name:'Visa',balance:500}],budgetItems:[],takeHome:2000}),'income-planner':JSON.stringify({manual:[{id:'electric',amount:35300,date:'2026-10-29'}]})}},revision:7};f.set('classic',saved);f.set('connections',{items:[],transactions:[],candidates:[],gmailAccounts:[{id:'mail',email:'owner@example.com',refreshToken:'private-refresh'}],gmailMessages:[{id:'mail:oct21',mailboxId:'mail',amount:null}]});
  const r=await f.app.handle(f.req('/api/gmail/message',{mailboxId:'mail',id:'mail:oct21'}));assert.equal(r.status,200);const raw=await r.text(),data=JSON.parse(raw);assert.equal(data.message.amount,27500);assert.equal(data.message.dueDate,'2026-10-29');assert.ok(!raw.includes('private-'));assert.deepEqual(f.get('classic'),saved);assert.equal(f.get('connections').gmailMessages[0].amount,27500);
  assert.equal((await f.app.handle(f.req('/api/gmail/message',{mailboxId:'mail',id:'mail:oct21'},'https://evil.example'))).status,403);
- const member=privateSession(f);await assert.rejects(f.app.handle(member.req('/api/gmail/message',{mailboxId:'mail',id:'mail:oct21'})),/connected Gmail/);assert.equal(calls.length,2);f.db.close();
+ const member=privateSession(f);await assert.rejects(f.app.handle(member.req('/api/gmail/message',{mailboxId:'mail',id:'mail:oct21'})),/connected account/);assert.equal(calls.length,2);f.db.close();
 });
 test('saving shared-bills preferences through Cloudflare retains existing accounts, cards, and bills',async()=>{
  const f=fixture(),values={'app-state':JSON.stringify({cards:[{id:1,name:'Visa',balance:500}],budgetItems:[],takeHome:2000}),'income-planner':JSON.stringify({manual:[{id:'power',name:'Electric',amount:35300,date:'2026-10-29'}],bankRules:{merchant:{id:'car',choice:'bill'}}})};f.set('classic',{state:{version:1,values},revision:4});
@@ -240,7 +240,7 @@ test('targeted refresh visits the requested connection and saves provider detail
  const result=await(await f.app.handle(f.req('/api/state'))).json();const zero=result.state.accounts.find(a=>a.id==='plaid-loan-zero'),positive=result.state.accounts.find(a=>a.id==='plaid-loan-positive');assert.equal(zero.reportedCurrent,0);assert.equal(zero.reportedAvailable,null);assert.ok(zero.balanceRetrieved);assert.equal(positive.reportedCurrent,1234.56);assert.equal(positive.balance,123456);assert.equal(result.connections.items[0].balanceError,'ITEM_LOGIN_REQUIRED');assert.equal(calls.filter(([url,token])=>token==='loan-positive'&&url.endsWith('/accounts/balance/get')).length,1);f.db.close();
 });
 test('Gmail-only continuation never refreshes an unrelated bank connection',async()=>{
- const f=fixture(async()=>{throw Error('No providers should be called');});f.set('connections',{items:[{id:'bank',token:'bank',name:'ELGA'}],transactions:[],candidates:[],gmail:null});const r=await(await f.app.handle(f.req('/api/sync',{gmailOnly:true}))).json();assert.match(r.status,/No Gmail/);assert.equal(f.get('connections').items[0].balancesUpdated,undefined);f.db.close();
+ const f=fixture(async()=>{throw Error('No providers should be called');});f.set('connections',{items:[{id:'bank',token:'bank',name:'ELGA'}],transactions:[],candidates:[],gmail:null});const r=await(await f.app.handle(f.req('/api/sync',{gmailOnly:true}))).json();assert.match(r.status,/No email/);assert.equal(f.get('connections').items[0].balancesUpdated,undefined);f.db.close();
 });
 
 test('SimpleFIN setup is private, encrypted, immediately loads balances, and reconnects without duplicating accounts',async()=>{
@@ -321,4 +321,45 @@ test('rent settings preserve an existing login and have no default portal for a 
  assert.equal((await f.app.handle(f.req('/api/rent/settings',{enabled:false}))).status,200);assert.deepEqual(f.get('sun-session'),saved);assert.equal(f.get('connections').sun.connected,true);assert.equal(f.get('connections').sun.enabled,false);
  await f.app.handle(f.req('/api/rent/settings',{enabled:true}));assert.deepEqual(f.get('sun-session'),saved);
  f.set('connections',{items:[],transactions:[],candidates:[]});await f.app.handle(f.req('/api/rent/settings',{enabled:true}));const fresh=await(await f.app.handle(f.req('/api/state'))).json();assert.equal(fresh.connections.sun.portalUrl,'');assert.equal((await f.app.handle(f.req('/api/rent/start',{}))).status,400);f.db.close();
+});
+
+
+function microsoftFixture(fetcher){const f=fixture(fetcher);f.env.MICROSOFT_CLIENT_ID='ms-client';f.env.MICROSOFT_CLIENT_SECRET='ms-test-secret';f.app=runtime(f.env,fetcher);return f;}
+function microsoftCallback(f,state,cookie=''){return new Request(f.env.APP_URL+'/auth/microsoft/callback?code=code&state='+state,{headers:{Cookie:'bearden_microsoft_oauth='+state+(cookie?'; bearden='+cookie:'')}});}
+async function microsoftStart(f,path='/auth/microsoft'){const response=await f.app.handle(f.req(path));assert.equal(response.status,302);const url=new URL(response.headers.get('location'));return {response,url,state:url.searchParams.get('state')};}
+test('Microsoft-only deployment signs in to an empty private profile without reusing the matching Google owner email',async()=>{
+ const calls=[],fetcher=async(url,opts)=>{calls.push(url);if(url.endsWith('/token')){assert.ok(opts.body.get('code_verifier'));assert.equal(opts.body.get('redirect_uri'),'https://bearden.example/auth/microsoft/callback');return Response.json({access_token:'ms-access'});}assert.match(url,/graph.microsoft.com\/v1.0\/me\?/);return Response.json({id:'microsoft-owner-id',mail:'owner@example.com'});};
+ const f=microsoftFixture(fetcher);delete f.env.GOOGLE_CLIENT_ID;delete f.env.GOOGLE_CLIENT_SECRET;f.app=runtime(f.env,fetcher);
+ f.set('classic',{state:{version:1,values:{notes:'private Google budget'}},revision:3});
+ const start=await microsoftStart(f);assert.match(start.response.headers.get('set-cookie'),/HttpOnly; Secure; SameSite=Lax/);assert.equal(start.url.searchParams.get('prompt'),'select_account');assert.doesNotMatch(start.url.searchParams.get('scope'),/Mail\./);
+ const callback=microsoftCallback(f,start.state),response=await f.app.handle(callback);assert.equal(response.status,302);const session=response.headers.get('set-cookie').match(/bearden=([^;]+)/)[1];
+ const req=path=>new Request(f.env.APP_URL+path,{headers:{Cookie:'bearden='+session}}),config=await(await f.app.handle(req('/api/config'))).json();assert.equal(config.microsoftConfigured,true);assert.equal(config.googleConfigured,false);assert.equal(config.authenticated,true);assert.notEqual(config.accountId,'owner');
+ const data=await(await f.app.handle(req('/api/classic'))).json();assert.deepEqual(data.state.values,{});assert.equal(f.get('classic').state.values.notes,'private Google budget');assert.equal((await f.app.handle(callback)).status,400);assert.equal(calls.length,2);f.db.close();
+});
+test('Microsoft inbox consent binds the existing session, stays encrypted, and disconnect does not call Google',async()=>{
+ let calls=0;const f=microsoftFixture(async url=>{calls++;return url.endsWith('/token')?Response.json({access_token:'ms-access',refresh_token:'private-ms-refresh',scope:'User.Read Mail.Read'}):Response.json({id:'inbox-id',mail:'person@hotmail.com'});});
+ const start=await microsoftStart(f,'/auth/microsoft?mail=1&account=owner');assert.match(start.url.searchParams.get('scope'),/Mail.Read/);
+ const response=await f.app.handle(microsoftCallback(f,start.state,f.token));assert.equal(response.status,302);assert.doesNotMatch(response.headers.get('set-cookie'),/bearden=v2/);
+ const c=f.get('connections'),a=c.outlookAccounts[0];assert.equal(a.email,'person@hotmail.com');assert.equal(a.refreshToken,'private-ms-refresh');assert.doesNotMatch(f.db.prepare("SELECT value FROM vault WHERE id='connections'").get().value,/private-ms-refresh/);
+ const state=await(await f.app.handle(f.req('/api/state'))).text();assert.doesNotMatch(state,/private-ms-refresh|refreshToken|microsoftId/);assert.equal(JSON.parse(state).connections.emailConnected,true);
+ assert.equal((await f.app.handle(f.req('/api/gmail/disconnect',{id:a.id}))).status,200);assert.equal(f.get('connections').outlookAccounts.length,0);assert.equal(calls,2);f.db.close();
+});
+test('Microsoft rejects wrong browser state, expired state, wrong provider and switched BearDen session before exchange',async()=>{
+ const f=microsoftFixture(async()=>{throw Error('Provider must not be called');});
+ const first=await microsoftStart(f);const wrong=microsoftCallback(f,first.state);wrong.headers.set('Cookie','bearden_microsoft_oauth=wrong');assert.equal((await f.app.handle(wrong)).status,400);
+ f.db.prepare('UPDATE oauth SET expires=0').run();assert.equal((await f.app.handle(microsoftCallback(f,first.state))).status,400);
+ const google=await f.app.handle(f.req('/auth/google')),gState=new URL(google.headers.get('location')).searchParams.get('state');assert.equal((await f.app.handle(microsoftCallback(f,gState))).status,400);
+ const ms=await microsoftStart(f);assert.equal((await f.app.handle(new Request(f.env.APP_URL+'/auth/google/callback?code=c&state='+ms.state,{headers:{Cookie:'bearden_oauth='+ms.state}}))).status,400);
+ assert.equal((await f.app.handle(f.req('/auth/microsoft?mail=1&account=wrong-account'))).status,409);
+ const inbox=await microsoftStart(f,'/auth/microsoft?mail=1&account=owner');assert.equal((await f.app.handle(microsoftCallback(f,inbox.state,'another-session'))).status,403);
+ const anon=new Request(f.env.APP_URL+'/auth/microsoft?mail=1');assert.equal((await f.app.handle(anon)).status,401);f.db.close();
+});
+test('Microsoft declined mailbox scope cannot connect or replace an inbox',async()=>{
+ const f=microsoftFixture(async url=>url.endsWith('/token')?Response.json({access_token:'a',refresh_token:'r',scope:'User.Read'}):Response.json({id:'m',mail:'person@hotmail.com'}));
+ const start=await microsoftStart(f,'/auth/microsoft?mail=1&account=owner');await assert.rejects(()=>f.app.handle(microsoftCallback(f,start.state,f.token)),/not granted/);assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM vault WHERE id='connections'").get().n,0);f.db.close();
+});
+test('Microsoft refresh-token rotation survives a selected message provider failure',async()=>{
+ const f=microsoftFixture(async url=>url.endsWith('/token')?Response.json({access_token:'a',refresh_token:'rotated'}):Response.json({error:{code:'ErrorItemNotFound'}},{status:404}));
+ f.set('connections',{items:[],transactions:[],candidates:[],outlookAccounts:[{id:'ms',provider:'microsoft',email:'person@hotmail.com',refreshToken:'old'}]});
+ await assert.rejects(()=>f.app.handle(f.req('/api/gmail/message',{mailboxId:'ms',id:'ms:message='})),/Provider request failed/);assert.equal(f.get('connections').outlookAccounts[0].refreshToken,'rotated');f.db.close();
 });

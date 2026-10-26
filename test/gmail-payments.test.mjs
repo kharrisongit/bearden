@@ -110,5 +110,5 @@ test('selecting an email rereads its exact private mailbox message instead of re
  const {refreshSelectedEmail}=await import('../mailboxes.mjs');const c={gmailAccounts:[{id:'mailbox',refreshToken:'private'}],gmailMessages:[{id:'mailbox:abc123',amount:null}]};let calls=0;
  const message=await refreshSelectedEmail(c,{mailboxId:'mailbox',id:'mailbox:abc123'},{googleToken:async()=>({access_token:'token'}),request:async url=>{calls++;assert.match(url,/messages\/abc123\?format=full$/);return {internalDate:String(Date.parse('2026-10-21T12:00:00Z')),payload:{headers:[{name:'From',value:'Consumers Energy <billing@consumersenergy.com>'},{name:'Subject',value:'Your bill is ready'}],mimeType:'text/plain',body:{data:Buffer.from('Amount due: $275.00 Due date: October 29th, 2026').toString('base64url')}}};}});
  assert.equal(calls,1);assert.equal(message.amount,27500);assert.equal(message.dueDate,'2026-10-29');assert.equal(c.gmailMessages.length,1);assert.equal(c.gmailMessages[0].amount,27500);
- await assert.rejects(refreshSelectedEmail(c,{mailboxId:'other',id:'other:abc123'},{googleToken:async()=>{throw Error('Must not access another mailbox');}}),/connected Gmail/);
+ await assert.rejects(refreshSelectedEmail(c,{mailboxId:'other',id:'other:abc123'},{googleToken:async()=>{throw Error('Must not access another mailbox');}}),/connected account/);
 });

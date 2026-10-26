@@ -23,24 +23,24 @@ window.BearDen=(()=>{
  bridge.storage.set=async(key,value)=>{await bridge.ready;if(!keys.has(key))return null;const previous=values[key],next=String(value);values[key]=next;try{await persist();return {key,value,shared:false};}catch(error){if(values[key]===next){if(previous===undefined)delete values[key];else values[key]=previous;}throw error;}};
  bridge.storage.delete=async key=>{await bridge.ready;if(!keys.has(key)||values[key]===undefined)return {key,deleted:true};delete values[key];await persist();return {key,deleted:true};};
  bridge.resetSetup=async state=>{await bridge.ready;await queue;const previous=values;values={...values,'app-state':JSON.stringify(state),'income-planner':JSON.stringify({}),'linked-bills':JSON.stringify({}),onboarding:JSON.stringify({version:1,step:0,started:true,completed:false})};try{await persist();}catch(e){values=previous;throw e;}};
- function requireLogin(){if(!config.googleConfigured){message('Sign-in is unavailable right now.');return false;}if(!config.authenticated){location.href='/auth/google';return false;}return true;}
+ function requireLogin(){if(config.authenticated)return true;message('Sign in with Google or Microsoft in Settings to connect an account.');window.selectBearTab?.('settings');return false;}
  async function refresh(){legacy=await api('/api/state');renderConnections();}
  function renderConnections(){
   $('#accountMode').textContent=config.authenticated?'You are signed in with '+(config.email||'your BearDen')+' account. Your budget, accounts, and income update to the cloud securely via your account.':'Not signed in. Tracker changes are saved on this device.';
-  $('#classicLogin').hidden=!!config.authenticated;$('#classicLogout').hidden=!config.authenticated;$('#classicSync').hidden=!config.authenticated;document.querySelectorAll('[data-refresh-bank],[data-refresh-debts]').forEach(b=>b.hidden=!config.authenticated);$('#privateConnections').hidden=!config.authenticated;$('#rentTrackingOption').hidden=!config.authenticated;
+  $('#classicLogin').hidden=!!config.authenticated||!config.googleConfigured;$('#classicMicrosoftLogin').hidden=!!config.authenticated||!config.microsoftConfigured;$('#microsoftSetupStatus').hidden=!!config.authenticated||!!config.microsoftConfigured;$('#classicGmail').disabled=!config.googleConfigured;$('#classicOutlook').disabled=!config.microsoftConfigured;$('#classicOutlook').title=config.microsoftConfigured?'':'Microsoft inbox connections are being set up.';$('#classicLogout').hidden=!config.authenticated;$('#classicSync').hidden=!config.authenticated;document.querySelectorAll('[data-refresh-bank],[data-refresh-debts]').forEach(b=>b.hidden=!config.authenticated);$('#privateConnections').hidden=!config.authenticated;$('#rentTrackingOption').hidden=!config.authenticated;
   bridge.config=config;bridge.plan=legacy;window.dispatchEvent(new Event('bearden-connections'));
   if(!config.authenticated)return;
   const c=legacy?.connections||{},s=legacy?.state;
-  for(const [id,label,count]of [['plaidAccountSummary','Plaid accounts',(s?.accounts||[]).filter(a=>a.source==='plaid').length],['simplefinAccountSummary','SimpleFIN accounts',(s?.accounts||[]).filter(a=>a.source==='simplefin').length],['gmailAccountSummary','Gmail accounts',(c.gmailAccounts||[]).length]])$('#'+id).textContent=label+' ('+count+')';
+  for(const [id,label,count]of [['plaidAccountSummary','Plaid accounts',(s?.accounts||[]).filter(a=>a.source==='plaid').length],['simplefinAccountSummary','SimpleFIN accounts',(s?.accounts||[]).filter(a=>a.source==='simplefin').length],['gmailAccountSummary','Email accounts',(c.mailAccounts||c.gmailAccounts||[]).length]])$('#'+id).textContent=label+' ('+count+')';
   $('#classicBank').hidden=!!c.items?.length;$('#disconnectPlaid').hidden=!c.items?.length;
   $('#classicBankStatus').textContent=c.items?.length?'Connected':'Not connected';$('#classicBankStatus').dataset.connected=String(!!c.items?.length);$('#refreshPlaid').hidden=!c.items?.length;
   const plaidAccounts=(s?.accounts||[]).filter(a=>a.source==='plaid');
   $('#plaidAccountSummary').textContent='Plaid accounts ('+plaidAccounts.filter(a=>!accountHidden(a.id)).length+' shown)';
   $('#classicBalances').innerHTML=plaidAccounts.filter(a=>!accountHidden(a.id)).map(a=>`<div class="connection-row"><div class="connection-account-heading"><strong>${esc(accountName(a))}</strong>${hideAccountButton(a)}</div>${a.balanceUnavailable?'Balance not supplied':money(a.balance)}<small>${esc(a.currency||'USD')}${a.balanceRetrieved?' · Retrieved '+esc(new Date(a.balanceRetrieved).toLocaleString()):''}</small>${['loan','credit'].includes(a.type)&&a.balance===0?'<small>Plaid reports zero; verify with your bank. This is a balance, not a payment due.'+(a.lastPositiveBalance>0?' Last positive balance received: '+money(a.lastPositiveBalance)+'.':'')+'</small>':''}<details><summary>Balance details</summary><small>Connection: ${esc(c.items?.find(i=>i.id===a.itemId)?.name||'Bank')}${c.items?.find(i=>i.id===a.itemId)?.balanceError?'<br>Last balance refresh failed: '+esc(c.items.find(i=>i.id===a.itemId).balanceError):''}<br>Account type: ${esc(a.type||'Not supplied')} / ${esc(a.subtype||'Not supplied')}<br>Current balance reported by Plaid: ${a.reportedCurrent===undefined?'No balance response saved for this account':a.reportedCurrent===null?'Not supplied':money(Math.round(a.reportedCurrent*100))}<br>Available balance reported by Plaid: ${a.reportedAvailable===undefined?'No balance response saved for this account':a.reportedAvailable===null?'Not supplied':money(Math.round(a.reportedAvailable*100))}</small></details></div>`).join('')+hiddenAccountsMarkup(plaidAccounts);
   renderSimplefin(c,s);renderRent(c.sun);
-  $('#classicGmail').textContent='Add Gmail account';$('#classicDisconnectGmail').hidden=true;$('#checkGmailAccounts').hidden=!c.gmail;
-  $('#classicEmailStatus').textContent=c.gmail?'Connected':'Not connected';$('#classicEmailStatus').dataset.connected=String(!!c.gmail);
-  $('#gmailAccountList').innerHTML=(c.gmailAccounts||[]).map(a=>'<div class="connection-row"><strong>'+esc(a.email||'Gmail account')+'</strong><small>'+esc(a.status||'Connected')+(a.updated?' · '+esc(new Date(a.updated).toLocaleString()):'')+'</small><button type="button" data-gmail-disconnect="'+esc(a.id)+'">Disconnect</button></div>').join('');
+  $('#classicGmail').textContent='Add Gmail account';$('#classicDisconnectGmail').hidden=true;$('#checkGmailAccounts').hidden=!(c.emailConnected||c.gmail);
+  $('#classicEmailStatus').textContent=(c.emailConnected||c.gmail)?'Connected':'Not connected';$('#classicEmailStatus').dataset.connected=String(!!(c.emailConnected||c.gmail));
+  $('#gmailAccountList').innerHTML=(c.mailAccounts||c.gmailAccounts||[]).map(a=>'<div class="connection-row"><strong>'+esc(a.email||'Email account')+'</strong><small>'+esc(a.status||'Connected')+(a.updated?' · '+esc(new Date(a.updated).toLocaleString()):'')+'</small><button type="button" data-gmail-disconnect="'+esc(a.id)+'">Disconnect</button></div>').join('');
  }
  function renderRent(rent){
   const enabled=rent?.enabled??!!rent?.connected;$('#rentEnabledToggle').checked=enabled;$('#rentSection').hidden=!enabled;
@@ -169,14 +169,14 @@ window.BearDen=(()=>{
   try{
    const results=await refreshEveryBank(report,{creditDetails:true});if(!results)return;
    button.disabled=true;button.setAttribute('aria-busy','true');
-   if(legacy?.connections?.gmail||legacy?.connections?.gmailAccounts?.length){report('Checking Gmail…');try{await bridge.searchGmail('');results.push('Gmail checked.');}catch(error){results.push('Gmail: '+error.message);}}
+   if(legacy?.connections?.emailConnected||legacy?.connections?.gmail||legacy?.connections?.gmailAccounts?.length){report('Checking email…');try{await bridge.searchGmail('');results.push('Email checked.');}catch(error){results.push('Email: '+error.message);}}
    report(results.join(' · '));
   }catch(error){report(error.message);}finally{button.disabled=false;button.removeAttribute('aria-busy');}
  };
  $('#refreshPlaid').onclick=run(async()=>{const report=text=>$('#plaidConfigStatus').textContent=text;const results=await refreshEveryBank(report,{includeSimplefin:false});if(results)report(results.join(' · '));});
  $('#classicSync').onclick=run(async()=>{
   const results=await refreshEveryBank(message);if(!results)return;
-  if(legacy?.connections?.gmail){message('Checking Gmail…');try{const result=await api('/api/sync',{gmailOnly:true});results.push(result.status||'Gmail checked.');}catch(error){results.push('Gmail: '+error.message);}await refresh();}
+  if(legacy?.connections?.emailConnected||legacy?.connections?.gmail){message('Checking email…');try{const result=await api('/api/sync',{gmailOnly:true});results.push(result.status||'Email checked.');}catch(error){results.push('Email: '+error.message);}await refresh();}
   if(legacy?.connections?.sun?.connected&&legacy.connections.sun.enabled!==false){message('Checking rent…');try{const result=await api('/api/rent/refresh',{});results.push(result.status||'Rent checked.');}catch(error){results.push('Rent: '+error.message);}await refresh();}
   message(results.join(' · '));
  });
@@ -185,10 +185,11 @@ window.BearDen=(()=>{
   try{const results=await refreshEveryBank(report);if(results)report(results.join(' · '));}catch(error){report(error.message);}
  });
  $('#classicBank').onclick=run(()=>connectBank());$('#classicGmail').onclick=()=>{if(requireLogin())location.href='/auth/google?gmail=1&account='+encodeURIComponent(config.accountId);};
+ $('#classicOutlook').onclick=()=>{if(requireLogin()&&config.microsoftConfigured)location.href='/auth/microsoft?mail=1&account='+encodeURIComponent(config.accountId);};
  bridge.readGmailMessage=async message=>{await queue;const result=await api('/api/gmail/message',{mailboxId:message.mailboxId,id:message.id});if(!result.message)throw Error('Could not read the selected email. Try again.');legacy.connections.gmailMessages=[...(legacy.connections.gmailMessages||[]).filter(m=>m.id!==result.message.id),result.message];return result.message;};
  bridge.searchGmail=async query=>{await queue;const result=await api('/api/gmail/search',{query:String(query||'').slice(0,100)});Object.assign(legacy.connections,result);renderConnections();return result;};
- $('#checkGmailAccounts').onclick=run(async()=>{$('#gmailFeedback').textContent='Checking Gmail…';try{await bridge.searchGmail('');$('#gmailFeedback').textContent='Gmail checked.';}catch(error){$('#gmailFeedback').textContent=error.message;}});
- document.addEventListener('click',async e=>{const button=e.target.closest('[data-gmail-disconnect]');if(!button)return;const account=legacy?.connections?.gmailAccounts?.find(a=>a.id===button.dataset.gmailDisconnect);if(!account||!confirm('Disconnect '+account.email+' and stop watching its bill emails?'))return;button.disabled=true;try{await api('/api/gmail/disconnect',{id:account.id});await refresh();}catch(e){message(e.message);}finally{button.disabled=false;}});
+ $('#checkGmailAccounts').onclick=run(async()=>{$('#gmailFeedback').textContent='Checking email…';try{await bridge.searchGmail('');$('#gmailFeedback').textContent='Email checked.';}catch(error){$('#gmailFeedback').textContent=error.message;}});
+ document.addEventListener('click',async e=>{const button=e.target.closest('[data-gmail-disconnect]');if(!button)return;const account=(legacy?.connections?.mailAccounts||legacy?.connections?.gmailAccounts)?.find(a=>a.id===button.dataset.gmailDisconnect);if(!account||!confirm('Disconnect '+account.email+' and stop watching its bill emails?'))return;button.disabled=true;try{await api('/api/gmail/disconnect',{id:account.id});await refresh();}catch(e){message(e.message);}finally{button.disabled=false;}});
 
  document.addEventListener('click',async e=>{const b=e.target.closest('[data-use-bill],[data-review-accept],[data-review-dismiss]');if(!b)return;b.disabled=true;try{
   if(b.dataset.reviewDismiss){await api('/api/candidate/dismiss',{id:b.dataset.reviewDismiss});await refresh();}
