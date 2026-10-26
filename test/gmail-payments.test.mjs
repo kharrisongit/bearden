@@ -112,3 +112,18 @@ test('selecting an email rereads its exact private mailbox message instead of re
  assert.equal(calls,1);assert.equal(message.amount,27500);assert.equal(message.dueDate,'2026-10-29');assert.equal(c.gmailMessages.length,1);assert.equal(c.gmailMessages[0].amount,27500);
  await assert.rejects(refreshSelectedEmail(c,{mailboxId:'other',id:'other:abc123'},{googleToken:async()=>{throw Error('Must not access another mailbox');}}),/connected account/);
 });
+
+
+test('debt statements retain a fully read selected due date outside the mail cache, without requiring an amount',()=>{
+ const m=mail({subject:'Loan statement ready',text:'Payment due date: November 15, 2026. Account ending in 1234.'}),link=emailLink(m),options={creditCard:false,debtAccount:true,now:Date.parse('2026-10-27')};
+ assert.equal(m.amount,null);
+ for(const messages of [[],[m],[{...m,dueDate:null}]])assert.equal(emailAccountStatus(messages,link,options).statement.dueDate,'2026-11-15');
+ const next={...m,id:'next',receivedAt:'2026-10-26T12:00:00Z',dueDate:'2026-11-20'};assert.equal(emailAccountStatus([next],link,options).statement.dueDate,'2026-11-20');
+ assert.equal(emailAccountStatus([{...next,accountLast4:'5678'}],link,options).statement.dueDate,'2026-11-15');
+});
+test('payment receipts and invalid dates never autofill a debt due date',async()=>{
+ const {emailDueDate}=await import('../public/email-model.mjs');
+ assert.equal(emailDueDate({dueDate:'2026-11-15',paymentStatus:'posted'}),null);
+ assert.equal(emailDueDate({dueDate:'2026-02-30'}),null);assert.equal(emailDueDate({dueDate:'2026-11-15'}),'2026-11-15');
+ const m=mail({text:'Payment amount: $50.00 Due date: November 15, 2026.'});assert.equal(emailAccountStatus([],emailLink(m),{debtAccount:true,now:Date.parse('2026-10-27')}).statement,undefined);
+});

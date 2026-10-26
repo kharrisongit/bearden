@@ -29,7 +29,8 @@ async function readMailboxEmail(account,sourceId,{request,headers}){
  if(account.provider==='microsoft')return readMicrosoftEmail(request,headers,account,sourceId);
  if(!/^[A-Za-z0-9_-]{1,200}$/.test(sourceId))throw Error('Invalid email identifier.');
  const msg=await request('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+encodeURIComponent(sourceId)+'?format=full',{headers}),header=n=>msg.payload?.headers?.find(h=>h.name.toLowerCase()===n)?.value||'';
- return {id:account.id+':'+sourceId,mailboxId:account.id,from:header('from'),subject:header('subject'),text:messageText(msg.payload).slice(0,32000),receivedAt:new Date(Number(msg.internalDate)||Date.parse(header('date'))||Date.now()).toISOString()};
+ const receivedAt=new Date(Number(msg.internalDate)||Date.parse(header('date'))||Date.now()).toISOString();
+ return {id:account.id+':'+sourceId,mailboxId:account.id,from:header('from'),subject:header('subject'),text:messageText(msg.payload,{referenceDate:receivedAt}).slice(0,32000),receivedAt};
 }
 export async function scanMailbox(c,account,{request,googleToken,microsoftToken,query=null,limit=3}){
  account.lastSyncAttempt=Date.now();

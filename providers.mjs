@@ -5,12 +5,14 @@ export async function transactionSync(item,call=plaid){
  for(let attempt=0;attempt<3;attempt++){let cursor=item.cursor||'',has=true,changes=[];try{let pages=0;while(has){if(++pages>100)throw Error('Transaction history too large for one sync');const d=await call('/transactions/sync',{access_token:item.token,cursor,count:500});changes.push(d);cursor=d.next_cursor;has=d.has_more;}return {cursor,changes};}catch(e){if(e.code!=='TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION'||attempt===2)throw e;}}
 }
 export function applyTransactions(existing,changes,itemId){const map=new Map(existing.map(t=>[t.transaction_id,t]));for(const c of changes){for(const t of c.removed)map.delete(t.transaction_id);for(const t of [...c.added,...c.modified])map.set(t.transaction_id,{transaction_id:t.transaction_id,itemId,account_id:t.account_id,name:t.merchant_name||t.name,date:t.date,amount:t.amount,pending:t.pending,currency:t.iso_currency_code,category:t.personal_finance_category?.detailed||t.personal_finance_category?.primary});}return [...map.values()].sort((a,b)=>b.date.localeCompare(a.date));}
-export function messageText(payload){
+export function messageText(payload,{referenceDate}={}){
  const plain=[],html=[];function walk(p){if(p.body?.data){const text=Buffer.from(p.body.data,'base64url').toString('utf8');if(p.mimeType==='text/plain')plain.push(text);else if(p.mimeType==='text/html')html.push(text);}for(const child of p.parts||[])walk(child);}walk(payload||{});
  const rich=html.join('\n').replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi,' ').replace(/<[^>]*>/g,' ').replace(/&nbsp;|&#160;/g,' ').replace(/&amp;/g,'&').replace(/&dollar;|&#36;|&#x24;/gi,'$').replace(/&colon;/gi,':');
  const text=plain.join('\n');
- // Some multipart bill emails put only a view-online notice in text/plain.
- return (text&&!(parseBill(text).amount===null&&parseBill(rich).amount!==null)?text:rich).slice(0,100000);
+ // A plain-text fallback may omit details that are visible in the HTML statement.
+ const plainBill=parseBill(text,{referenceDate}),richBill=parseBill(rich,{referenceDate});
+ const content=plainBill.amount===null&&richBill.amount!==null?rich:plainBill.date===null&&richBill.date!==null?[text,rich].filter(Boolean).join('\n'):text||rich;
+ return content.slice(0,100000);
 }
 
 export function parseBill(text,{referenceDate}={}){

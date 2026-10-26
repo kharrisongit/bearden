@@ -2,7 +2,8 @@ const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 export const emailLink=message=>({mailboxId:message.mailboxId,sender:message.sender,accountLast4:message.accountLast4||'',selectedAt:new Date().toISOString(),selectedMessage:Object.fromEntries(['id','mailboxId','sender','accountLast4','receivedAt','amount','minimum','balance','dueDate','paymentStatus'].map(key=>[key,message[key]??null]))});
 export const matchesEmail=(message,link)=>!!link&&message.mailboxId===link.mailboxId&&message.sender===link.sender&&(!link.accountLast4||message.accountLast4===link.accountLast4);
 export const usableBillAmount=m=>!!m&&!m.paymentStatus&&Number.isSafeInteger(m.amount)&&m.amount>=0;
-export const completeBillStatement=m=>usableBillAmount(m)&&/^\d{4}-\d{2}-\d{2}$/.test(m.dueDate||'')&&Number.isFinite(Date.parse(m.dueDate+'T12:00:00Z'))&&new Date(m.dueDate+'T12:00:00Z').toISOString().slice(0,10)===m.dueDate;
+export const emailDueDate=m=>m&&!m.paymentStatus&&/^\d{4}-\d{2}-\d{2}$/.test(m.dueDate||'')&&Number.isFinite(Date.parse(m.dueDate+'T12:00:00Z'))&&new Date(m.dueDate+'T12:00:00Z').toISOString().slice(0,10)===m.dueDate?m.dueDate:null;
+export const completeBillStatement=m=>usableBillAmount(m)&&!!emailDueDate(m);
 export function billStatement(messages,link,{now=Date.now()}={}){
  const matched=messages.filter(m=>matchesEmail(m,link)&&Date.parse(m.receivedAt)<=now);
  const selected=matched.find(m=>m.id===link?.selectedMessage?.id)||link?.selectedMessage;
@@ -12,9 +13,18 @@ export function billStatement(messages,link,{now=Date.now()}={}){
  return candidates.find(m=>Date.parse(m.receivedAt)>Date.parse(link.selectedAt||anchor.receivedAt)&&m.dueDate>=(anchor.dueDate||''))||anchor;
 }
 export function emailSuggestions(messages,name){const words=norm(name).split(' ').filter(w=>w.length>=4&&!['payment','credit','account','card','bill','loan','monthly','manual','personal'].includes(w));return messages.filter(m=>words.some(w=>norm(m.senderName+' '+m.sender+' '+m.subject).split(' ').includes(w)));}
-export function emailAccountStatus(messages,link,{now=Date.now(),hasPlaid=false,bankPayments=[],creditCard=true}={}){
+export function emailAccountStatus(messages,link,{now=Date.now(),hasPlaid=false,bankPayments=[],creditCard=true,debtAccount=false}={}){
  const matched=messages.filter(m=>matchesEmail(m,link)&&Date.parse(m.receivedAt)<=now).sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt));
- const statement=creditCard?matched.find(m=>!m.paymentStatus&&(m.dueDate||m.balance!=null||m.minimum!=null||m.amount!=null)):billStatement(messages,link,{now});
+ const selected=link?.selectedMessage;
+ const debtStatements=[...matched];
+ // Keep the fully read, explicitly linked statement when search results rotate.
+ if(matchesEmail(selected||{},link)&&Date.parse(selected.receivedAt)<=now){
+  const cached=debtStatements.find(m=>m.id===selected.id);
+  if(!cached)debtStatements.push(selected);
+  else if(!emailDueDate(cached)&&emailDueDate(selected))debtStatements[debtStatements.indexOf(cached)]={...cached,dueDate:selected.dueDate};
+ }
+ debtStatements.sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt));
+ const statement=creditCard||debtAccount?debtStatements.find(m=>!m.paymentStatus&&(emailDueDate(m)||m.balance!=null||m.minimum!=null||m.amount!=null)):billStatement(messages,link,{now});
  const payments=[],usedBank=new Set(),usedMail=new Set(),events=matched.filter(m=>m.paymentStatus);
  // Newest notice wins for an explicit confirmation number. Without one, pair
  // only an unambiguous amount/date match, so two equal payments stay separate.

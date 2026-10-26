@@ -51,7 +51,7 @@
  async function save(){if(!ready)throw Error('Accounts have not loaded. Reload before saving changes.');await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();}
  let initializing;
  $('#configureHousehold').disabled=true;$('#sharedBillsToggle').disabled=true;
- function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=timing1-ledger-controls1'),import('./email-model.mjs?v=balance-fix1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=fixed-bills1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#sharedBillsToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
+ function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=timing1-ledger-controls1'),import('./email-model.mjs?v=debt-email-date1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=fixed-bills1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#sharedBillsToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
  window.addEventListener('load',initialize,{once:true});
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});
@@ -115,7 +115,7 @@
   const connections=window.BearDen.plan?.connections||{},credit=target.startsWith('credit:')?(connections.creditCards||[]).find(c=>c.id===target.slice(7)):null,bankLink=planner.transactionLinks[target];
   const bankPayments=credit?(credit.payments||[]):model.matchingPayments(bankTransactions(),bankLink,iso(new Date())).map(t=>({...t,id:t.transaction_id,amount:Math.round(t.amount*100)}));
   const hasPlaid=!!credit||!!bankLink&&(connections.items||[]).some(i=>i.id===bankLink.itemId);
-  return {...mailModel.emailAccountStatus(mailMessages(),link,{hasPlaid,bankPayments,creditCard:isCreditTarget(target)}),hasPlaid};
+  return {...mailModel.emailAccountStatus(mailMessages(),link,{hasPlaid,bankPayments,creditCard:isCreditTarget(target),debtAccount:target.startsWith('debt:')}),hasPlaid};
  }
  const mailPaymentLabel=p=>p.status==='pending'?'Pending':p.status==='failed'?'Failed / returned':p.estimated?'Posted (estimated)':'Posted';
  function paymentMarkup(target){
@@ -124,9 +124,10 @@
   const latest=status.payments[0],pendingAmount=pending.some(p=>p.paymentAmount==null)?(status.pending?money(status.pending)+' + unknown':'Amount not shared'):money(status.pending);
   return '<div class="email-payment-status"><div><span>Pending payments</span><strong>'+pendingAmount+'</strong></div>'+(pending.length?'<small>'+pending.length+' payment'+(pending.length===1?'':'s')+(status.hasPlaid?' · waiting for bank confirmation':' · estimated posted after 2 days')+'</small>':'<small>No pending payments'+(latest?' · '+esc(mailPaymentLabel(latest)):'')+'</small>')+'<details><summary>Payment history</summary>'+status.payments.slice(0,10).map(p=>'<div class="email-payment-row"><span>'+esc(mailPaymentLabel(p))+'<small>'+esc(dateLabel(p.postedDate||p.paymentDate||p.receivedAt.slice(0,10)))+'</small></span><strong>'+(p.paymentAmount==null?'Amount not shared':money(p.paymentAmount))+'</strong></div>').join('')+'<button type="button" data-refresh-email="'+esc(target)+'">Check email</button></details></div>';
  }
- function setEmailDraft(prefix,target){emailDrafts[prefix]={target,link:planner.emailLinks[target]?structuredClone(planner.emailLinks[target]):null};renderEmailDraft(prefix);}
- function renderEmailDraft(prefix){
+ function setEmailDraft(prefix,target){emailDrafts[prefix]={target,link:planner.emailLinks[target]?structuredClone(planner.emailLinks[target]):null};renderEmailDraft(prefix,{fillDueDate:true});}
+ function renderEmailDraft(prefix,{fillDueDate=false}={}){
   const draft=emailDrafts[prefix],link=draft.link,status=emailStatus(draft.target,link),account=(window.BearDen.plan?.connections?.mailAccounts||window.BearDen.plan?.connections?.gmailAccounts||[]).find(a=>a.id===link?.mailboxId),form=$('#'+prefix+'EditorForm');
+  if(fillDueDate&&prefix==='debt'){const date=mailModel.emailDueDate(status.statement);if(date)form.elements.dueDate.value=date;}
   const suggestions=mailModel.emailSuggestions(mailMessages(),form.elements.name.value);
   $('#'+prefix+'EmailLink').innerHTML='<strong>Email updates</strong>'+(link?'<p class="subtle">'+esc(link.sender)+' · '+esc(account?.email||'Disconnected email account')+'</p><label>Account or card ending in<input type="text" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="Optional last 4 digits" data-email-last4="'+prefix+'" value="'+esc(link.accountLast4)+'"></label><p class="subtle">'+(status.statement?'Latest email'+(status.statement.dueDate?' · due '+esc(dateLabel(status.statement.dueDate)):'')+(status.statement.amount!=null?' · '+money(status.statement.amount):'')+(status.statement.minimum!=null?' · minimum '+money(status.statement.minimum):''):'Waiting for a matching statement.')+'</p>':'<p class="subtle">'+(suggestions.length?suggestions.length+' possible matching emails found. Choose one to start watching.':'Find bills and payment notices across your connected email accounts.')+'</p>')+'<div class="link-actions"><button type="button" data-pick-email="'+prefix+'">'+(link?'Change email':'Link an email')+'</button>'+(link?'<button type="button" data-unlink-email="'+prefix+'">Unlink email</button>':'')+'</div><p class="subtle">'+((prefix==='credit'||prefix==='debt'&&form.elements.debtKind.value==='credit-card'||prefix==='bill'&&form.elements.billKind.value==='credit-card')?'Email updates fill missing card details. Card payments stay pending until Plaid confirms them, or for two days without Plaid.':'Email updates keep the bill amount and due date current. Payments use the bank transaction date, with no pending timer.')+'</p>';
  }
@@ -161,7 +162,7 @@
    let message=mailMessages().find(m=>m.id===chosen.dataset.linkEmail);if(!message)return;chosen.disabled=true;
    try{
     $('#emailSearchStatus').textContent='Reading the selected email…';message=await window.BearDen.readGmailMessage(message);
-    emailDrafts[pickingEmail].link=mailModel.emailLink(message);renderEmailDraft(pickingEmail);
+    emailDrafts[pickingEmail].link=mailModel.emailLink(message);renderEmailDraft(pickingEmail,{fillDueDate:true});
     if(pickingEmail==='bill'){
      const form=$('#billEditorForm');
      if(mailModel.usableBillAmount(message)){
@@ -170,6 +171,7 @@
       else $('#billEditorError').textContent='Email amount filled in. The due date was not readable, so your existing date is kept. Check that date and Save bill.';
      }else $('#billEditorError').textContent=message.paymentStatus?'This email was read as a payment notice, not a new bill. Your estimate is unchanged. Select the bill-ready email or enter its upcoming amount.':'Could not read a clear bill amount from this email. Your estimate is unchanged; enter the amount shown in the email or select another bill email.';
     }
+    if(pickingEmail==='debt')$('#debtEditorError').textContent=mailModel.emailDueDate(message)?'Email due date filled in. Save debt to apply it.':message.paymentStatus?'This is a payment notice. Your due date is unchanged; choose a statement or enter its due date.':'No clear due date could be read. Your existing date is kept; enter the date shown in the email.';
     $('#emailLinkPicker').close();
    }catch(error){$('#emailSearchStatus').textContent=error.message;}finally{chosen.disabled=false;}
   }

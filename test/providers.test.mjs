@@ -38,3 +38,14 @@ test('HTML utility labels decode dollar and colon entities',()=>{
 test('bill details in HTML are used when the plain-text part only contains a view-online notice',()=>{
  const text=messageText({parts:[{mimeType:'text/plain',body:{data:Buffer.from('Your bill is ready. View it online.').toString('base64url')}},{mimeType:'text/html',body:{data:Buffer.from('<p>Amount due is $275.00</p><p>Due date: October 29th, 2026</p>').toString('base64url')}}]});assert.deepEqual(parseBill(text),{amount:27500,date:'2026-10-29'});
 });
+
+
+test('a debt due date in HTML is retained even when neither MIME part has a bill amount',()=>{
+ const text=messageText({parts:[{mimeType:'text/plain',body:{data:Buffer.from('Your statement is ready. View it online.').toString('base64url')}},{mimeType:'text/html',body:{data:Buffer.from('<h2>Statement ready</h2><table><tr><td>Payment due date</td><td>November 15</td></tr></table>').toString('base64url')}}]},{referenceDate:'2026-10-25T12:00:00Z'});
+ assert.deepEqual(parseBill(text,{referenceDate:'2026-10-25T12:00:00Z'}),{amount:null,date:'2026-11-15'});
+});
+
+test('reading an HTML-only due date preserves an amount supplied by the plain-text part',()=>{
+ const text=messageText({parts:[{mimeType:'text/plain',body:{data:Buffer.from('Amount due: $75.00').toString('base64url')}},{mimeType:'text/html',body:{data:Buffer.from('<p>Due date: November 15, 2026</p>').toString('base64url')}}]});
+ assert.deepEqual(parseBill(text),{amount:7500,date:'2026-11-15'});
+});
