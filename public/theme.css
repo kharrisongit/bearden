@@ -301,6 +301,11 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 :root .bank-card .income-eyebrow{display:block;font-size:.75rem;font-weight:700;letter-spacing:.07em;color:var(--on-dark-muted)}
 :root .bank-card .income-total{font-size:2.05rem;font-weight:800;line-height:1.2;letter-spacing:-.02em;margin:4px 0 6px;color:var(--on-dark)}
 :root .bank-card .income-account-name{font-size:.7rem;line-height:1.5;color:var(--on-dark-muted);margin:0 0 18px;overflow-wrap:anywhere}
+/* Keep personal checking prominent; other selected balances stay subordinate. */
+:root .bank-card .income-secondary-accounts{margin:0 0 18px;border-top:1px solid var(--on-dark-line)}
+:root .bank-card .income-account-balance{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--on-dark-line)}
+:root .bank-card .income-account-balance>span{min-width:0;font-size:.75rem;line-height:1.5;color:var(--on-dark-muted);overflow-wrap:anywhere}
+:root .bank-card .income-account-balance>strong{flex-shrink:0;font-size:1.05rem;font-weight:650;line-height:1.4;color:var(--on-dark);white-space:nowrap;font-variant-numeric:tabular-nums}
 :root .bank-card .income-next-payday{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;padding:14px 16px;border:1px solid var(--on-dark-line);border-radius:8px;background:var(--on-dark-hover);color:var(--on-dark)}
 :root .bank-card .income-next-payday>span{font-size:.75rem;font-weight:600}
 :root .bank-card .income-next-payday>strong{font-size:1rem;color:var(--on-dark-accent)}
@@ -341,3 +346,4 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 .savings-withdraw-icon{width:22px;height:22px;display:block}
 
 .debt-timing-settings{margin:20px 0;padding:16px;border:1px solid var(--line);border-radius:8px}.debt-timing-settings label{display:block;margin-bottom:8px}.debt-timing-settings select,.debt-timing-settings input{display:block;width:100%;max-width:360px;margin-top:8px;padding:10px;font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:6px}.add-debt-payment{margin:8px 0 12px;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--accent-soft);color:var(--ink);font:inherit;cursor:pointer}
+

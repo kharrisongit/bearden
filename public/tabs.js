@@ -534,11 +534,14 @@
    $('#personalSpendingAccount').innerHTML='<option value="">Choose personal checking</option>'+personalChoices.map(a=>'<option value="'+esc(a.id)+'">'+esc(connectedAccountName(a))+'</option>').join('');$('#personalSpendingAccount').value=personalAccount?.id||'';
    const visible=accounts.filter(a=>accountShown(a.id)&&(planner.accountVisibility[a.id]??(a.source!=='simplefin'&&/^checking(?:\s|$)/i.test(a.name))));
    const currentDay=iso(new Date()),upcoming=model.paydayEvents(plan,currentDay,modelDay(currentDay,90))[0];
-   const usd=visible.filter(a=>(a.currency||'USD')==='USD'&&!['credit','loan'].includes(a.type)&&(a.source!=='simplefin'||a.type==='depository')),total=usd.reduce((sum,a)=>sum+a.balance,0);
+   const usd=visible.filter(a=>(a.currency||'USD')==='USD'&&!['credit','loan'].includes(a.type)&&(a.source!=='simplefin'||a.type==='depository'));
+   const checking=a=>a.type==='depository'&&(a.subtype==='checking'||/checking/i.test(a.name||''))&&a.id!==planner.household.billsAccountId;
+   const primary=usd.find(a=>a.id===planner.household.personalAccountId)||usd.find(a=>a.id===personalAccount?.id)||usd.find(a=>checking(a)&&/personal/i.test(connectedAccountName(a)))||usd.find(checking)||usd[0];
+   const secondary=usd.filter(a=>a!==primary),accountBalance=a=>a.balanceUnavailable||!Number.isFinite(a.balance)?'Unavailable':money(a.balance,a.currency||'USD');
    const paydayLabel=upcoming?new Date(upcoming.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}):'';
-   const accountNames=usd.map(a=>esc(connectedAccountName(a))).join(' · ');
-   const summary='<span class="income-eyebrow">Bank Balance</span><div class="income-total">'+(usd.length?money(total):'—')+'</div>'+
-    (accountNames?'<p class="income-account-name">'+accountNames+'</p>':'')+
+   const summary='<span class="income-eyebrow">Bank Balance</span><div class="income-total">'+(primary?esc(accountBalance(primary)):'—')+'</div>'+
+    (primary?'<p class="income-account-name">'+esc(connectedAccountName(primary))+'</p>':'')+
+    (secondary.length?'<div class="income-secondary-accounts" role="list" aria-label="Other selected accounts">'+secondary.map(a=>'<div class="income-account-balance" role="listitem"><span>'+esc(connectedAccountName(a))+'</span><strong>'+esc(accountBalance(a))+'</strong></div>').join('')+'</div>':'')+
     (upcoming?'<div class="income-next-payday"><span>Next payday</span><strong>'+esc(paydayLabel)+'</strong></div>':'<p class="income-payday-empty">Set your first payday in Income to see it here.</p>');
    $('#debtIncomeSummary').innerHTML=summary;$('#incomeSummary').innerHTML=summary;
    const balanceNote=usd.length?'':'<p class="subtle">'+(accounts.length?'Choose a bank account to show your balance.':authenticated?'Connect your bank in Settings to see your balance.':'Sign in and connect your bank in Settings.')+'</p>';
