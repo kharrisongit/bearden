@@ -239,3 +239,14 @@ dialog::backdrop{touch-action:none}
 .tab-intro::after{content:'';position:absolute;z-index:0;pointer-events:none;width:160px;height:160px;right:-58px;top:-92px;border:1px solid #e3d7ac15;border-radius:50%;box-shadow:0 0 0 24px #e3d7ac05}
 [data-theme=dark] .tab-intro{background:linear-gradient(115deg,#1c463e,#2b594d);border-color:#547c6d;box-shadow:0 8px 20px #06141120}
 @media(max-width:380px){.tab-intro{padding:20px}.tab-intro h2,#tab-settings .connection-heading h2{font-size:1.7rem}.tab-heading-icon{width:27px;height:27px}}
+
+/* Budget is a light editor inside the dark Income card; keep its own contrast. */
+#incomeBudgetSlot #budgetDropdown{color:var(--ink);padding:16px}
+#incomeBudgetSlot .subtle,#incomeBudgetSlot .field-name small{color:var(--ink);font-size:.73rem}
+#incomeBudgetSlot .budget-unit{color:var(--ink);font-size:.7rem;font-weight:600;margin:0 0 12px}
+#incomeBudgetSlot .household-setup{background:var(--paper);margin:0 0 14px;padding:12px;border-radius:10px}
+#incomeBudgetSlot .household-setup .card-heading{margin-bottom:8px}
+#incomeBudgetSlot #householdSummary{color:var(--ink);font-size:.72rem;line-height:1.6;margin:0}
+#incomeBudgetSlot #budgetDropdown input{color:var(--ink);background:var(--paper);border-color:var(--line)}
+#incomeBudgetSlot .remove{color:var(--warn)}
+#incomeBudgetSlot #budgetEditorStatus{color:var(--ink)}

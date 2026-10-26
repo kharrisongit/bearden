@@ -396,7 +396,7 @@
    householdBills=model.householdBillChoices([...billPlan.bills,...paymentsPlanner.manual]);
    const householdActive=model.householdEnabled(planner.household);
    $('#configureHousehold').textContent=householdActive?'Edit':'Set up';$('#sharedBillsToggle').checked=householdActive;
-   $('#householdSummary').textContent=householdActive?money(planner.household.personalAmount)+' from each of your paychecks; '+money(planner.household.spouseAmount)+' from your spouse '+({weekly:'each week',biweekly:'every two weeks',monthly:'each month'})[planner.household.spouseRepeat]+'. Select shared bills here or in each bill’s editor.':'Send a set amount from each paycheck to a shared bills account.';
+   $('#householdSummary').textContent=householdActive?'You: '+money(planner.household.personalAmount)+'/check · Spouse: '+money(planner.household.spouseAmount)+' '+({weekly:'weekly',biweekly:'every 2 weeks',monthly:'monthly'})[planner.household.spouseRepeat]:'Choose a bills account and contribution.';
    $('#bankBillStatus').textContent=estimates.length+' tracked bank bill'+(estimates.length===1?'':'s')+'. The calendar includes recurring bills and scheduled debt payments.';
    const accountName=id=>{const a=accounts.find(a=>a.id==='plaid-'+id);return a?a.name+(a.mask?' · ••'+a.mask:''):'Unavailable account';};
    const selectedAccount=$('#transactionAccountFilter').value,transactionAccounts=[...new Set(review.rows.map(t=>t.account_id))].sort((a,b)=>accountName(a).localeCompare(accountName(b)));

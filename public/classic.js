@@ -115,7 +115,7 @@ function renderBudgetItems(){
   const container = document.getElementById('budgetItemsList');
   container.innerHTML = budgetItems.map(item => `
     <div class="field-row">
-      <div class="field-name">${bdEscape(item.label)}${item.hint ? `<small>${bdEscape(item.hint)}</small>` : ''}<span class="remove" style="margin-left:6px;" data-bd-click="removeBudgetItem(${item.id})">Remove</span></div>
+      <div class="field-name">${bdEscape(item.label)}<span class="remove" style="margin-left:6px;" data-bd-click="removeBudgetItem(${item.id})">Remove</span></div>
       <input type="number" id="budget_${item.id}" value="${item.amount}" step="0.01">
     </div>
   `).join('');
