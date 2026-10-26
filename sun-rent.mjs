@@ -1,11 +1,12 @@
+import {rentPortalUrl,sameRentHost,parseRentPage} from './rent-portal.mjs';
 import {nextRentDate,rememberRentReadings} from './public/rent-model.mjs';
-// Sun portal adapter. Only the portal's own balance response is observed; no payment requests are made.
+// Rent portal reader, with the existing provider adapter retained for saved connections. No payment requests are made.
 // Session and pending-browser records must be encrypted by the caller and never returned in public state.
 const PORTAL='https://app.sunwebportal.com',DAY=86400000,LOGIN_MS=5*60000;
 const domains=['app.sunwebportal.com','*.app.sunwebportal.com','accounts.google.com','*.gstatic.com','*.googleapis.com','www.google.com','www.facebook.com','*.facebook.net'];
 export class SunError extends Error{constructor(code){super(code);this.code=code;}}
 const fail=code=>{throw new SunError(code);};
-export function sunMessage(error){return ({unavailable:'Rent sign-in is unavailable on this server. Cloudflare Browser Run must be enabled.',expired:'The sign-in window expired. Start a new rent connection.',login:'Finish signing in to Sun and open Payments, then select Save connection here.',unreadable:'Sun did not provide a readable balance. Your last saved amounts are unchanged. Try again from the Payments page.',property:'Sun opened a different property. Reconnect and select the correct property.',quota:'The rent browser limit has been reached. Try again tomorrow.',browser:'The private rent browser could not connect. Try again in a moment.'})[error?.code]||'Sun could not be checked. Your last saved amounts are unchanged. Try again later.';}
+export function sunMessage(error){return ({unavailable:'Rent sign-in is unavailable on this server. Cloudflare Browser Run must be enabled.',expired:'The sign-in window expired. Start a new rent connection.',portal:'Enter a public HTTPS rent portal address, without a password or sign-in token in the URL.',login:'Finish signing in to your rent portal and open the balance or Payments page, then select Save connection here.',unreadable:'The portal did not provide one clear, readable balance. Open the page showing your current balance and try again. Your saved amount is unchanged.',property:'The portal opened a different property. Reconnect and select the correct property.',quota:'The rent browser limit has been reached. Try again tomorrow.',browser:'The private rent browser could not connect. Try again in a moment.'})[error?.code]||'The rent portal could not be checked. Your last saved amounts are unchanged. Try again later.';}
 function money(value){if(typeof value!=='number'||!Number.isFinite(value)||Math.abs(value)>1e8)fail('unreadable');return Math.round(value*100);}
 function date(value){if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(value))return null;const day=value.slice(0,10);return !Number.isNaN(Date.parse(day))&&new Date(day).toISOString().slice(0,10)===day?day:null;}
 export function parseSunBalance(data,currency,now=Date.now()){
@@ -16,13 +17,13 @@ export function parseSunBalance(data,currency,now=Date.now()){
 }
 export function publicSun(connection,now=Date.now()){
  if(!connection)return null;
- return {connected:!!connection.connected,status:connection.status||'Not connected.',needsLogin:!!connection.needsLogin,updated:connection.updated||null,nextSync:connection.nextSync||null,pendingUntil:connection.pending?.expires>now?connection.pending.expires:null,rentReadings:(connection.rentReadings||[]).map(r=>({date:r.date,currentBalance:r.currentBalance,amountDue:r.amountDue,checkedAt:r.checkedAt})),snapshot:connection.snapshot?{amountDue:connection.snapshot.amountDue,currentBalance:connection.snapshot.currentBalance,dueDate:nextRentDate(connection.snapshot.checkedAt),currency:connection.snapshot.currency,checkedAt:connection.snapshot.checkedAt}:null};
+ return {enabled:connection.enabled??!!(connection.connected||connection.snapshot||connection.portalUrl||connection.pending),portalUrl:connection.portalUrl||(connection.connected||connection.snapshot||connection.pending&&!connection.pending.portalUrl?PORTAL:''),pendingPortalUrl:connection.pending?.portalUrl||null,connected:!!connection.connected,status:(connection.status||'Not connected.').replace(/\bSun\b/g,'Rent portal'),needsLogin:!!connection.needsLogin,updated:connection.updated||null,nextSync:connection.nextSync||null,pendingUntil:connection.pending?.expires>now?connection.pending.expires:null,rentReadings:(connection.rentReadings||[]).map(r=>({date:r.date,currentBalance:r.currentBalance,amountDue:r.amountDue,checkedAt:r.checkedAt})),snapshot:connection.snapshot?{amountDue:connection.snapshot.amountDue,currentBalance:connection.snapshot.currentBalance,dueDate:nextRentDate(connection.snapshot.checkedAt),currency:connection.snapshot.currency,checkedAt:connection.snapshot.checkedAt}:null};
 }
 function balanceRequest(url){try{const u=new URL(url);return u.origin==='https://portal-api.app.sunwebportal.com'&&/^\/Payment\/GetCurrentBalanceBySelf\/[^/]+$/.test(u.pathname)?decodeURIComponent(u.pathname.split('/').at(-1)):null;}catch{return null;}}
 export function createSunBrowser(binding){
  function available(){if(!binding?.acquire||!binding?.connectSession||!binding?.getLiveView)fail('unavailable');}
  async function close(id){if(id)await binding?.closeSession(id);}
- async function acquire(interactive){available();return binding.acquire({keepAlive:interactive?LOGIN_MS:60000,recording:false,guardrails:{allowedDomains:domains}});}
+ async function acquire(interactive,portal=PORTAL){available();const host=new URL(portal).hostname,legacy=host===new URL(PORTAL).hostname;return binding.acquire({keepAlive:interactive?LOGIN_MS:60000,recording:false,guardrails:legacy?{allowedDomains:domains}:{allowedDomains:[host,'*.'+host,'accounts.google.com','*.googleapis.com','*.gstatic.com','login.microsoftonline.com','*.microsoftonline.com'],allowedDomainSets:['common-cdns']}});}
  async function channel(sessionId,targetId){
   const connection=await binding.connectSession(sessionId,{targetId});
   const response=await connection.webSocket.fetch('https://browser-binding.invalid',{headers:{Upgrade:'websocket'}}),socket=response.webSocket;
@@ -63,32 +64,65 @@ export function createSunBrowser(binding){
   const allowed=cookies.filter(c=>{const host=c.domain.replace(/^\./,'');return host==='sunwebportal.com'||host.endsWith('.sunwebportal.com');}).map(c=>({name:c.name,value:c.value,domain:c.domain,path:c.path,secure:c.secure,httpOnly:c.httpOnly,...(c.expires>0?{expires:c.expires}:{}),...(c.sameSite?{sameSite:c.sameSite}:{})}));
   return {snapshot,session:{session:saved.session,cookies:allowed,agreement:observation.agreement}};
  }
+ async function genericCapture(cdp,portal,poll=false){
+  let page,snapshot;
+  for(let attempt=0;attempt<(poll?16:1);attempt++){
+   page=await evaluate(cdp,`(()=>{const visible=e=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);return {url:location.href,text:(document.body?.innerText||'').slice(0,120001),password:[...document.querySelectorAll('input[type=password]')].some(visible),ready:document.readyState};})()`);
+   if(page?.password)fail('login');
+   if(sameRentHost(page?.url,portal)&&page.ready!=='loading'){
+    if(/\/(?:login|signin|sign-in|auth)(?:[/?#]|$)/i.test(new URL(page.url).pathname))fail('login');
+    if(/\/(?:checkout|submit|processpayment|makepayment|paynow|confirmation)(?:[/?#]|$)/i.test(new URL(page.url).pathname))fail('unreadable');
+    try{snapshot=parseRentPage(page.text);break;}catch(error){if(!poll||attempt===15)throw error;}
+   }
+   if(!poll)fail('login');
+   await new Promise(resolve=>setTimeout(resolve,750));
+  }
+  if(!snapshot)fail('unreadable');
+  const origin=new URL(page.url).origin;
+  const storage=await evaluate(cdp,`(()=>{if(location.origin!==${JSON.stringify(origin)})return null;const read=s=>Object.fromEntries(Object.keys(s).filter(k=>!/password|passphrase|cvv|verification.?code/i.test(k)).slice(0,400).map(k=>[k,s.getItem(k)]));return {local:read(localStorage),session:read(sessionStorage)};})()`);
+  if(!storage||JSON.stringify(storage).length>128000)fail('unreadable');
+  const {cookies=[]}=await cdp.send('Network.getCookies',{urls:[new URL(portal).origin,origin]});
+  const savedCookies=cookies.filter(c=>{const host=c.domain.replace(/^\./,'');const portalHost=new URL(portal).hostname,balanceHost=new URL(origin).hostname;return host===portalHost||portalHost.endsWith('.'+host)||host===balanceHost||balanceHost.endsWith('.'+host);}).map(c=>({name:c.name,value:c.value,domain:c.domain,path:c.path,secure:c.secure,httpOnly:c.httpOnly,...(c.expires>0?{expires:c.expires}:{}),...(c.sameSite?{sameSite:c.sameSite}:{})}));
+  return {snapshot,session:{adapter:'generic',portalUrl:portal,balanceUrl:page.url,origin,storage,cookies:savedCookies}};
+ }
  return {
-  async start(){const acquired=await acquire(true),sessionId=acquired.sessionId;try{
-   const target=await binding.devtools.newTarget(sessionId,PORTAL+'/auth/login');
+  async start(value){const portal=rentPortalUrl(value),acquired=await acquire(true,portal),sessionId=acquired.sessionId;try{
+   const target=await binding.devtools.newTarget(sessionId,new URL(portal).origin===PORTAL?PORTAL+'/auth/login':portal);
    const live=await binding.getLiveView(sessionId,{targetId:target.id,mode:'tab',expiresInMs:LOGIN_MS});
    const url=new URL(live.devtoolsFrontendUrl);if(url.protocol!=='https:'||url.hostname!=='live.browser.run')fail('browser');
-   return {pending:{sessionId,targetId:target.id,expires:Date.now()+LOGIN_MS},url:url.href};
+   return {pending:{sessionId,targetId:target.id,portalUrl:portal,expires:Date.now()+LOGIN_MS},url:url.href};
   }catch(error){await close(sessionId).catch(()=>{});throw error;}},
   async finish(pending){available();if(!pending||pending.expires<=Date.now())fail('expired');const cdp=await channel(pending.sessionId,pending.targetId);try{
+   const portal=rentPortalUrl(pending.portalUrl||PORTAL);
+   if(new URL(portal).origin!==PORTAL)return await genericCapture(cdp,portal);
    const url=await evaluate(cdp,'location.href');if(typeof url!=='string'||!url.startsWith(PORTAL+'/portal/'))fail('login');
    return await capture(cdp,await observe(cdp));
   }finally{cdp.close();}},
-  async check(saved){available();if(!saved?.session)fail('login');const acquired=await acquire(false),sessionId=acquired.sessionId;let cdp;try{
-   const target=await binding.devtools.newTarget(sessionId,'about:blank');cdp=await channel(sessionId,target.id);
-   if(saved.cookies?.length)await cdp.send('Network.setCookies',{cookies:saved.cookies});
-   await cdp.send('Page.addScriptToEvaluateOnNewDocument',{source:`if(location.origin===${JSON.stringify(PORTAL)})sessionStorage.setItem('session',${JSON.stringify(saved.session)});`});
-   return await capture(cdp,await observe(cdp,saved.agreement));
-  }finally{cdp?.close();await close(sessionId).catch(()=>{});}},
+  async check(saved){available();if(!saved?.session&&saved?.adapter!=='generic')fail('login');
+   const portal=saved.adapter==='generic'?rentPortalUrl(saved.portalUrl):PORTAL;
+   if(saved.adapter==='generic'&&(!sameRentHost(saved.balanceUrl,portal)||new URL(saved.balanceUrl).origin!==saved.origin))fail('login');
+   const acquired=await acquire(false,portal),sessionId=acquired.sessionId;let cdp;try{
+    const target=await binding.devtools.newTarget(sessionId,'about:blank');cdp=await channel(sessionId,target.id);
+    if(saved.cookies?.length)await cdp.send('Network.setCookies',{cookies:saved.cookies});
+    if(saved.adapter==='generic'){
+     const storage=saved.storage||{};
+     await cdp.send('Page.addScriptToEvaluateOnNewDocument',{source:`if(location.origin===${JSON.stringify(saved.origin)}){for(const [key,value]of Object.entries(${JSON.stringify(storage.local||{})}))localStorage.setItem(key,value);for(const [key,value]of Object.entries(${JSON.stringify(storage.session||{})}))sessionStorage.setItem(key,value);}`});
+     await cdp.send('Page.navigate',{url:saved.balanceUrl});return await genericCapture(cdp,portal,true);
+    }
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument',{source:`if(location.origin===${JSON.stringify(PORTAL)})sessionStorage.setItem('session',${JSON.stringify(saved.session)});`});
+    return await capture(cdp,await observe(cdp,saved.agreement));
+   }finally{cdp?.close();await close(sessionId).catch(()=>{});}},
   close
  };
 }
+
 export async function syncSun(connection,session,browser,saveSession,{force=false,now=Date.now()}={}){
- if(!connection?.connected||connection.needsLogin||connection.pending?.expires>now)return connection?.status||'Connect Sun first.';
- if(connection.lastAttempt&&now-connection.lastAttempt<5*60000)return 'Sun was checked recently. Showing the last saved amounts.';
+ if(connection?.enabled===false)return 'Rent tracking is turned off.';
+ if(!connection?.connected||connection.needsLogin||connection.pending?.expires>now)return connection?.status||'Connect your rent portal first.';
+ if(connection.lastAttempt&&now-connection.lastAttempt<5*60000)return 'Rent was checked recently. Showing the last saved amounts.';
  if(!force&&connection.nextSync>now)return connection.status;
  connection.lastAttempt=now;connection.nextSync=now+DAY;
- try{const result=await browser.check(session);await saveSession(result.session);rememberRentReadings(connection);connection.snapshot=result.snapshot;rememberRentReadings(connection);connection.updated=now;connection.needsLogin=false;connection.status='Sun balance checked. Rent is due on the 1st. Scheduled again in about a day.';}
+ try{const result=await browser.check(session);await saveSession(result.session);rememberRentReadings(connection);connection.snapshot=result.snapshot;rememberRentReadings(connection);connection.updated=now;connection.needsLogin=false;connection.status='Rent balance checked. Rent is due on the 1st. Scheduled again in about a day.';}
  catch(error){connection.needsLogin=error.code==='login'||error.code==='property';connection.status=sunMessage(error);if(!connection.needsLogin)connection.nextSync=now+6*3600000;}
  return connection.status;
 }

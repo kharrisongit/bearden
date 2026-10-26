@@ -9,7 +9,7 @@ window.BearDen=(()=>{
  function hiddenAccountsMarkup(accounts){const hidden=accounts.filter(a=>accountHidden(a.id));return hidden.length?'<details class="hidden-connection-accounts"><summary>Hidden accounts ('+hidden.length+')</summary>'+hidden.map(a=>'<div class="connection-account-heading"><strong>'+esc(a.name)+'</strong><button type="button" data-show-connected-account="'+esc(a.id)+'" aria-label="Show '+esc(a.name)+'">Show</button></div>').join('')+'</details>':'';}
  bridge.refreshAccountLists=()=>renderConnections();
  function setConnectionConfig(id,open){const button=$('#'+id);$('#'+button.getAttribute('aria-controls')).hidden=!open;button.setAttribute('aria-expanded',String(open));}
- for(const id of ['configureSimplefin','configureSun'])$('#'+id).onclick=()=>setConnectionConfig(id,$('#'+id).getAttribute('aria-expanded')!=='true');
+ for(const id of ['configurePlaid','configureSimplefin','configureRent'])$('#'+id).onclick=()=>setConnectionConfig(id,$('#'+id).getAttribute('aria-expanded')!=='true');
  function message(t){$('#connectionMessage').textContent=t;}
  async function api(path,body){const r=await fetch(path,{method:body===undefined?'GET':'POST',headers:{...(body===undefined?{}:{'Content-Type':'application/json'}),...(config.accountId?{'X-BearDen-Account':config.accountId}:{})},body:body===undefined?undefined:JSON.stringify(body)});let d;try{d=await r.json();}catch{throw Error('Could not read the server response.');}if(!r.ok){const error=Error(d.error||'Request failed');error.status=r.status;throw error;}return d;}
  function persist(){
@@ -25,13 +25,13 @@ window.BearDen=(()=>{
  async function refresh(){legacy=await api('/api/state');renderConnections();}
  function renderConnections(){
   $('#accountMode').textContent=config.authenticated?'You are signed in with '+(config.email||'your BearDen')+' account. Your budget, accounts, and income update to the cloud securely via your account.':'Not signed in. Tracker changes are saved on this device.';
-  $('#classicLogin').hidden=!!config.authenticated;$('#classicLogout').hidden=!config.authenticated;$('#classicSync').hidden=!config.authenticated;document.querySelectorAll('[data-refresh-bank]').forEach(b=>b.hidden=!config.authenticated);$('#privateConnections').hidden=!config.authenticated;
+  $('#classicLogin').hidden=!!config.authenticated;$('#classicLogout').hidden=!config.authenticated;$('#classicSync').hidden=!config.authenticated;document.querySelectorAll('[data-refresh-bank]').forEach(b=>b.hidden=!config.authenticated);$('#privateConnections').hidden=!config.authenticated;$('#rentTrackingOption').hidden=!config.authenticated;
   bridge.config=config;bridge.plan=legacy;window.dispatchEvent(new Event('bearden-connections'));
   if(!config.authenticated)return;
   const c=legacy?.connections||{},s=legacy?.state;
   for(const [id,label,count]of [['plaidAccountSummary','Plaid accounts',(s?.accounts||[]).filter(a=>a.source==='plaid').length],['simplefinAccountSummary','SimpleFIN accounts',(s?.accounts||[]).filter(a=>a.source==='simplefin').length],['gmailAccountSummary','Gmail accounts',(c.gmailAccounts||[]).length]])$('#'+id).textContent=label+' ('+count+')';
   $('#classicBank').hidden=!!c.items?.length;$('#disconnectPlaid').hidden=!c.items?.length;
-  $('#classicBankStatus').textContent=c.items?.length?'Connected.':'Not connected.';
+  $('#classicBankStatus').textContent=c.items?.length?'Connected':'Not connected';$('#classicBankStatus').dataset.connected=String(!!c.items?.length);$('#refreshPlaid').hidden=!c.items?.length;
   const plaidAccounts=(s?.accounts||[]).filter(a=>a.source==='plaid');
   $('#plaidAccountSummary').textContent='Plaid accounts ('+plaidAccounts.filter(a=>!accountHidden(a.id)).length+' shown)';
   $('#classicBalances').innerHTML=plaidAccounts.filter(a=>!accountHidden(a.id)).map(a=>`<div class="connection-row"><div class="connection-account-heading"><strong>${esc(a.name)}</strong>${hideAccountButton(a)}</div>${a.balanceUnavailable?'Balance not supplied':money(a.balance)}<small>${esc(a.currency||'USD')}${a.balanceRetrieved?' · Retrieved '+esc(new Date(a.balanceRetrieved).toLocaleString()):''}</small>${['loan','credit'].includes(a.type)&&a.balance===0?'<small>Plaid reports zero; verify with your bank. This is a balance, not a payment due.'+(a.lastPositiveBalance>0?' Last positive balance received: '+money(a.lastPositiveBalance)+'.':'')+'</small>':''}<details><summary>Balance details</summary><small>Connection: ${esc(c.items?.find(i=>i.id===a.itemId)?.name||'Bank')}${c.items?.find(i=>i.id===a.itemId)?.balanceError?'<br>Last balance refresh failed: '+esc(c.items.find(i=>i.id===a.itemId).balanceError):''}<br>Account type: ${esc(a.type||'Not supplied')} / ${esc(a.subtype||'Not supplied')}<br>Current balance reported by Plaid: ${a.reportedCurrent===undefined?'No balance response saved for this account':a.reportedCurrent===null?'Not supplied':money(Math.round(a.reportedCurrent*100))}<br>Available balance reported by Plaid: ${a.reportedAvailable===undefined?'No balance response saved for this account':a.reportedAvailable===null?'Not supplied':money(Math.round(a.reportedAvailable*100))}</small></details></div>`).join('')+hiddenAccountsMarkup(plaidAccounts);
@@ -41,31 +41,35 @@ window.BearDen=(()=>{
   $('#gmailAccountList').innerHTML=(c.gmailAccounts||[]).map(a=>'<div class="connection-row"><strong>'+esc(a.email||'Gmail account')+'</strong><small>'+esc(a.status||'Connected')+(a.updated?' · '+esc(new Date(a.updated).toLocaleString()):'')+'</small><button type="button" data-gmail-disconnect="'+esc(a.id)+'">Disconnect</button></div>').join('');
  }
  function renderRent(rent){
-  $('#rentConnect').disabled=!config.rentConfigured;$('#rentConnect').textContent=rent?.connected?'Reconnect Sun rent portal':'Connect Sun rent portal';
+  const enabled=rent?.enabled??!!rent?.connected;$('#rentEnabledToggle').checked=enabled;$('#rentSection').hidden=!enabled;
+  if(document.activeElement!==$('#rentPortalUrl'))$('#rentPortalUrl').value=rent?.pendingPortalUrl||rent?.portalUrl||'';
+  $('#rentConnect').disabled=!config.rentConfigured;$('#rentConnect').textContent=rent?.connected?'Sign in again':'Connect rent portal';
   $('#rentStatus').textContent=!config.rentConfigured?'Rent sign-in is available on the hosted Cloudflare version of BearDen.':rent?.status||'Not connected.';
-  $('#rentActions').hidden=!rent?.connected;$('#rentLogin').hidden=!rent?.pendingUntil;if(rent?.pendingUntil)setConnectionConfig('configureSun',true);
+  $('#rentActions').hidden=!rent?.connected;$('#rentLogin').hidden=!rent?.pendingUntil;if(rent?.pendingUntil)setConnectionConfig('configureRent',true);
   $('#rentLoginLink').hidden=!rentLoginUrl||!rent?.pendingUntil;
   if(rentLoginUrl)$('#rentLoginLink').href=rentLoginUrl;else $('#rentLoginLink').removeAttribute('href');
   $('#rentExpiry').textContent=rent?.pendingUntil?'Window expires at '+new Date(rent.pendingUntil).toLocaleTimeString()+'.'+(!rentLoginUrl?' Use the private window you already opened, or start a new connection.':''):'';
-  const r=rent?.snapshot;$('#rentSnapshot').innerHTML=r?'<div class="connection-row"><strong>Latest Sun reading</strong><p>Rent balance owed: '+money(r.currentBalance)+'</p><p>Rent due on the 1st: '+esc(r.dueDate||'Not supplied')+'</p><small>Checked '+esc(new Date(r.checkedAt).toLocaleString())+(rent.needsLogin?' · Sign in again to update.':'')+'</small></div>':'';
+  const r=rent?.snapshot;$('#rentSnapshot').innerHTML=r?'<div class="connection-row"><strong>Latest rent reading</strong><p>Rent balance owed: '+money(r.currentBalance)+'</p><p>Rent due on the 1st: '+esc(r.dueDate||'Not supplied')+'</p><small>Checked '+esc(new Date(r.checkedAt).toLocaleString())+(rent.needsLogin?' · Sign in again to update.':'')+'</small></div>':'';
  }
  async function rentAction(button,action){
-  if(!requireLogin())return;button.disabled=true;$('#rentStatus').textContent=action==='start'?'Opening a private Sun sign-in window…':action==='complete'?'Reading Sun’s balance and saving the connection…':'Updating rent connection…';
-  try{await queue;const result=await api('/api/rent/'+action,{});
+  if(!requireLogin())return;button.disabled=true;$('#rentStatus').textContent=action==='start'?'Opening a private rent sign-in window…':action==='complete'?'Reading your rent balance and saving the connection…':'Updating rent connection…';
+  try{await queue;const result=await api('/api/rent/'+action,action==='start'?{portalUrl:$('#rentPortalUrl').value.trim()}:{});
    if(action==='start'){const url=new URL(result.url);if(url.protocol!=='https:'||url.hostname!=='live.browser.run')throw Error('The private sign-in address could not be verified.');rentLoginUrl=url.href;}
    if(['complete','cancel','disconnect'].includes(action))rentLoginUrl=null;
    await refresh();if(result.status)$('#rentStatus').textContent=result.status;
   }catch(error){$('#rentStatus').textContent=error.message;}finally{button.disabled=false;}
  }
- $('#rentConnect').onclick=e=>rentAction(e.currentTarget,'start');
+ $('#rentPortalForm').onsubmit=e=>{e.preventDefault();rentAction($('#rentConnect'),'start');};
+ $('#rentEnabledToggle').onchange=async e=>{const button=e.currentTarget,enabled=button.checked;button.disabled=true;try{await queue;await api('/api/rent/settings',{enabled});await refresh();$('#featureSettingsStatus').textContent=enabled?'Rent enabled.':'Rent hidden; your saved connection is kept.';}catch(error){button.checked=!enabled;$('#featureSettingsStatus').textContent=error.message;}finally{button.disabled=false;}};
  $('#rentComplete').onclick=e=>rentAction(e.currentTarget,'complete');
  $('#rentCancel').onclick=e=>rentAction(e.currentTarget,'cancel');
  $('#rentRefresh').onclick=e=>rentAction(e.currentTarget,'refresh');
- $('#rentDisconnect').onclick=e=>{if(confirm('Remove the saved Sun sign-in session from BearDen and stop rent checks? Your entered bills will stay.'))rentAction(e.currentTarget,'disconnect');};
+ $('#rentDisconnect').onclick=e=>{if(confirm('Remove the saved rent sign-in session from BearDen and stop rent checks? Your entered bills will stay.'))rentAction(e.currentTarget,'disconnect');};
  function renderSimplefin(c,s){
   const connected=!!c.simplefin,accounts=(s?.accounts||[]).filter(a=>a.source==='simplefin');
+  $('#simplefinStatus').textContent=connected?'Connected':'Not connected';$('#simplefinStatus').dataset.connected=String(connected);
   $('#simplefinActions').hidden=!connected;$('#simplefinSetup').hidden=connected;$('#simplefinConnect').textContent=connected?'Replace SimpleFIN token':'Connect SimpleFIN';
-  $('#simplefinStatus').textContent=c.simplefin?(c.simplefin.status+(c.simplefin.updated?' Last checked '+new Date(c.simplefin.updated).toLocaleString()+'.':'')):'Not connected.';
+  $('#simplefinFeedback').textContent=c.simplefin?(c.simplefin.status+(c.simplefin.updated?' Last checked '+new Date(c.simplefin.updated).toLocaleString()+'.':'')):'Not connected.';
   $('#simplefinAccountSummary').textContent='SimpleFIN accounts ('+accounts.filter(a=>!accountHidden(a.id)).length+' shown)';
   $('#simplefinAccounts').innerHTML=accounts.filter(a=>!accountHidden(a.id)).map(a=>{
    const kind=a.type==='depository'?a.subtype:a.type,debt=['credit','loan'].includes(a.type),raw=a.rawBalance,known=Number.isSafeInteger(raw);
@@ -76,21 +80,21 @@ window.BearDen=(()=>{
  $('#simplefinConnectForm').onsubmit=async event=>{
   event.preventDefault();if(!requireLogin())return;const button=$('#simplefinConnect'),token=$('#simplefinToken').value.trim();if(!token)return;
   const replace=!!legacy?.connections?.simplefin;if(replace&&!confirm('Replace the saved SimpleFIN access token? Existing debt links will be kept.'))return;
-  button.disabled=true;$('#simplefinToken').value='';$('#simplefinStatus').textContent='Connecting SimpleFIN and loading balances…';
-  try{await queue;const result=await api('/api/simplefin/connect',{token,replace});await refresh();$('#simplefinSetup').open=false;$('#simplefinStatus').textContent=result.status;}
-  catch(e){$('#simplefinStatus').textContent=e.message+' If the token was consumed, create a new token in SimpleFIN.';}
+  button.disabled=true;$('#simplefinToken').value='';$('#simplefinFeedback').textContent='Connecting SimpleFIN and loading balances…';
+  try{await queue;const result=await api('/api/simplefin/connect',{token,replace});await refresh();$('#simplefinSetup').open=false;$('#simplefinFeedback').textContent=result.status;}
+  catch(e){$('#simplefinFeedback').textContent=e.message+' If the token was consumed, create a new token in SimpleFIN.';}
   finally{button.disabled=false;}
  };
  $('#simplefinReplace').onclick=()=>{$('#simplefinSetup').hidden=false;$('#simplefinSetup').open=true;$('#simplefinToken').focus();};
- $('#simplefinRefresh').onclick=async()=>{const b=$('#simplefinRefresh');b.disabled=true;$('#simplefinStatus').textContent='Checking SimpleFIN…';try{await queue;const r=await api('/api/simplefin/refresh',{});await refresh();$('#simplefinStatus').textContent=r.status;}catch(e){$('#simplefinStatus').textContent=e.message;}finally{b.disabled=false;}};
+ $('#simplefinRefresh').onclick=async()=>{const b=$('#simplefinRefresh');b.disabled=true;$('#simplefinFeedback').textContent='Checking SimpleFIN…';try{await queue;const r=await api('/api/simplefin/refresh',{});await refresh();$('#simplefinFeedback').textContent=r.status;}catch(e){$('#simplefinFeedback').textContent=e.message;}finally{b.disabled=false;}};
  $('#simplefinDisconnect').onclick=async()=>{
   if(!confirm('Disconnect SimpleFIN from BearDen? Your debts and entered payment details will stay. You can also revoke BearDen in SimpleFIN’s Apps section.'))return;
-  const b=$('#simplefinDisconnect');b.disabled=true;try{await queue;const r=await api('/api/simplefin/disconnect',{});await refresh();$('#simplefinStatus').textContent=r.status;}catch(e){$('#simplefinStatus').textContent=e.message;}finally{b.disabled=false;}
+  const b=$('#simplefinDisconnect');b.disabled=true;try{await queue;const r=await api('/api/simplefin/disconnect',{});await refresh();$('#simplefinFeedback').textContent=r.status;}catch(e){$('#simplefinFeedback').textContent=e.message;}finally{b.disabled=false;}
  };
  $('#simplefinAccounts').addEventListener('change',e=>{const form=e.target.closest('[data-simplefin-account]');if(form&&e.target.name==='kind')form.querySelector('[data-simplefin-sign]').hidden=!['credit','loan'].includes(e.target.value);});
  $('#simplefinAccounts').addEventListener('submit',async e=>{
   e.preventDefault();const form=e.target.closest('[data-simplefin-account]');if(!form)return;const b=form.querySelector('button'),status=form.querySelector('[data-simplefin-account-status]');b.disabled=true;
-  try{await queue;await api('/api/simplefin/account',{id:form.dataset.simplefinAccount,kind:form.elements.kind.value,debtSign:form.elements.debtSign.value});await refresh();$('#simplefinStatus').textContent='Account type saved. To update an existing debt, open Accounts, edit that debt, and select its linked account.';}catch(error){status.textContent=error.message;}finally{b.disabled=false;}
+  try{await queue;await api('/api/simplefin/account',{id:form.dataset.simplefinAccount,kind:form.elements.kind.value,debtSign:form.elements.debtSign.value});await refresh();$('#simplefinFeedback').textContent='Account type saved. To update an existing debt, open Accounts, edit that debt, and select its linked account.';}catch(error){status.textContent=error.message;}finally{b.disabled=false;}
  });
  async function connectBank(resume=false,options={}){
   if(!requireLogin())return;if(!config.plaidConfigured)throw Error('Bank connections are unavailable right now.');
@@ -122,9 +126,9 @@ window.BearDen=(()=>{
   await refresh();if(errors.length)throw Error(errors.join(' · '));message('Plaid disconnected.');
  });
  let refreshingBank=false;
- async function refreshEveryBank(report){
+ async function refreshEveryBank(report,{includeSimplefin=true}={}){
   if(refreshingBank)return null;refreshingBank=true;
-  const buttons=[...document.querySelectorAll('[data-refresh-bank]'),$('#classicSync')],results=[];
+  const buttons=[...document.querySelectorAll('[data-refresh-bank]'),$('#classicSync'),$('#refreshPlaid')],results=[];
   buttons.forEach(b=>{b.disabled=true;b.setAttribute('aria-busy','true');});
   try{
    await queue;await refresh();const items=[...(legacy?.connections?.items||[])];
@@ -133,14 +137,15 @@ window.BearDen=(()=>{
     try{await queue;const result=await api('/api/bank/refresh',{itemId:item.id});results.push(item.name+': '+(result.status||'No refresh status returned.'));}catch(error){results.push(item.name+': Refresh failed — '+error.message);}
     await refresh();
    }
-   if(legacy?.connections?.simplefin){report('Refreshing SimpleFIN…');try{const r=await api('/api/simplefin/refresh',{});results.push('SimpleFIN: '+r.status);}catch(e){results.push('SimpleFIN: '+e.message);}await refresh();}
+   if(includeSimplefin&&legacy?.connections?.simplefin){report('Refreshing SimpleFIN…');try{const r=await api('/api/simplefin/refresh',{});results.push('SimpleFIN: '+r.status);}catch(e){results.push('SimpleFIN: '+e.message);}await refresh();}
    return results.length?results:['No bank connections to refresh.'];
   }finally{refreshingBank=false;buttons.forEach(b=>{b.disabled=false;b.removeAttribute('aria-busy');});}
  }
+ $('#refreshPlaid').onclick=run(async()=>{const report=text=>$('#plaidConfigStatus').textContent=text;const results=await refreshEveryBank(report,{includeSimplefin:false});if(results)report(results.join(' · '));});
  $('#classicSync').onclick=run(async()=>{
   const results=await refreshEveryBank(message);if(!results)return;
   if(legacy?.connections?.gmail){message('Checking Gmail…');try{const result=await api('/api/sync',{gmailOnly:true});results.push(result.status||'Gmail checked.');}catch(error){results.push('Gmail: '+error.message);}await refresh();}
-  if(legacy?.connections?.sun?.connected){message('Checking Sun rent…');try{const result=await api('/api/rent/refresh',{});results.push(result.status||'Sun rent checked.');}catch(error){results.push('Sun: '+error.message);}await refresh();}
+  if(legacy?.connections?.sun?.connected&&legacy.connections.sun.enabled!==false){message('Checking rent…');try{const result=await api('/api/rent/refresh',{});results.push(result.status||'Rent checked.');}catch(error){results.push('Rent: '+error.message);}await refresh();}
   message(results.join(' · '));
  });
  document.querySelectorAll('[data-refresh-bank]').forEach(button=>button.onclick=async()=>{

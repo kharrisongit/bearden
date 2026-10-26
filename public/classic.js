@@ -6611,7 +6611,7 @@ function setupPaycheckBears(){
 
 window.classicReady=(async function init(){
   await window.BearDen.ready;
-  window.BearDenTaxes=await import('./tax-ui.mjs?v=guided-setup1');window.BearDenTaxes.mount();
+  window.BearDenTaxes=await import('./tax-ui.mjs?v=rent-portal1');window.BearDenTaxes.mount();
   applyThemeButtonIcon(); // reflect whatever the early <head> script already applied
   applyThemeBackground(document.documentElement.getAttribute('data-theme') === 'dark');
   applyHolidayMenuState();

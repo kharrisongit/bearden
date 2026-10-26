@@ -13,7 +13,7 @@ test('public rent projection never includes sessions, property IDs or live URLs'
  assert.doesNotMatch(sunMessage(Error('sensitive-token')),/sensitive/);
 });
 test('private sign-in has short lifetime, no recording, guarded hosts and no credentials in URL',async()=>{
- const f=fakeSunBrowser(),browser=createSunBrowser(f.binding),started=await browser.start();assert.equal(f.state.starts[0].recording,false);assert.equal(f.state.starts[0].keepAlive,300000);assert.ok(f.state.starts[0].guardrails.allowedDomains.includes('*.app.sunwebportal.com'));assert.ok(started.pending.expires-Date.now()<=300000);
+ const f=fakeSunBrowser(),browser=createSunBrowser(f.binding),started=await browser.start('https://app.sunwebportal.com');assert.equal(f.state.starts[0].recording,false);assert.equal(f.state.starts[0].keepAlive,300000);assert.ok(f.state.starts[0].guardrails.allowedDomains.includes('*.app.sunwebportal.com'));assert.ok(started.pending.expires-Date.now()<=300000);
  f.state.loggedIn=false;await assert.rejects(()=>browser.finish(started.pending),e=>e.code==='login');f.state.loggedIn=true;
  const result=await browser.finish(started.pending);assert.equal(result.snapshot.amountDue,102545);assert.equal(result.session.agreement,'property-a');assert.equal(result.session.cookies.length,1);assert.doesNotMatch(JSON.stringify(result),/unrelated-secret/);
  assert.equal(f.state.calls.filter(c=>c.method==='Page.navigate').length,1);assert.ok(f.state.calls.filter(c=>c.method==='Page.navigate').every(c=>c.params.url==='https://app.sunwebportal.com/portal/payments'));

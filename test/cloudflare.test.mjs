@@ -269,7 +269,7 @@ test('rent browser is authenticated, origin checked, encrypted, and absent from 
  const f=fixture(),browser=fakeSunBrowser();f.env.BROWSER=browser.binding;const app=runtime(f.env);
  assert.equal((await app.handle(new Request(f.env.APP_URL+'/api/rent/start',{method:'POST'}))).status,401);
  assert.equal((await app.handle(f.req('/api/rent/start',{},'https://evil.example'))).status,403);assert.equal(browser.state.starts.length,0);
- const start=await(await app.handle(f.req('/api/rent/start',{}))).json();assert.match(start.url,/live.browser.run/);
+ const start=await(await app.handle(f.req('/api/rent/start',{portalUrl:'app.sunwebportal.com'}))).json();assert.match(start.url,/live.browser.run/);
  let view=await(await app.handle(f.req('/api/state'))).text();assert.doesNotMatch(view,/private-live-secret|private-browser/);
  assert.equal((await app.handle(f.req('/api/rent/complete',{}))).status,200);
  const saved=f.get('sun-session');assert.match(saved.session,/sun-access-secret/);assert.ok(!f.db.prepare("SELECT value FROM vault WHERE id='sun-session'").get().value.includes('sun-access-secret'));
@@ -278,7 +278,7 @@ test('rent browser is authenticated, origin checked, encrypted, and absent from 
  await app.handle(f.req('/api/rent/disconnect',{}));assert.equal(f.get('sun-session'),null);assert.equal(f.get('connections').sun.connected,false);assert.equal(f.get('connections').sun.snapshot.amountDue,102545);f.db.close();
 });
 test('rent browser routes cannot access another BearDen account pending sign-in',async()=>{
- const f=fixture(),browser=fakeSunBrowser();f.env.BROWSER=browser.binding;const app=runtime(f.env);await app.handle(f.req('/api/rent/start',{}));
+ const f=fixture(),browser=fakeSunBrowser();f.env.BROWSER=browser.binding;const app=runtime(f.env);await app.handle(f.req('/api/rent/start',{portalUrl:'app.sunwebportal.com'}));
  const identity=googleIdentity({email:'another@example.com',sub:'another',email_verified:true},f.env.ALLOWED_EMAIL),token='v2.private-rent-test',hash=createHash('sha256').update(token).digest('hex');
  f.db.prepare('INSERT INTO sessions VALUES(?,?)').run(hash,Date.now()+60000);f.set('auth-session:'+hash,identity);
  const req=new Request(f.env.APP_URL+'/api/rent/complete',{method:'POST',headers:{Cookie:'bearden='+token,Origin:f.env.APP_URL,'Content-Type':'application/json','X-BearDen-Account':identity.accountId},body:'{}'});
@@ -288,4 +288,12 @@ test('rent browser routes cannot access another BearDen account pending sign-in'
 test('saved Sun readings use the first for rent without another portal login',async()=>{
  const f=fixture();f.set('connections',{items:[],transactions:[],candidates:[],sun:{connected:true,snapshot:{amountDue:120000,currentBalance:123456,currency:'USD',dueDate:'2026-10-26',checkedAt:Date.parse('2026-10-26T12:00:00Z')}}});
  const data=await(await f.app.handle(f.req('/api/state'))).json();assert.equal(data.connections.sun.snapshot.dueDate,'2026-11-01');assert.equal(data.connections.sun.snapshot.currentBalance,123456);assert.equal((await f.app.handle(f.req('/rent-model.mjs'))).status,200);f.db.close();
+});
+
+test('rent settings preserve an existing login and have no default portal for a new profile',async()=>{
+ const f=fixture(),saved={session:'existing-private-session',cookies:[]};f.set('sun-session',saved);f.set('connections',{items:[],transactions:[],candidates:[],sun:{connected:true,snapshot:{currentBalance:123456,amountDue:120000,currency:'USD',checkedAt:Date.now()}}});
+ const before=await(await f.app.handle(f.req('/api/state'))).json();assert.equal(before.connections.sun.enabled,true);assert.equal(before.connections.sun.portalUrl,'https://app.sunwebportal.com');
+ assert.equal((await f.app.handle(f.req('/api/rent/settings',{enabled:false}))).status,200);assert.deepEqual(f.get('sun-session'),saved);assert.equal(f.get('connections').sun.connected,true);assert.equal(f.get('connections').sun.enabled,false);
+ await f.app.handle(f.req('/api/rent/settings',{enabled:true}));assert.deepEqual(f.get('sun-session'),saved);
+ f.set('connections',{items:[],transactions:[],candidates:[]});await f.app.handle(f.req('/api/rent/settings',{enabled:true}));const fresh=await(await f.app.handle(f.req('/api/state'))).json();assert.equal(fresh.connections.sun.portalUrl,'');assert.equal((await f.app.handle(f.req('/api/rent/start',{}))).status,400);f.db.close();
 });

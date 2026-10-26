@@ -84,7 +84,7 @@ async function handle(req,res){
    if(req.method==='GET'&&path==='/api/classic')return json(res,200,read('classic',{state:{version:1,values:{}},revision:0}));
    if(req.method==='GET'&&path==='/api/state')return json(res,200,{...getPlan(),connections:publicConnections(connections())});
    if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});const b=await body(req);
-   if(path.startsWith('/api/rent/'))return json(res,503,{error:'Rent sign-in runs on the deployed Cloudflare app. Open your hosted BearDen account to connect Sun.'});
+   if(path.startsWith('/api/rent/'))return json(res,503,{error:'Rent sign-in runs on the deployed Cloudflare app. Open your hosted BearDen account to connect your rent portal.'});
    if(path.startsWith('/api/simplefin/')){
     while(runningSync())await runningSync();const identity=users.current().accountId;
     const task=(async()=>{const c=connections();

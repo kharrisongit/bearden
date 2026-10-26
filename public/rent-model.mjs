@@ -22,8 +22,8 @@ export function rememberRentReadings(sun){
 export function linkSunRent(planner,id,field,sun,bill){
  if(!id){delete planner.sunRent;return;}
  if(!bill||bill.id!==id)throw Error('Choose an existing rent bill.');
- if(!['currentBalance','amountDue'].includes(field))throw Error('Choose which Sun amount to use.');
- if(!sun?.connected&&!sun?.snapshot)throw Error('Connect Sun in Settings first.');
+ if(!['currentBalance','amountDue'].includes(field))throw Error('Choose a valid rent amount source.');
+ if(!sun?.connected&&!sun?.snapshot)throw Error('Configure your rent portal in Settings first.');
  const old=planner.sunRent?.billId===id?planner.sunRent:null;
  const readings=new Map((old?.amountField==='currentBalance'?old.readings||[]:[]).map(r=>[r.date,r]));
  for(const reading of rentReadings(sun))readings.set(reading.date,reading);

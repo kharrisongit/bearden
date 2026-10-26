@@ -1,3 +1,4 @@
+import {rentPortalUrl} from '../rent-portal.mjs';
 import {rememberRentReadings} from '../public/rent-model.mjs';
 import {createSunBrowser,publicSun,sunMessage,syncSun} from '../sun-rent.mjs';
 import {claimSimplefin,publicSimplefin,syncSimplefin,configureSimplefinAccount} from '../simplefin.mjs';
@@ -69,7 +70,7 @@ export function runtime(env,fetcher=fetch){
   return account.status;
  }
  async function sync(force=false,bankOnly=false,targetId=null,gmailOnly=false){return locked(async()=>{const c=await connections(),now=Date.now(),bank=!gmailOnly&&c.items.filter(i=>(!targetId||i.id===targetId)&&(force||i.pending||!i.nextSync||i.nextSync<=now)).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0],gmail=!bankOnly&&mailboxes(c,users.current().email).filter(a=>force||a.backlog?.length||a.page||!a.nextSync||a.nextSync<=now).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0];
-   if(!bankOnly&&!gmailOnly&&!targetId&&c.sun?.connected&&!c.sun.needsLogin&&(!c.sun.nextSync||c.sun.nextSync<=now)&&!(c.sun.pending?.expires>now)){c.lastTask='rent';c.status=await syncSunRent(c);await write('connections',c);return {status:c.status};}
+   if(!bankOnly&&!gmailOnly&&!targetId&&c.sun?.connected&&c.sun.enabled!==false&&!c.sun.needsLogin&&(!c.sun.nextSync||c.sun.nextSync<=now)&&!(c.sun.pending?.expires>now)){c.lastTask='rent';c.status=await syncSunRent(c);await write('connections',c);return {status:c.status};}
    if(!gmailOnly&&!targetId&&c.simplefin&&(force||!c.simplefin.nextSync||c.simplefin.nextSync<=now)&&(!bank||c.lastTask==='bank')){c.lastTask='simplefin';c.status=await syncSimplefinBalances(c);await write('connections',c);return {status:c.status};}
    if(targetId&&!bank)throw Error('Bank connection not found. Reload your connections.');
    if(!bank&&!gmail)return {status:gmailOnly?'No Gmail accounts connected.':c.status};if(bank)bank.lastSyncAttempt=now;try{if(force&&bank)await syncBalances(c,bank,true);if(gmail&&(!bank||c.lastTask==='bank')){c.lastTask='gmail';c.status=await syncGmail(c,gmail);}else{c.lastTask='bank';c.status=await syncBank(c,bank,force);}}catch(e){c.status='Sync needs attention: '+e.message;if(c.lastTask==='gmail'&&gmail){gmail.nextSync=now+sixHours;gmail.status=c.status;}}
@@ -111,19 +112,26 @@ export function runtime(env,fetcher=fetch){
     if(path.startsWith('/api/rent/')){
      const c=await connections(),now=Date.now();
      try{
+      if(path==='/api/rent/settings'){
+       if(typeof b.enabled!=='boolean')return json({error:'Choose whether to enable Rent.'},400);
+       c.sun={...c.sun,enabled:b.enabled};
+       if(!b.enabled&&c.sun.pending){await sunBrowser.close(c.sun.pending.sessionId).catch(()=>{});delete c.sun.pending;}
+       await write('connections',c);return json({enabled:b.enabled});
+      }
       if(path==='/api/rent/start'){
+       const portalUrl=rentPortalUrl(b.portalUrl||publicSun(c.sun)?.portalUrl);
        const usage=await read('sun-browser-usage',{since:now,count:0,last:0});if(now-usage.since>=86400000){usage.since=now;usage.count=0;}
        if(usage.count>=6)return json({error:'The rent sign-in attempt limit has been reached. Try again tomorrow.'},429);
        if(now-usage.last<20000)return json({error:'Wait 20 seconds before starting another rent sign-in.'},429);
        usage.count++;usage.last=now;await write('sun-browser-usage',usage);
        if(c.sun?.pending)await sunBrowser.close(c.sun.pending.sessionId).catch(()=>{});
-       const started=await sunBrowser.start();c.sun={...c.sun,pending:started.pending,status:'Sign in to Sun in the private window, open Payments, then select Save connection.'};
+       const started=await sunBrowser.start(portalUrl);c.sun={...c.sun,enabled:true,pending:started.pending,status:'Sign in to your portal in the private window, open the page showing your balance, then select Save connection.'};
        try{await write('connections',c);}catch(error){await sunBrowser.close(started.pending.sessionId).catch(()=>{});throw error;}
        return json({url:started.url,expires:started.pending.expires});
       }
       if(path==='/api/rent/complete'){
        const result=await sunBrowser.finish(c.sun?.pending);await write('sun-session',result.session);
-       const pending=c.sun.pending;c.sun={connected:true,snapshot:result.snapshot,updated:now,lastAttempt:now,nextSync:now+86400000,needsLogin:false,status:'Sun connected. Balance and due date saved; checks run about daily.'};
+       const pending=c.sun.pending;rememberRentReadings(c.sun);c.sun={...c.sun,portalUrl:pending.portalUrl||publicSun(c.sun).portalUrl,enabled:true,connected:true,snapshot:result.snapshot,updated:now,lastAttempt:now,nextSync:now+86400000,needsLogin:false,status:'Rent portal connected. Balance saved; checks run about daily.'};delete c.sun.pending;
        rememberRentReadings(c.sun);await write('connections',c);await sunBrowser.close(pending.sessionId).catch(()=>{});return json({status:c.sun.status});
       }
       if(path==='/api/rent/refresh'){const status=await syncSunRent(c,true);await write('connections',c);return json({status});}
@@ -133,7 +141,7 @@ export function runtime(env,fetcher=fetch){
       }
       if(path==='/api/rent/disconnect'){
        if(c.sun?.pending)await sunBrowser.close(c.sun.pending.sessionId).catch(()=>{});
-       await write('sun-session',null);if(c.sun){rememberRentReadings(c.sun);delete c.sun.pending;c.sun.connected=false;c.sun.status='Sun disconnected. Your last rent reading is kept.';}await write('connections',c);return json({status:'Sun disconnected. The saved sign-in session has been removed from BearDen.'});
+       await write('sun-session',null);if(c.sun){rememberRentReadings(c.sun);delete c.sun.pending;c.sun.connected=false;c.sun.status='Rent portal disconnected. Your last rent reading is kept.';}await write('connections',c);return json({status:'Rent portal disconnected. The saved sign-in session has been removed from BearDen.'});
       }
       return json({error:'Not found'},404);
      }catch(error){return json({error:sunMessage(error)},400);}

@@ -42,7 +42,7 @@
  async function save(){if(!ready)throw Error('Accounts have not loaded. Reload before saving changes.');await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();}
  let initializing;
  $('#configureHousehold').disabled=true;$('#sharedBillsToggle').disabled=true;
- function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel]=await Promise.all([import('./income-model.mjs?v=rent-auto1'),import('./email-model.mjs?v=balance-fix1'),import('./rent-model.mjs?v=rent-auto1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#sharedBillsToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
+ function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel]=await Promise.all([import('./income-model.mjs?v=rent-portal1'),import('./email-model.mjs?v=balance-fix1'),import('./rent-model.mjs?v=rent-portal1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#sharedBillsToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
  window.addEventListener('load',initialize,{once:true});
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});
@@ -184,7 +184,7 @@
   const gmail=(connections.gmail||connections.gmailAccounts?.length)&&(email||bill?.source==='gmail'||bill?.emailConfirmed||bill?.emailAmountConfirmed||bill?.gmailConfirmed||bill&&planner.electricBillId===bill.id);
   // Show the primary bill/balance feed. Transaction matching is payment history,
   // and never establishes a provider connection for this bill or debt.
-  const source=bill?.rentLinked&&connections.sun?.connected?'Sun'
+  const source=bill?.rentLinked&&connections.sun?.connected?'Rent portal'
    :kind==='bill'&&gmail?'Gmail'
    :account?.source==='plaid'?'Plaid'
    :account?.source==='simplefin'?'SimpleFIN'
@@ -403,7 +403,7 @@
    const calendarRows=[...bills,...paidBills.map(b=>({...b,isPaid:true}))].filter(b=>!selected||b.date===selected).sort((a,b)=>a.date.localeCompare(b.date));
    $('#calendarAgenda').innerHTML=(householdActive?paydays.filter(p=>!selected||p.date===selected).map(p=>'<div class="calendar-agenda-row"><span><strong>Fixed Bills transfer</strong><small>'+esc(dateLabel(p.date))+' · Personal → shared account</small></span><strong>'+money(planner.household.personalAmount)+'</strong></div>').join(''):'')+contributions.filter(c=>!selected||c.date===selected).map(c=>'<div class="calendar-agenda-row"><span><strong>Spouse contribution</strong><small>'+esc(dateLabel(c.date))+' · To shared bills account</small></span><strong>+'+money(c.amount)+'</strong></div>').join('')+calendarRows.map(b=>'<button type="button" class="calendar-agenda-row" data-account-view="'+(model.isDebtPayment(b)?'debt':'bills')+'"><span><strong>'+esc(b.name)+'</strong><small>'+esc(dateLabel(b.date))+' · '+(b.isPaid?'✓ Paid':b.shared?'Shared bills account':model.isDebtPayment(b)?'Debt payment':'Bill')+'</small></span><strong>'+money(b.amount)+'</strong></button>').join('')||'<p class="subtle">No payments '+(selected?'on this day.':'this month.')+'</p>';
    const billTile=(b,paid=false)=>{
-    const editable=['bank-tracked','manual'].includes(b.source),d=new Date(b.date+'T12:00:00'),category=billCategories[b.billKind]||'Bill',status=paid?(bankPaid.has(b.key)?'Paid '+dateLabel(bankPaidDates.get(b.key))+' · Bank transaction':'Marked paid'):b.rentLinked?(b.rentNeedsLogin?'Sun · last saved amount':b.rentConfirmed?'Updated by Sun':'Sun · estimated amount'):(b.gmailConfirmed||b.emailConfirmed||b.source==='gmail')?'Confirmed by Gmail':b.emailAmountConfirmed?'Gmail amount · Estimated date':(planner.electricBillId===b.id||planner.emailLinks['bill:'+b.id])?'Gmail linked · Estimated':'Estimated';
+    const editable=['bank-tracked','manual'].includes(b.source),d=new Date(b.date+'T12:00:00'),category=billCategories[b.billKind]||'Bill',status=paid?(bankPaid.has(b.key)?'Paid '+dateLabel(bankPaidDates.get(b.key))+' · Bank transaction':'Marked paid'):b.rentLinked?(b.rentNeedsLogin?'Portal · last saved amount':b.rentConfirmed?'Updated by rent portal':'Portal · estimated amount'):(b.gmailConfirmed||b.emailConfirmed||b.source==='gmail')?'Confirmed by Gmail':b.emailAmountConfirmed?'Gmail amount · Estimated date':(planner.electricBillId===b.id||planner.emailLinks['bill:'+b.id])?'Gmail linked · Estimated':'Estimated';
     return '<article class="bill-tile recurring-account" data-account-id="'+esc(b.id)+'">'+(editable?'<button type="button" class="bill-icon-button account-edit" data-edit-bill="'+esc(b.id)+'" aria-label="Edit '+esc(b.name)+'">'+pencil+'</button>':'')+'<div class="bill-tile-main"><div class="bill-date '+(b.date<today&&!paid?'is-overdue':'')+'"><span>'+esc(d.toLocaleDateString('en-US',{month:'short'}))+'</span><strong>'+d.getDate()+'</strong></div><div class="bill-tile-info"><h4>'+esc(b.name)+'</h4><span class="bill-category">'+esc(category)+'</span><small>'+esc(b.date<today&&!paid?'Overdue':status)+'</small></div></div><div class="bill-amount"><span>'+(paid?'Amount paid':'Amount owed')+'</span><strong>'+money(b.amount)+'</strong></div>'+connectionMarkup('bill:'+b.id,b)+'<div class="bill-tile-footer"><span>'+esc(b.shared?'Shared account · Fixed Bills':b.paidByCard?'Paid through credit card':({monthly:'Monthly',biweekly:'Every two weeks',weekly:'Weekly',once:'One-time bill'})[b.repeat]||'Scheduled')+'</span>'+(paid&&bankPaid.has(b.key)?'<span>✓ Bank payment</span>':'<button class="bill-paid-button" '+(paid?'data-bill-unpaid':'data-bill-paid')+'="'+esc(b.key)+'">'+(paid?'Mark unpaid':'✓ Mark paid')+'</button>')+'</div>'+billLoanMarkup(b)+paymentMarkup('bill:'+b.id)+'</article>';
    };
    $('#billAgenda').innerHTML=list.map(b=>billTile(b)).join('')||'<p class="subtle">Add a recurring bill or track one from your transactions.</p>';
@@ -499,14 +499,14 @@
  async function syncRentBill(){
   if(rentSyncing)return rentSyncing;
   const sun=sunConnection(),bills=existingRentBills().filter(b=>b.billKind==='rent'&&!planner.sunRentDisabled?.[b.id]),bill=bills.find(b=>b.id===planner.sunRent?.billId)||(bills.length===1?bills[0]:null);
-  $('#rentAutoStatus').textContent=!sun?.snapshot?'':bill?'Automatically updating '+bill.name+' from Sun.':bills.length>1?'Choose the rent bill to update by enabling Sun in its editor.':'Mark your bill as Rent in Accounts to use Sun updates. You can turn updates on or off in the bill editor.';
-  if(!sun?.snapshot||!bill)return;
+  $('#rentAutoStatus').textContent=!sun?.snapshot?'':bill?'Automatically updating '+bill.name+' from your rent portal.':bills.length>1?'Choose the rent bill to update by enabling portal updates in its editor.':'Mark your bill as Rent in Accounts to use portal updates. You can turn updates on or off in the bill editor.';
+  if(!sun?.snapshot||sun.enabled===false||!bill)return;
   const before=JSON.stringify(planner);writeRentBill(bill,'currentBalance');
   const after=JSON.stringify(planner);if(before===after)return;
   rentSyncing=window.BearDen.storage.set('income-planner',after).catch(e=>{planner=JSON.parse(before);throw e;}).finally(()=>{rentSyncing=null;});
   return rentSyncing;
  }
- const rentField=document.createElement('div');rentField.id='billRentField';rentField.className='email-link';rentField.innerHTML='<strong>Rent schedule</strong><p class="subtle">Due on the 1st of every month.</p><label class="check-label"><input name="sunRent" type="checkbox"> Update amount from Sun portal</label><p id="billRentInfo" class="subtle"></p><button type="button" id="billRentSettings">Open Sun connection in Settings</button>';
+ const rentField=document.createElement('div');rentField.id='billRentField';rentField.className='email-link';rentField.innerHTML='<strong>Rent schedule</strong><p class="subtle">Due on the 1st of every month.</p><label class="check-label"><input name="sunRent" type="checkbox"> Update amount from rent portal</label><p id="billRentInfo" class="subtle"></p><button type="button" id="billRentSettings">Open rent connection in Settings</button>';
  $('#billCategory').closest('label').after(rentField);
  function renderBillRentInfo(apply=false){
   const form=$('#billEditorForm'),rent=form.elements.billKind.value==='rent',enabled=rent&&form.elements.sunRent.checked,connection=sunConnection();rentField.hidden=!rent;
@@ -515,9 +515,9 @@
   form.elements.repeat.disabled=rent;
   if(rent){form.elements.repeat.value='monthly';if(form.elements.date.value)form.elements.date.value=form.elements.date.value.slice(0,7)+'-01';}
   if(apply&&enabled){const reading=rentModel.rentReadings(connection).at(-1);if(reading)form.elements.amount.value=reading.amount/100;}
-  $('#billRentInfo').textContent=enabled?'Sun updates this existing bill automatically. A zero balance after payment keeps your recurring rent estimate.':connection?.snapshot?'Enable Sun updates to use the saved portal amount.':'Connect Sun in Settings, then enable updates here.';
+  $('#billRentInfo').textContent=enabled?'Your rent portal updates this bill automatically. A zero balance after payment keeps your recurring rent estimate.':connection?.snapshot?'Enable portal updates to use the saved portal amount.':'Configure your rent portal in Settings to enable updates.';
  }
- $('#billRentSettings').onclick=()=>{$('#billEditor').close();window.selectBearTab('settings');$('#rentSection').scrollIntoView({block:'start'});};
+ $('#billRentSettings').onclick=()=>{$('#billEditor').close();window.selectBearTab('settings');(sunConnection()?.enabled===false?$('#rentTrackingOption'):$('#rentSection')).scrollIntoView({block:'start'});};
  $('#billEditorForm').elements.sunRent.onchange=()=>renderBillRentInfo(true);
  $('#billEditorForm').elements.date.addEventListener('change',()=>renderBillRentInfo());
  function billLoanMarkup(b){

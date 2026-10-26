@@ -1,4 +1,4 @@
-import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-auto1';
+import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-portal1';
 import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=shared-bill-list3';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
 export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs';
