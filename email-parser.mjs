@@ -4,10 +4,13 @@ export function parseAccountEmail({id,mailboxId,from='',subject='',text='',recei
  const sender=(from.match(/<([^>]+)>/)?.[1]||from).trim().toLowerCase();
  if(!/^[^\s<>]+@[^\s<>]+\.[^\s<>]+$/.test(sender))return null;
  const content=subject+'\n'+text;
- if(!/\b(bill|invoice|statement|balance|payment|autopay|paid|receipt)\b/i.test(content))return null;
+ if(!/\b(bill|invoice|statement|balance|payment|autopay|paid|receipt|due)\b/i.test(content))return null;
  const amount=uniqueAmount(content,/(?<!minimum\s)(?:total\s+amount\s+due|amount\s+due|total\s+due|balance\s+due|(?:total\s+)?bill\s+amount|current\s+bill|bill\s+total)\s*(?:is\s*)?:?\s*\$\s*([\d,]+(?:\.\d{2})?)(?!\d|\.\d)/gi);
  const minimum=uniqueAmount(content,/(?:minimum\s+(?:payment(?:\s+due)?|amount\s+due|due))\s*(?:is\s*)?:?\s*\$\s*([\d,]+(?:\.\d{2})?)(?!\d|\.\d)/gi);
  const balance=uniqueAmount(content,/(?:statement\s+balance|new\s+balance|current\s+balance)\s*(?:is\s*)?:?\s*\$\s*([\d,]+(?:\.\d{2})?)(?!\d|\.\d)/gi);
+ const creditLimit=uniqueAmount(content,/(?:total\s+)?credit\s+limit\s*(?:is\s*)?:?\s*\$\s*([\d,]+(?:\.\d{2})?)(?!\d|\.\d)/gi);
+ const aprs=[...new Set([...content.matchAll(/(?:purchase\s+apr|annual\s+percentage\s+rate(?:\s*\(apr\))?|\bapr)\s*(?:is\s*)?:?\s*(\d{1,3}(?:\.\d+)?)\s*%/gi)].map(m=>Number(m[1])))];
+ const apr=aprs.length===1&&aprs[0]>=0&&aprs[0]<=100?aprs[0]:null;
  const accountLast4=content.match(/(?:account|card)\s*(?:number|no\.?|#|ending(?:\s+in)?)?\s*[:*xX•-]*\s*(\d{4,})\b/i)?.[1]?.slice(-4)||'';
  const reference=content.match(/(?:confirmation|reference|payment)\s*(?:number|no\.?|#|id)\s*:?\s*([a-z0-9-]{5,})/i)?.[1]?.toLowerCase()||'';
  // Prefer the subject. Terms in a generic footer must not turn a statement into
@@ -26,5 +29,5 @@ export function parseAccountEmail({id,mailboxId,from='',subject='',text='',recei
  const dueDate=parseBill(content,{referenceDate:receivedAt}).date;
  const paymentDates=[...new Set([...content.matchAll(/\b(?:payment date|scheduled for|payment scheduled on|payment received on|payment posted on)\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})/gi)].map(m=>parseBill('Due date: '+m[1]).date).filter(Boolean))];
  const paymentDate=paymentStatus&&paymentDates.length===1?paymentDates[0]:null;
- return {id,mailboxId,sender,senderName:(from.includes('<')?from.split('<')[0].trim().replace(/^"|"$/g,''):sender).slice(0,150),subject:subject.slice(0,200),receivedAt,accountLast4,reference,amount,minimum,balance,dueDate,paymentStatus,paymentAmount,paymentDate};
+ return {id,mailboxId,sender,senderName:(from.includes('<')?from.split('<')[0].trim().replace(/^"|"$/g,''):sender).slice(0,150),subject:subject.slice(0,200),receivedAt,accountLast4,reference,amount,minimum,balance,dueDate,creditLimit,apr,paymentStatus,paymentAmount,paymentDate};
 }

@@ -1,3 +1,4 @@
+import {transactionAccountId} from './transaction-links.mjs?v=connections-audit1';
 import {day,occurrences} from './engine.mjs';
 export const householdEnabled=h=>!!(h?.enabled&&h.personalAccountId&&h.billsAccountId&&h.personalAccountId!==h.billsAccountId);
 export const isSharedBillCandidate=bill=>!['budget','baby-bear-budget','tracker-debt','plaid-credit'].includes(bill.source)&&!['credit-card','loan'].includes(bill.billKind)&&bill.kind!=='household-bills'&&!bill.transfer&&bill.id!=='household-contribution'&&!/^fixed\s+bills$/i.test(String(bill.name||'').trim());
@@ -7,7 +8,7 @@ export function sharedBill(bill,planner){
  const choice=planner.billFunding?.[bill.id];if(choice)return choice==='shared';
  let account=planner.transactionLinks?.['bill:'+bill.id]?.accountId;
  if(!account&&bill.groupKey){try{account=JSON.parse(bill.groupKey)[1];}catch{}}
- return !!account&&'plaid-'+account===planner.household.billsAccountId;
+ return !!account&&transactionAccountId(account)===planner.household.billsAccountId;
 }
 export function spouseEvents(h,start,end){
  if(!householdEnabled(h)||!h.spouseStartDate||!(h.spouseAmount>0))return [];
@@ -30,8 +31,8 @@ export function householdForecast(accounts,plan,paydays,bills,start,{household:h
  for(const event of [...transfers,...contributions].sort((a,b)=>a.date.localeCompare(b.date))){
   const own=event.type==='transfer';if(!own&&view==='personal')continue;
   const eligible=t=>!used.has(t.transaction_id)&&!t.pending&&t.currency==='USD'&&t.date===event.date&&t.date<=start;
-  const credit=own&&transactions.find(t=>eligible(t)&&'plaid-'+t.account_id===h.billsAccountId&&Math.round(-t.amount*100)===event.amount&&/TRANSFER_IN/.test(t.category||''));
-  const debit=credit&&transactions.find(t=>eligible(t)&&'plaid-'+t.account_id===h.personalAccountId&&Math.round(t.amount*100)===event.amount&&/TRANSFER_OUT/.test(t.category||''));
+  const credit=own&&transactions.find(t=>eligible(t)&&transactionAccountId(t)===h.billsAccountId&&Math.round(-t.amount*100)===event.amount&&/TRANSFER_IN/.test(t.category||''));
+  const debit=credit&&transactions.find(t=>eligible(t)&&transactionAccountId(t)===h.personalAccountId&&Math.round(t.amount*100)===event.amount&&/TRANSFER_OUT/.test(t.category||''));
   const bankMatched=!!debit;if(debit){used.add(credit.transaction_id);used.add(debit.transaction_id);}
   if(h.received?.[event.id]||bankMatched){events.push({...event,delta:0,incoming:0,outgoing:0,received:true,bankMatched});continue;}
   const delta=own?(view==='combined'?0:view==='shared'?event.amount:-event.amount):event.amount;

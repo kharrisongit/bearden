@@ -2,6 +2,8 @@ import {microsoftMailHeaders,microsoftMessagesUrl,readMicrosoftEmail} from './mi
 import {createHash} from 'node:crypto';
 import {messageText,classifyElectricEmail} from './providers.mjs';
 import {parseAccountEmail} from './email-parser.mjs';
+const safeSenders=senders=>[...new Set((senders||[]).filter(s=>typeof s==='string'&&/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(s)))].slice(0,40);
+export function mailboxWatches(classic,mailboxId){try{return safeSenders(Object.values(JSON.parse(classic?.state?.values?.['income-planner']||'{}').emailLinks||{}).filter(l=>l.mailboxId===mailboxId).map(l=>l.sender));}catch{return [];}}
 export const mailQuery='newer_than:180d -in:sent {bill invoice statement payment "amount due" "payment due" "payment submitted" "payment scheduled" "payment processing" "payment received" "payment posted" "payment confirmation" "payment failed" autopay}';
 export function mailboxes(c,owner=''){
  if(!Array.isArray(c.gmailAccounts))c.gmailAccounts=c.gmail?[{...c.gmail,id:'gmail-legacy',email:owner}]:[];
@@ -32,17 +34,29 @@ async function readMailboxEmail(account,sourceId,{request,headers}){
  const receivedAt=new Date(Number(msg.internalDate)||Date.parse(header('date'))||Date.now()).toISOString();
  return {id:account.id+':'+sourceId,mailboxId:account.id,from:header('from'),subject:header('subject'),text:messageText(msg.payload,{referenceDate:receivedAt}).slice(0,32000),receivedAt};
 }
-export async function scanMailbox(c,account,{request,googleToken,microsoftToken,query=null,limit=3}){
+export async function scanMailbox(c,account,{request,googleToken,microsoftToken,query=null,limit=3,watches=[]}){
  account.lastSyncAttempt=Date.now();
  const headers=await mailboxToken(account,{googleToken,microsoftToken});
- if(account.signature!=='all-bills-v5'){account.signature='all-bills-v5';delete account.backlog;delete account.page;account.seen=[];}
+ if(account.signature!=='all-bills-v6'){account.signature='all-bills-v6';delete account.backlog;delete account.page;account.seen=[];}
+ const senders=safeSenders(watches),seenIds=new Set(account.seen||[]),watchSignature=senders.slice().sort().join(',');
+ if(account.watchSignature!==undefined&&account.watchSignature!==watchSignature){delete account.page;delete account.backlog;delete account.freshAttempt;}account.watchSignature=watchSignature;
+ async function list(pageToken){
+  const search=query===null?'':String(query).replace(/[^\p{L}\p{N}\s@.-]/gu,' ').trim().slice(0,100);
+  const watchQuery=senders.length?mailQuery.replace(/}$/,senders.map(s=>' from:'+s).join('')+'}'):mailQuery;
+  const q=new URLSearchParams({q:watchQuery+(search?' "'+search+'"':''),maxResults:String(query===null?10:limit)});
+  if(query===null&&pageToken)q.set('pageToken',pageToken);
+  const microsoft=account.provider==='microsoft',result=await request(microsoft?microsoftMessagesUrl(query,limit,pageToken,senders):'https://gmail.googleapis.com/gmail/v1/users/me/messages?'+q,{headers});
+  return {ids:(microsoft?result.value||[]:result.messages||[]).map(m=>m.id),page:(microsoft?result['@odata.nextLink']:result.nextPageToken)||''};
+ }
+ // An older-message backlog must never delay newly arriving linked bills.
+ if(query===null&&(account.backlog?.length||account.page)&&(!account.freshAttempt||Date.now()-account.freshAttempt>=6*3600000)){
+  const fresh=await list(null);account.freshAttempt=Date.now();
+  account.backlog=[...new Set([...fresh.ids.filter(id=>!seenIds.has(id)),...(account.backlog||[])])];
+ }
  let queue;
  if(query!==null||!account.backlog?.length){
-  const search=query===null?'':String(query).replace(/[^\p{L}\p{N}\s@.-]/gu,' ').trim().slice(0,100);
-  const q=new URLSearchParams({q:mailQuery+(search?' "'+search+'"':''),maxResults:String(query===null?10:limit)});
-  if(query===null&&account.page)q.set('pageToken',account.page);
-  const microsoft=account.provider==='microsoft',page=await request(microsoft?microsoftMessagesUrl(query,limit,account.page):'https://gmail.googleapis.com/gmail/v1/users/me/messages?'+q,{headers});queue=(microsoft?page.value||[]:page.messages||[]).map(m=>m.id);
-  if(query===null){account.backlog=queue;account.page=(microsoft?page['@odata.nextLink']:page.nextPageToken)||'';}
+  const result=await list(query===null?account.page:null);queue=result.ids;
+  if(query===null){account.backlog=queue;account.page=result.page;account.freshAttempt??=Date.now();}
  }else queue=account.backlog;
  const seen=new Set(account.seen||[]),electricBills=[];let processed=0;
  for(let i=0;i<limit&&queue.length;i++){

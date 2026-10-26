@@ -33,3 +33,11 @@ export function scheduledPayment(card,payday,startDate,settings={}){
  }
  return {scheduled:due!==null,minimum:due===null?0:monthlyMinimum(card),dueDate:due===null?null:new Date(due).toISOString().slice(0,10),late:due!==null&&due-timing.leadDays*day<p,missingDate:false};
 }
+
+// Synced terms take effect on upcoming paydays. Checked history stays unchanged.
+export function effectiveDebtTerms(card,terms,payday,checked=false){
+ if(checked||!terms||!validDueDate(terms.date)||payday<terms.date)return card;
+ return {...card,...(validDueDate(terms.dueDate)?{dueDate:terms.dueDate}:{}),
+  ...(Number.isFinite(terms.monthlyMinimum)&&terms.monthlyMinimum>=0?monthlyPaymentSettings(card,terms.monthlyMinimum):{}),
+  ...(Number.isFinite(terms.apr)&&terms.apr>=0&&terms.apr<=100?{apr:terms.apr}:{})};
+}

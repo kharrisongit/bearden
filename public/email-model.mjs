@@ -1,5 +1,5 @@
 const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-export const emailLink=message=>({mailboxId:message.mailboxId,sender:message.sender,accountLast4:message.accountLast4||'',selectedAt:new Date().toISOString(),selectedMessage:Object.fromEntries(['id','mailboxId','sender','accountLast4','receivedAt','amount','minimum','balance','dueDate','paymentStatus'].map(key=>[key,message[key]??null]))});
+export const emailLink=message=>({mailboxId:message.mailboxId,sender:message.sender,accountLast4:message.accountLast4||'',selectedAt:new Date().toISOString(),selectedMessage:Object.fromEntries(['id','mailboxId','sender','accountLast4','receivedAt','amount','minimum','balance','dueDate','creditLimit','apr','paymentStatus'].map(key=>[key,message[key]??null]))});
 export const matchesEmail=(message,link)=>!!link&&message.mailboxId===link.mailboxId&&message.sender===link.sender&&(!link.accountLast4||message.accountLast4===link.accountLast4);
 export const usableBillAmount=m=>!!m&&!m.paymentStatus&&Number.isSafeInteger(m.amount)&&m.amount>=0;
 export const emailDueDate=m=>m&&!m.paymentStatus&&/^\d{4}-\d{2}-\d{2}$/.test(m.dueDate||'')&&Number.isFinite(Date.parse(m.dueDate+'T12:00:00Z'))&&new Date(m.dueDate+'T12:00:00Z').toISOString().slice(0,10)===m.dueDate?m.dueDate:null;
@@ -24,7 +24,16 @@ export function emailAccountStatus(messages,link,{now=Date.now(),hasPlaid=false,
   else if(!emailDueDate(cached)&&emailDueDate(selected))debtStatements[debtStatements.indexOf(cached)]={...cached,dueDate:selected.dueDate};
  }
  debtStatements.sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt));
- const statement=creditCard||debtAccount?debtStatements.find(m=>!m.paymentStatus&&(emailDueDate(m)||m.balance!=null||m.minimum!=null||m.amount!=null)):billStatement(messages,link,{now});
+ let statement=creditCard||debtAccount?debtStatements.find(m=>!m.paymentStatus&&(emailDueDate(m)||m.balance!=null||m.minimum!=null||m.amount!=null||m.apr!=null||m.creditLimit!=null)):billStatement(messages,link,{now});
+ if(statement&&(creditCard||debtAccount)){
+  statement={...statement,fieldUpdated:{}};
+  for(const key of ['dueDate','minimum','balance','amount','apr','creditLimit']){
+   if(statement[key]!=null){statement.fieldUpdated[key]=statement.receivedAt;continue;}
+   const older=debtStatements.find(m=>!m.paymentStatus&&m[key]!=null&&Date.parse(statement.receivedAt)-Date.parse(m.receivedAt)<=31*86400000&&emailDueDate(m)&&
+    (statement.dueDate?m.dueDate===statement.dueDate:m.dueDate>=statement.receivedAt.slice(0,10)));
+   if(older){statement[key]=older[key];statement.fieldUpdated[key]=older.receivedAt;}
+  }
+ }
  const payments=[],usedBank=new Set(),usedMail=new Set(),events=matched.filter(m=>m.paymentStatus);
  // Newest notice wins for an explicit confirmation number. Without one, pair
  // only an unambiguous amount/date match, so two equal payments stay separate.

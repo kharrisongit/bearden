@@ -375,3 +375,14 @@ test('bill sharing requires sign-in, origin and current account, and exposes onl
  await f.app.handle(member.req('/api/bills/share/revoke',{code:created.code}));assert.equal((await f.app.handle(f.req('/api/bills/share/preview',{code:created.code}))).status,200);
  await f.app.handle(f.req('/api/bills/share/revoke',{}));await assert.rejects(()=>f.app.handle(member.req('/api/bills/share/preview',{code:created.code})),/revoked/);f.db.close();
 });
+
+test('Plaid balance failure still refreshes posted transactions and keeps prior balances',async()=>{
+ const f=fixture(async url=>url.endsWith('/accounts/get')?Response.json({error_code:'INSTITUTION_NOT_RESPONDING'},{status:400}):url.endsWith('/transactions/sync')?Response.json({added:[{transaction_id:'posted',account_id:'a',date:'2026-10-26',amount:25,pending:false,name:'Lender',iso_currency_code:'USD'}],modified:[],removed:[],next_cursor:'new',has_more:false}):Promise.reject(Error('Unexpected URL')));
+ const s=blank();s.accounts=[{id:'plaid-a',itemId:'i',source:'plaid',name:'Bank',balance:12345,include:true}];f.set('plan',{state:s,revision:1});f.set('connections',{items:[{id:'i',name:'Bank',token:'t',cursor:'old'}],transactions:[],candidates:[]});
+ await f.app.sync(true);const c=f.get('connections');assert.equal(c.items[0].cursor,'new');assert.equal(c.transactions[0].transaction_id,'posted');assert.equal(c.items[0].balanceError,'INSTITUTION_NOT_RESPONDING');assert.ok(c.items[0].transactionsUpdated);assert.equal(f.get('plan').state.accounts[0].balance,12345);f.db.close();
+});
+test('mailbox-scoped email refresh checks only the requested connected inbox',async()=>{
+ let tokens=[];const f=fixture(async(url,opts)=>{if(url.includes('/token')){tokens.push(String(opts.body));return Response.json({access_token:'access'});}return Response.json({messages:[]});});
+ f.set('connections',{items:[],transactions:[],candidates:[],gmailAccounts:[{id:'a',email:'a@example.com',refreshToken:'first'},{id:'b',email:'b@example.com',refreshToken:'second'}]});
+ const response=await f.app.handle(f.req('/api/gmail/search',{query:'',mailboxId:'b'}));assert.equal(response.status,200);assert.equal(tokens.length,1);assert.match(tokens[0],/second/);assert.doesNotMatch(tokens[0],/first/);f.db.close();
+});

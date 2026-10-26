@@ -6,7 +6,7 @@ import {createSunBrowser,publicSun,sunMessage,syncSun,rentCredentials,rentAutoLo
 import {claimSimplefin,publicSimplefin,syncSimplefin,configureSimplefinAccount} from '../simplefin.mjs';
 import {plaidAccountEntry,bankAccounts,combineBankConnections} from '../providers.mjs';
 import {userScope,googleIdentity,microsoftIdentity,sessionMismatch} from '../user-scope.mjs';
-import {mailboxes,connectMailbox,connectMicrosoftMailbox,publicMail,forgetMailbox,scanMailbox,refreshSelectedEmail} from '../mailboxes.mjs';
+import {mailboxes,connectMailbox,connectMicrosoftMailbox,publicMail,forgetMailbox,scanMailbox,refreshSelectedEmail,mailboxWatches} from '../mailboxes.mjs';
 import {incomeFromTracker,incomeFromPlan} from '../income-preset.mjs';
 import {creditLinkOptions,syncCredit,publicCredit,publicItem} from '../credit.mjs';
 import {recurringBills,personalSpending} from '../recurring.mjs';
@@ -67,13 +67,14 @@ export function runtime(env,fetcher=fetch){
   await syncCredit(c,item,plaid,force);
   // One page per invocation, with a staged snapshot. Never commit a partial cursor.
   if(!item.pending)item.pending={original:item.cursor||'',cursor:item.cursor||'',transactions:c.transactions.filter(t=>t.itemId===item.id)};
-  try{if(!item.balancesUpdated||Date.now()-item.balancesUpdated>=sixHours)await syncBalances(c,item);const page=await plaid('/transactions/sync',{access_token:item.token,cursor:item.pending.cursor,count:100});item.pending.transactions=applyTransactions(item.pending.transactions,[page],item.id).filter(t=>t.date>=new Date(Date.now()-200*86400000).toISOString().slice(0,10)).slice(0,1500);item.pending.cursor=page.next_cursor;
+  try{if(!item.balancesUpdated||Date.now()-item.balancesUpdated>=sixHours){try{await syncBalances(c,item);}catch{/* Still sync transactions and liabilities. */}}const page=await plaid('/transactions/sync',{access_token:item.token,cursor:item.pending.cursor,count:100});item.pending.transactions=applyTransactions(item.pending.transactions,[page],item.id).filter(t=>t.date>=new Date(Date.now()-200*86400000).toISOString().slice(0,10)).slice(0,1500);item.pending.cursor=page.next_cursor;
    if(page.has_more)return 'Bank history is loading in small batches. Next step within 15 minutes.';
-   c.transactions=[...c.transactions.filter(t=>t.itemId!==item.id),...item.pending.transactions].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3000);item.cursor=item.pending.cursor;delete item.pending;item.nextSync=Date.now()+sixHours;return item.name+' synced. Scheduled again in about 6 hours.'+(item.liabilitiesStatus?' '+item.liabilitiesStatus:'');
-  }catch(e){if(e.code==='TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION')delete item.pending;item.nextSync=Date.now()+900000;throw e;}
+   c.transactions=[...c.transactions.filter(t=>t.itemId!==item.id),...item.pending.transactions].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3000);item.cursor=item.pending.cursor;delete item.pending;delete item.transactionsError;item.transactionsUpdated=new Date().toISOString();item.nextSync=Date.now()+sixHours;return item.name+' synced. Scheduled again in about 6 hours.'+(item.liabilitiesStatus?' '+item.liabilitiesStatus:'');
+  }catch(e){item.transactionsError=e.code||e.message;if(e.code==='TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION')delete item.pending;item.nextSync=Date.now()+900000;throw e;}
  }
  async function syncGmail(c,account,query=null){
-  const bills=await scanMailbox(c,account,{request,googleToken,microsoftToken,query,limit:query===null?3:4});
+  const watches=mailboxWatches(await read('classic',{}),account.id);
+  const bills=await scanMailbox(c,account,{request,googleToken,microsoftToken,query,watches,limit:query===null?3:10});
   if(bills.length){const p=await plan();let changed=false;for(const bill of bills)if(!p.state.bills.some(b=>b.sourceId===bill.sourceId||b.sourceKey===bill.sourceKey)){p.state.bills.push(bill);changed=true;}if(changed){validate(p.state);if(JSON.stringify(p.state).length>240000)throw Error('Plan storage is full.');p.revision++;await write('plan',p);}}
   return account.status;
  }
@@ -81,7 +82,8 @@ export function runtime(env,fetcher=fetch){
    if(!bankOnly&&!gmailOnly&&!targetId&&c.sun?.connected&&c.sun.enabled!==false&&!c.sun.needsLogin&&(!c.sun.nextSync||c.sun.nextSync<=now)&&!(c.sun.pending?.expires>now)){c.lastTask='rent';c.status=await syncSunRent(c);await write('connections',c);return {status:c.status};}
    if(!gmailOnly&&!targetId&&c.simplefin&&(force||!c.simplefin.nextSync||c.simplefin.nextSync<=now)&&(!bank||c.lastTask==='bank')){c.lastTask='simplefin';c.status=await syncSimplefinBalances(c);await write('connections',c);return {status:c.status};}
    if(targetId&&!bank)throw Error('Bank connection not found. Reload your connections.');
-   if(!bank&&!gmail)return {status:gmailOnly?'No email accounts connected.':c.status};if(bank)bank.lastSyncAttempt=now;try{if(force&&bank)await syncBalances(c,bank,true);if(gmail&&(!bank||c.lastTask==='bank')){c.lastTask='gmail';c.status=await syncGmail(c,gmail);}else{c.lastTask='bank';c.status=await syncBank(c,bank,force);}}catch(e){c.status='Sync needs attention: '+e.message;if(c.lastTask==='gmail'&&gmail){gmail.nextSync=now+sixHours;gmail.status=c.status;}}
+   if(!bank&&!gmail)return {status:gmailOnly?'No email accounts connected.':c.status};if(bank)bank.lastSyncAttempt=now;try{if(force&&bank){try{await syncBalances(c,bank,true);}catch{/* Independent products can still refresh. */}}if(gmail&&(!bank||c.lastTask==='bank')){c.lastTask='gmail';c.status=await syncGmail(c,gmail);}else{c.lastTask='bank';c.status=await syncBank(c,bank,force);}}catch(e){c.status='Sync needs attention: '+e.message;if(c.lastTask==='gmail'&&gmail){gmail.nextSync=now+sixHours;gmail.status=c.status;}}
+   if(bank?.balanceError)c.status+=' Balance refresh needs attention; earlier balances are kept: '+bank.balanceError;
    if(bank?.balanceWarning)c.status+=' '+bank.balanceWarning;
    c.lastAttempt=new Date().toISOString();c.candidates=c.candidates.filter(x=>!x.dismissed);await write('connections',c);return {status:c.status,itemId:bank?.id,balanceRefreshed:!!bank&&!bank.balanceError&&bank.balancesUpdated>=now,balanceWarning:bank?.balanceWarning||null,balanceError:bank?.balanceError||null};});}
  async function handleScoped(req){
@@ -199,7 +201,7 @@ export function runtime(env,fetcher=fetch){
      await updatePlan(s=>configureSimplefinAccount(s.accounts,b));return json({ok:true});
     }
     if(path==='/api/simplefin/disconnect'){
-     const c=await connections();delete c.simplefin;await write('connections',c);await updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.source!=='simplefin');});
+     const c=await connections();delete c.simplefin;c.transactions=c.transactions.filter(t=>t.source!=='simplefin');await write('connections',c);await updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.source!=='simplefin');});
      return json({ok:true,status:'SimpleFIN disconnected from BearDen. You can also revoke BearDen in SimpleFIN’s Apps section.'});
     }
     if(path==='/api/classic'){const state=validateClassic(b.state),current=await read('classic',{revision:0});if(current.revision!==b.revision)return json({error:'The tracker changed in another tab. Reload before editing again.'},409);await write('classic',{state,revision:current.revision+1});if(!await read('income-shortcut',null)){const preset=incomeFromTracker(state)||incomeFromPlan((await plan()).state);if(preset)await write('income-shortcut',preset);}return json({revision:current.revision+1});}
@@ -207,7 +209,7 @@ export function runtime(env,fetcher=fetch){
     if(path==='/api/plaid/exchange'){if(typeof b.public_token!=='string')throw Error('Missing public token');const c=await connections();if(c.items.length>=10)throw Error('This personal setup supports up to 10 bank connections');const d=await plaid('/item/public_token/exchange',{public_token:b.public_token});let item=c.items.find(i=>i.id===d.item_id);if(!item){item={id:d.item_id,token:d.access_token,name:String(b.name||'Bank').slice(0,150),cursor:'',liabilities:b.kind==='credit'};c.items.push(item);}
      // Persist the exchanged token before fetching balances so a provider failure is recoverable.
      c.status='Bank connected. Loading balances.';await write('connections',c);
-     try{await syncBalances(c,item);await syncCredit(c,item,plaid,true);c.status='Bank connected; balances loaded. Transaction history will load in the background.'+(item.liabilitiesStatus?' '+item.liabilitiesStatus:'');}
+     try{await syncBalances(c,item);c.status='Bank connected; balances loaded. Transaction history will load in the background.'+(item.liabilitiesStatus?' '+item.liabilitiesStatus:'');}
      catch(e){c.status='Bank connected, but balances could not load: '+e.message+'. Use Sync connections to retry.';}
      await write('connections',c);return json({ok:true,status:c.status});}
 
@@ -232,7 +234,7 @@ export function runtime(env,fetcher=fetch){
     }
     if(path==='/api/gmail/search'){
      if(typeof b.query!=='string'||b.query.length>100)throw Error('Use a merchant name of up to 100 characters.');
-     const c=await connections();for(const account of mailboxes(c,users.current().email)){try{await syncGmail(c,account,b.query);}catch(e){account.status='Email needs attention: '+e.message;}}
+     const c=await connections();for(const account of mailboxes(c,users.current().email).filter(a=>!b.mailboxId||a.id===b.mailboxId)){try{await syncGmail(c,account,b.query);}catch(e){account.status='Email needs attention: '+e.message;}}
      await write('connections',c);return json(publicMail(c,users.current().email));
     }
     if(path==='/api/gmail/disconnect'){
@@ -245,7 +247,7 @@ export function runtime(env,fetcher=fetch){
    });
   }
   if(!['GET','HEAD'].includes(req.method))return json({error:'Method not allowed'},405);
-  if(!['/','/index.html','/plaid-return','/style.css','/app.mjs','/engine.mjs','/setup-key','/setup-key.html','/setup-key.mjs','/favicon.ico','/tabs.js','/tabs.css','/theme.css','/income-model.mjs','/debt-payments.mjs','/rent-model.mjs','/rent-browser.mjs','/household-model.mjs','/bill-sharing.mjs','/credit-model.mjs','/transaction-links.mjs','/email-model.mjs','/tax-model.mjs','/tax-ui.mjs','/onboarding.js','/bank-activity.mjs','/classic.js','/classic.css','/classic-theme.js','/classic-events.js','/classic-migrate.mjs','/connections.js','/connections.css','/purify.min.js'].includes(path))return json({error:'Not found'},404);
+  if(!['/','/index.html','/plaid-return','/style.css','/app.mjs','/engine.mjs','/setup-key','/setup-key.html','/setup-key.mjs','/favicon.ico','/tabs.js','/tabs.css','/theme.css','/income-model.mjs','/connection-model.mjs','/debt-payments.mjs','/rent-model.mjs','/rent-browser.mjs','/household-model.mjs','/bill-sharing.mjs','/credit-model.mjs','/transaction-links.mjs','/email-model.mjs','/tax-model.mjs','/tax-ui.mjs','/onboarding.js','/bank-activity.mjs','/classic.js','/classic.css','/classic-theme.js','/classic-events.js','/classic-migrate.mjs','/connections.js','/connections.css','/purify.min.js'].includes(path))return json({error:'Not found'},404);
   const target=new URL(req.url);if(path==='/plaid-return')target.pathname='/';const asset=await env.ASSETS.fetch(new Request(target,req)),response=new Response(asset.body,asset);for(const [k,v]of Object.entries(headers))response.headers.set(k,v);return response;
  }
  async function handle(req){const identity=await sessionIdentity(req);return users.run(identity,()=>handleScoped(req));}

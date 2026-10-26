@@ -1,11 +1,14 @@
-import {scheduledPayment} from './debt-payments.mjs?v=debt-timing1';
-export {monthlyMinimum} from './debt-payments.mjs?v=debt-timing1';
+export {resolveDebtConnections,resolveDebtDetails} from './connection-model.mjs?v=connections-audit1';
+import {transactionAccountId} from './transaction-links.mjs?v=connections-audit1';
+import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=connections-audit1';
+export {monthlyMinimum} from './debt-payments.mjs?v=connections-audit1';
 import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-portal1';
-import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=shared-bill-list3';
+import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=connections-audit1';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
-export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs?v=spending-drilldown1';
+export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs?v=connections-audit1';
 export {creditBills,creditCapacity} from './credit-model.mjs?v=available-credit1';
-export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment} from './transaction-links.mjs?v=affirm-history1';
+export {transactionAccountId};
+export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment} from './transaction-links.mjs?v=connections-audit1';
 import {day,occurrences} from './engine.mjs';
 const cents=n=>Math.round((Number(n)||0)*100);
 const isPersonal=b=>/\b(food|dining|grocer(?:y|ies)|gas|fuel|transport|shopping|personal|spending|entertainment|misc(?:ellaneous)?|allowance|fun|restaurants)\b/i.test(b.name||'');
@@ -92,8 +95,9 @@ export function paydayEvents(plan,start,end,{billsOnly=false,debtMode='full'}={}
   let debtAllocations=(row?.payments||[]).reduce((sum,p)=>sum+cents(p),0);
   if(debtMode==='none')debtAllocations=0;
   if(debtMode==='minimum')debtAllocations=(s.cards||[]).reduce((sum,card,index)=>{
+   card=effectiveDebtTerms(card,plan.syncedDebtTerms?.[card.id],date);
    const interest=Math.round(remaining[index]*Math.max(0,Number(card.apr)||0)/100/26);
-   const owed=remaining[index]+interest,payment=Math.min(owed,Math.max(0,cents(scheduledPayment({...card,dueDate:plan.syncedDebtTerms?.[card.id]?.dueDate||card.dueDate},date,s.startDate,s.debtPaymentSettings).minimum)));
+   const owed=remaining[index]+interest,payment=Math.min(owed,Math.max(0,cents(scheduledPayment(card,date,s.startDate,s.debtPaymentSettings).minimum)));
    remaining[index]=owed-payment;return sum+payment;
   },0);
   const allocations=[...(budget||[]),...(extras||[])].filter(b=>!billsOnly||!isPersonal(b)).reduce((a,b)=>a+cents(b.amount),0)+debtAllocations+(row&&!billsOnly?(row.savingsByGoal||[]).reduce((a,b)=>a+cents(b.contribution),0):0);
@@ -251,5 +255,5 @@ export function personalChecking(accounts,household={}){
  return household.personalAccountId?checking.find(a=>a.id===household.personalAccountId)||null:checking.length===1?checking[0]:null;
 }
 export function personalCheckingTransactions(transactions,account){
- return account?.source==='plaid'?transactions.filter(t=>'plaid-'+t.account_id===account.id):[];
+ return ['plaid','simplefin'].includes(account?.source)?transactions.filter(t=>transactionAccountId(t)===account.id):[];
 }

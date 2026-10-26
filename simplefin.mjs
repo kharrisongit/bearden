@@ -31,7 +31,7 @@ export async function claimSimplefin(token,fetcher=fetch){
 }
 export async function fetchSimplefin(accessUrl,fetcher=fetch){
  const u=bridgeUrl(accessUrl),auth=Buffer.from(decodeURIComponent(u.username)+':'+decodeURIComponent(u.password)).toString('base64');
- u.username='';u.password='';u.pathname=u.pathname.replace(/\/$/,'')+'/accounts';u.search='version=2&balances-only=1';
+ u.username='';u.password='';u.pathname=u.pathname.replace(/\/$/,'')+'/accounts';u.search=new URLSearchParams({version:'2','start-date':String(Math.floor(Date.now()/1000)-90*86400)}).toString();
  const text=await fetchText(fetcher,u.href,{headers:{Authorization:'Basic '+auth,Accept:'application/json'}});
  let data;try{data=JSON.parse(text);}catch{throw Error('SimpleFIN returned an unreadable response.');}
  if(!data||!Array.isArray(data.accounts)||data.accounts.length>500)throw Error('SimpleFIN returned an invalid account list.');
@@ -46,12 +46,13 @@ export function simplefinAccountBalance(a){
  const balance=debt?Math.max(0,a.debtSign==='negative'?-raw:raw):a.type==='depository'?(a.rawAvailable??raw):raw;
  return {...a,balance,balanceUnavailable:!!a.providerUnavailable,include:false};
 }
+export const simplefinAccountId=a=>'simplefin-'+createHash('sha256').update(JSON.stringify([String(a.conn_id||a.org?.id||a.org?.['sfin-url']||''),a.id])).digest('hex').slice(0,32);
 export function mergeSimplefinAccounts(existing,data,now=new Date().toISOString()){
  const old=new Map(existing.filter(a=>a.source==='simplefin').map(a=>[a.id,a])),seen=new Set();
  const errors=[...(Array.isArray(data.errlist)?data.errlist:[]),...(Array.isArray(data.errors)?data.errors:[])];
  const next=data.accounts.map(a=>{
   if(!a||typeof a.id!=='string'||!a.id||a.id.length>500)throw Error('SimpleFIN returned an invalid account identifier.');
-  const connection=String(a.conn_id||a.org?.id||a.org?.['sfin-url']||''),id='simplefin-'+createHash('sha256').update(JSON.stringify([connection,a.id])).digest('hex').slice(0,32);
+  const id=simplefinAccountId(a);
   if(seen.has(id))throw Error('SimpleFIN returned duplicate accounts. Your previous balances were kept.');seen.add(id);
   const previous=old.get(id),org=data.connections?.find(c=>c.conn_id===a.conn_id),raw=amount(a.balance),date=stamp(a['balance-date']);
   const failed=errors.some(e=>typeof e==='string'||e.code?.startsWith('gen.')||e.account_id===a.id||e.conn_id===a.conn_id&&!e.account_id);
@@ -81,10 +82,33 @@ export async function syncSimplefin(c,readAccounts,saveAccounts,fetcher=fetch){
  s.lastAttempt=now;s.attempts.push(now);s.nextSync=now+6*3600000;
  try{
   const data=await fetchSimplefin(s.accessUrl,fetcher),accounts=mergeSimplefinAccounts(await readAccounts(),data);
-  await saveAccounts(accounts);s.updated=new Date().toISOString();s.nextSync=now+day;c.bankUpdated=s.updated;
+  await saveAccounts(accounts);c.transactions=mergeSimplefinTransactions(c.transactions||[],data);s.updated=new Date().toISOString();s.nextSync=now+day;c.bankUpdated=s.updated;
   const stale=accounts.filter(a=>a.source==='simplefin'&&a.providerUnavailable).length;
   const errors=(data.errlist?.length||0)+(data.errors?.length||0);
-  s.status=errors||stale?'SimpleFIN needs attention. Some balances were not refreshed; your previous balances are kept. Check the affected connection in SimpleFIN.':data.accounts.length?'SimpleFIN balances synced. Updates run about once a day.':'SimpleFIN is connected. Add financial institutions in SimpleFIN, then refresh here.';
+  s.status=errors||stale?'SimpleFIN needs attention. Some balances were not refreshed; your previous balances are kept. Check the affected connection in SimpleFIN.':data.accounts.length?'SimpleFIN balances and available transactions synced. Updates run about once a day.':'SimpleFIN is connected. Add financial institutions in SimpleFIN, then refresh here.';
  }catch(e){s.status=e.message+' Your previous balances are kept.';}
  return s.status;
+}
+
+
+// SimpleFIN deposits are positive; BearDen uses Plaid's positive-outflow convention.
+// Only a complete, successful account window may replace previous transactions.
+export function mergeSimplefinTransactions(existing,data,now=Date.now()){
+ const since=new Date(now-90*day).toISOString().slice(0,10),today=new Date(now).toISOString().slice(0,10),replace=new Set(),incoming=[];
+ const errors=[...(data.errlist||[]),...(data.errors||[])];
+ for(const account of data.accounts||[]){
+  const failed=errors.some(e=>typeof e==='string'||String(e.code||'').startsWith('gen.')||e.account_id===account.id||e.conn_id===account.conn_id&&!e.account_id);
+  if(failed||!Array.isArray(account.transactions))continue;
+  const id=simplefinAccountId(account),rows=[];let malformed=false;
+  for(const t of account.transactions){
+   const cents=amount(t?.amount),posted=stamp(t?.posted);
+   if(!t||typeof t.id!=='string'||!t.id||cents===null||!posted||typeof t.description!=='string'){if(!t?.pending)malformed=true;continue;}
+   const date=posted.slice(0,10);if(t.pending||date<since||date>today)continue;
+   rows.push({transaction_id:'simplefin-tx-'+createHash('sha256').update(JSON.stringify([id,t.id])).digest('hex').slice(0,32),itemId:'simplefin',account_id:id,source:'simplefin',name:label(t.description,'Transaction'),date,amount:-cents/100,pending:false,currency:account.currency,category:''});
+  }
+  if(!malformed)replace.add(id);incoming.push(...rows);
+ }
+ const map=new Map(existing.filter(t=>!(t.source==='simplefin'&&replace.has(t.account_id)&&t.date>=since)).map(t=>[t.transaction_id,t]));
+ for(const t of incoming)map.set(t.transaction_id,t);
+ return [...map.values()].filter(t=>t.date>=new Date(now-365*day).toISOString().slice(0,10)).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3000);
 }

@@ -435,6 +435,7 @@ function gatherAppState(){
     payoffMethod: currentPayoffMethod,
     debtPaymentSettings: window.debtPaymentSettings || {},
     debtPaymentHistory: window.debtPaymentHistory || {},
+    debtInterestHistory: window.debtInterestHistory || {},
     paycheckOverrides,
     savingsContributionOverrides,
     budgetItemOverrides,
@@ -494,6 +495,7 @@ async function loadAppState(){
     loadedState = state;
     window.debtPaymentSettings = window.BearDenDebtPayments.paymentTiming(state.debtPaymentSettings);
     window.debtPaymentHistory = state.debtPaymentHistory || {};
+    window.debtInterestHistory = state.debtInterestHistory || {};
 
     if (state.cards && state.cards.length) { cardsData = state.cards; cardIdCounter = state.cardIdCounter || cardIdCounter; }
     if (state.budgetItems) { budgetItems = state.budgetItems; budgetItemIdCounter = state.budgetItemIdCounter || budgetItemIdCounter; }
@@ -753,7 +755,7 @@ function calculate(isInitialLoad){
     return {
       id: c.id,
       name: c.name,
-      dueDate: window.syncedDebtTerms?.[c.id]?.dueDate || c.dueDate || '',
+      dueDate: c.dueDate || '',
       balance: balEl ? (parseFloat(balEl.value)||0) : c.balance,
       apr: (aprEl ? (parseFloat(aprEl.value)||0) : c.apr)/100,
       ...(minEl&&Number(minEl.value)!==window.BearDenDebtPayments.monthlyMinimum(c)
@@ -781,7 +783,7 @@ function calculate(isInitialLoad){
   let date = startDateVal ? new Date(startDateVal + 'T00:00:00') : new Date();
 
   let balances = cards.map(c => c.balance);
-  const aprs = cards.map(c => c.apr);
+  // Rates are resolved for each future paycheck below.
   const mins = cards.map(c => c.min);
   const paidOffAt = new Array(cards.length).fill(null);
   let prevTotal = balances.reduce((a,b)=>a+b,0);
@@ -876,12 +878,17 @@ function calculate(isInitialLoad){
       savingsByGoal[gi].balance = g.running;
     });
 
-    const interest = balances.map((b,i) => b * aprs[i] / 26);
+    const payday=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+    const effective=cards.map(c=>window.BearDenDebtPayments.effectiveDebtTerms({...c,apr:c.apr*100},window.syncedDebtTerms?.[c.id],payday,!!checkedPaychecks[paycheck]));
+    const aprs=effective.map(c=>c.apr/100);
+    const interest = balances.map((b,i) => {
+      const recorded=checkedPaychecks[paycheck]&&window.debtInterestHistory?.[paycheck]?.[cards[i].id];
+      return Number.isFinite(recorded)?recorded:b*aprs[i]/26;
+    });
     const interestThisCheck = interest.reduce((a,b)=>a+b, 0);
     interest.forEach(v => totalInterest += v);
 
-    const payday=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
-    const timing=cards.map(c=>window.BearDenDebtPayments.scheduledPayment(c,payday,startDateVal||payday,window.debtPaymentSettings));
+    const timing=effective.map(c=>window.BearDenDebtPayments.scheduledPayment(c,payday,startDateVal||payday,window.debtPaymentSettings));
     const minApplied = balances.map((b,i) => b <= 0 ? 0 : Math.min(timing[i].minimum, b + interest[i]));
     // A payoff action replaces automatic extra payments and old manual payment
     // adjustments. Reserve real spending, savings and every other debt first.
@@ -1920,6 +1927,9 @@ function toggleChecked(paycheckNum, checked){
   const row=lastSchedule.find(r=>r.paycheck===paycheckNum);
   if(checked&&row)window.debtPaymentHistory[paycheckNum]=Object.fromEntries(cardsData.map((c,i)=>[c.id,row.payments[i]]));
   else delete window.debtPaymentHistory[paycheckNum];
+  window.debtInterestHistory??={};
+  if(checked&&row)window.debtInterestHistory[paycheckNum]=Object.fromEntries(cardsData.map((c,i)=>[c.id,row.interestByAccount?.[i]||0]));
+  else delete window.debtInterestHistory[paycheckNum];
   checkedPaychecks[paycheckNum] = checked;
   window.dispatchEvent(new Event('bearden-plan-changed'));
   performSaveAppState(); // Persist completion before the celebration or leaving animation.
@@ -1957,7 +1967,7 @@ function resetCheckedPaychecks(){
   if(!confirm('Uncheck all paychecks? This clears paycheck checkoffs and recalculates your progress. Your income, budget, and accounts stay saved.'))return;
   const section = document.getElementById('schedulePlanSection');
   checkedPaychecks = {};
-  window.debtPaymentHistory={};
+  window.debtPaymentHistory={};window.debtInterestHistory={};
   if (section) {
     section.classList.remove('schedule-resetting');
     void section.offsetHeight; // restart the animation if it's already mid-play
@@ -6739,7 +6749,7 @@ function setupPaycheckBears(){
 
 window.classicReady=(async function init(){
   await window.BearDen.ready;
-  window.BearDenDebtPayments=await import('./debt-payments.mjs?v=debt-timing1');
+  window.BearDenDebtPayments=await import('./debt-payments.mjs?v=connections-audit1');
   window.BearDenTaxes=await import('./tax-ui.mjs?v=tracker-401k1');window.BearDenTaxes.mount();
   applyThemeButtonIcon(); // reflect whatever the early <head> script already applied
   applyThemeBackground(document.documentElement.getAttribute('data-theme') === 'dark');
@@ -6805,6 +6815,7 @@ window.saveDebtAccount=async function(data){
  const oldCards=structuredClone(cardsData),oldCounter=cardIdCounter;
  let card=data.id===null||data.id===undefined?null:cardsData.find(c=>String(c.id)===String(data.id));
  if(data.id!==null&&data.id!==undefined&&!card)throw Error('That debt no longer exists.');
+ window.captureDebtHistory();
  const payment=window.BearDenDebtPayments.monthlyPaymentSettings(card,monthly);
  if(!card){cardIdCounter=Math.max(cardIdCounter,...cardsData.map(c=>Number(c.id)||0))+1;card={id:cardIdCounter};cardsData.push(card);}
  Object.assign(card,{name,balance,apr,dueDate,...payment,debtKind:['credit-card','car-loan','loan','other'].includes(data.debtKind)?data.debtKind:'other'});
@@ -6870,9 +6881,16 @@ window.setSyncedDebtBalances=snapshots=>{
 
 
 
+window.captureDebtHistory=()=>{
+ window.debtPaymentHistory??={};window.debtInterestHistory??={};
+ for(const row of lastSchedule)if(checkedPaychecks[row.paycheck]){
+  window.debtPaymentHistory[row.paycheck]??=Object.fromEntries(cardsData.map((c,i)=>[c.id,row.payments[i]]));
+  window.debtInterestHistory[row.paycheck]??=Object.fromEntries(cardsData.map((c,i)=>[c.id,row.interestByAccount?.[i]||0]));
+ }
+};
 window.setSyncedDebtTerms=function(terms){
  if(JSON.stringify(terms)===JSON.stringify(window.syncedDebtTerms||{}))return false;
- window.syncedDebtTerms=terms;calculate();return true;
+ window.captureDebtHistory();window.syncedDebtTerms=terms;calculate();return true;
 };
 function renderDebtTimingSettings(){
  const settings=window.BearDenDebtPayments.paymentTiming(window.debtPaymentSettings);

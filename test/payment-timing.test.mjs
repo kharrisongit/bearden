@@ -3,9 +3,9 @@ import * as payments from '../public/debt-payments.mjs';
 import {paydayEvents} from '../public/income-model.mjs';
 const settings={mode:'due-date',leadDays:3},card={id:1,name:'Card',balance:10000,apr:0,min:46.15,monthlyMinimum:100,dueDate:'2026-11-15'};
 const source=readFileSync('public/classic.js','utf8'),calculate=source.slice(source.indexOf('function calculate('),source.indexOf('\nfunction fmtDate('));
-function plan({cards=[card],method='minimum',overrides={},history={},checked={},timing=settings,income=1000,start='2026-11-06'}={}){
+function plan({cards=[card],method='minimum',overrides={},history={},interestHistory={},terms={},checked={},timing=settings,income=1000,start='2026-11-06'}={}){
  const fields={takeHome:{value:String(income)},startDate:{value:start}};
- const ctx=vm.createContext({window:{BearDenDebtPayments:payments,debtPaymentSettings:timing,debtPaymentHistory:history,dispatchEvent(){},syncedDebtBalances:{}},document:{getElementById:id=>fields[id]||null},Event,cardsData:structuredClone(cards),paycheckSlices:{},paycheckSquashes:{},budgetItems:[],currentPayoffMethod:method,savingsGoals:[],paycheckOverrides:{},appliedBonuses:{},checkedPaychecks:checked,budgetItemOverrides:{},savingsContributionOverrides:{},extraExpenses:{},accountPaymentOverrides:overrides,queueSaveAppState(){},payoffActionPayment(){throw Error('Unexpected action');}});
+ const ctx=vm.createContext({window:{BearDenDebtPayments:payments,debtPaymentSettings:timing,debtPaymentHistory:history,debtInterestHistory:interestHistory,syncedDebtTerms:terms,dispatchEvent(){},syncedDebtBalances:{}},document:{getElementById:id=>fields[id]||null},Event,cardsData:structuredClone(cards),paycheckSlices:{},paycheckSquashes:{},budgetItems:[],currentPayoffMethod:method,savingsGoals:[],paycheckOverrides:{},appliedBonuses:{},checkedPaychecks:checked,budgetItemOverrides:{},savingsContributionOverrides:{},extraExpenses:{},accountPaymentOverrides:overrides,queueSaveAppState(){},payoffActionPayment(){throw Error('Unexpected action');}});
  ctx.renderResults=(cards,schedule)=>ctx.result={cards,schedule};vm.runInContext(calculate+'\ncalculate()',ctx);return ctx.result;
 }
 const plain=value=>JSON.parse(JSON.stringify(value));
@@ -46,4 +46,12 @@ test('minimum-only forecast follows the same dates even after the full payoff pl
  const p=plan(),state={cards:[card],startDate:'2026-11-06',takeHome:1000,debtPaymentSettings:settings};
  const events=paydayEvents({state,schedule:p.schedule.slice(0,1)},'2026-11-06','2026-12-05',{debtMode:'minimum'});
  assert.deepEqual(events.map(e=>e.allocations),[10000,0,10000]);
+});
+
+test('synced minimum, due date and APR affect future checks while recorded amounts and interest remain intact',()=>{
+ const terms={1:{date:'2026-11-20',monthlyMinimum:200,dueDate:'2026-11-30',apr:26}},p=plan({terms,checked:{1:true},history:{1:{1:75}},interestHistory:{1:{1:12}}});
+ assert.equal(p.schedule[0].payments[0],75);assert.equal(p.schedule[0].interestByAccount[0],12);
+ assert.equal(p.schedule[1].payments[0],200);assert.equal(p.schedule[1].debtTiming[0].dueDate,'2026-11-30');assert.ok(p.schedule[1].interestByAccount[0]>90);
+ const events=paydayEvents({state:{cards:[card],startDate:'2026-11-06',takeHome:1000,debtPaymentSettings:settings},schedule:[],syncedDebtTerms:terms},'2026-11-06','2026-12-05',{debtMode:'minimum'});
+ assert.deepEqual(events.map(e=>e.allocations),[10000,20000,0]);
 });

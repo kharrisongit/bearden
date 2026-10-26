@@ -1,4 +1,5 @@
 import {day} from './engine.mjs';
+export const transactionAccountId=t=>{const id=typeof t==='string'?t:t?.account_id||t?.accountId||'';return id.startsWith('simplefin-')?id:'plaid-'+id;};
 
 // Keep account/loan numbers significant. Only explicitly labelled reference
 // numbers vary freely; fuzzy substring matching could merge two different bills.

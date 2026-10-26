@@ -10,7 +10,7 @@ test('claim and read use only approved HTTPS hosts, redact URL credentials, and 
  const calls=[];const f=async(url,opts)=>{calls.push({url,opts});return new Response(url.includes('/claim/')?access:JSON.stringify(payload()));};
  assert.equal(await claimSimplefin(setup,f),access);assert.equal(calls[0].opts.method,'POST');
  await fetchSimplefin(access,f);assert.ok(!calls[1].url.includes('private-'));assert.equal(calls[1].opts.redirect,'manual');assert.equal(calls[1].opts.headers.Authorization,'Basic '+Buffer.from('private-user:private-password').toString('base64'));
- assert.match(calls[1].url,/balances-only=1/);
+ assert.equal(new URL(calls[1].url).searchParams.has('balances-only'),false);assert.equal(new URL(calls[1].url).searchParams.get('version'),'2');assert.ok(Number(new URL(calls[1].url).searchParams.get('start-date'))>0);
  for(const url of ['http://beta-bridge.simplefin.org/simplefin/claim/a','https://evil.example/simplefin/claim/a','https://beta-bridge.simplefin.org.evil.example/simplefin/claim/a','https://127.0.0.1/simplefin/claim/a','https://beta-bridge.simplefin.org:8443/simplefin/claim/a','https://user:pass@beta-bridge.simplefin.org/simplefin/claim/a'])await assert.rejects(()=>claimSimplefin(Buffer.from(url).toString('base64'),f));
  assert.equal(calls.length,2);
  await assert.rejects(()=>claimSimplefin(setup,async()=>new Response('',{status:302,headers:{Location:'https://evil.example'}})),/302/);

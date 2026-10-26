@@ -24,11 +24,11 @@ export function requireMicrosoftMail(token){
  if(!token.refresh_token||!scopes.some(s=>s==='mail.read'||s==='https://graph.microsoft.com/mail.read'))throw Error('Read-only inbox access was not granted. Reconnect Hotmail / Outlook and allow access.');
 }
 export const microsoftMailHeaders=token=>({Authorization:'Bearer '+token.access_token,Prefer:'outlook.body-content-type="text", IdType="ImmutableId"'});
-export function microsoftMessagesUrl(query,limit,page){
+export function microsoftMessagesUrl(query,limit,page,senders=[]){
  if(page&&query===null){const url=new URL(page);if(url.origin!=='https://graph.microsoft.com'||url.pathname!=='/v1.0/me/messages'||url.username||url.password)throw Error('Invalid Microsoft mail page. Reconnect the inbox.');return url.href;}
  const search=String(query||'').replace(/[^\p{L}\p{N}\s@.-]/gu,' ').trim().slice(0,100);
  const since=new Date(Date.now()-180*86400000).toISOString().slice(0,10);
- const words=search?search.split(/\s+/).map(w=>'"'+w+'"').join(' AND '):'(bill OR invoice OR statement OR payment OR autopay)';
+ const words=search?search.split(/\s+/).map(w=>'"'+w+'"').join(' AND '):'(bill OR invoice OR statement OR payment OR autopay'+senders.filter(s=>/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(s)).slice(0,40).map(s=>' OR from:'+s).join('')+')';
  return graph+'/me/messages?'+new URLSearchParams({'$search':'"received>='+since+' AND '+words.replaceAll('"','\\"')+'"','$select':'id','$top':String(query===null?10:limit)});
 }
 export async function readMicrosoftEmail(request,headers,account,sourceId){

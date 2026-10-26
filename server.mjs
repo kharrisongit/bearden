@@ -4,7 +4,7 @@ import {publicSun} from './sun-rent.mjs';
 import {claimSimplefin,publicSimplefin,syncSimplefin,configureSimplefinAccount} from './simplefin.mjs';
 import {plaidAccountEntry,bankAccounts,combineBankConnections} from './providers.mjs';
 import {userScope,googleIdentity,microsoftIdentity,sessionMismatch} from './user-scope.mjs';
-import {mailboxes,connectMailbox,connectMicrosoftMailbox,publicMail,forgetMailbox,scanMailbox,refreshSelectedEmail} from './mailboxes.mjs';
+import {mailboxes,connectMailbox,connectMicrosoftMailbox,publicMail,forgetMailbox,scanMailbox,refreshSelectedEmail,mailboxWatches} from './mailboxes.mjs';
 import {incomeFromTracker,incomeFromPlan} from './income-preset.mjs';
 import {creditLinkOptions,syncCredit,publicCredit,publicItem} from './credit.mjs';
 import {recurringBills,personalSpending} from './recurring.mjs';
@@ -49,19 +49,25 @@ async function syncSimplefinBalances(c){return syncSimplefin(c,()=>getPlan().sta
 async function doSync(bankOnly=false,targetId=null,gmailOnly=false){
  let c=connections(),errors=[],now=new Date().toISOString();
  if(targetId&&!c.items.some(i=>i.id===targetId))throw Error('Bank connection not found. Reload your connections.');
- for(const item of (gmailOnly?[]:c.items.filter(i=>!targetId||i.id===targetId))){item.balanceAttempt=Date.now();await syncCredit(c,item,plaid);if(item.liabilitiesError)errors.push(item.liabilitiesStatus);try{const synced=await transactionSync(item),accounts=await bankAccounts(plaid,item,bankOnly);c.transactions=applyTransactions(c.transactions,synced.changes,item.id);item.cursor=synced.cursor;
-  updatePlan(s=>{const activeIds=new Set(accounts.accounts.map(a=>'plaid-'+a.account_id));s.accounts=s.accounts.filter(a=>a.itemId!==item.id||activeIds.has(a.id));for(const a of accounts.accounts){const id='plaid-'+a.account_id,old=s.accounts.find(x=>x.id===id),entry=plaidAccountEntry(a,item,old);if(old)Object.assign(old,entry);else s.accounts.push(entry);}});c.bankUpdated=now;item.balancesUpdated=Date.now();delete item.balanceError;if(item.balanceWarning)errors.push(item.balanceWarning);
- }catch(e){item.balanceError=e.code||e.message;errors.push(`${item.name}: ${e.message}`);}}
+ for(const item of (gmailOnly?[]:c.items.filter(i=>!targetId||i.id===targetId))){
+  item.balanceAttempt=Date.now();await syncCredit(c,item,plaid);if(item.liabilitiesError)errors.push(item.liabilitiesStatus);
+  try{const accounts=await bankAccounts(plaid,item,bankOnly);
+   updatePlan(s=>{const activeIds=new Set(accounts.accounts.map(a=>'plaid-'+a.account_id));s.accounts=s.accounts.filter(a=>a.itemId!==item.id||activeIds.has(a.id));for(const a of accounts.accounts){const id='plaid-'+a.account_id,old=s.accounts.find(x=>x.id===id),entry=plaidAccountEntry(a,item,old);if(old)Object.assign(old,entry);else s.accounts.push(entry);}});c.bankUpdated=now;item.balancesUpdated=Date.now();delete item.balanceError;if(item.balanceWarning)errors.push(item.balanceWarning);
+  }catch(e){item.balanceError=e.code||e.message;errors.push(item.name+' balances: '+e.message);}
+  try{const synced=await transactionSync(item);c.transactions=applyTransactions(c.transactions,synced.changes,item.id);item.cursor=synced.cursor;delete item.transactionsError;item.transactionsUpdated=now;}
+  catch(e){item.transactionsError=e.code||e.message;errors.push(item.name+' transactions: '+e.message);}
+ }
  if(!gmailOnly&&!targetId&&c.simplefin&&(!c.simplefin.nextSync||c.simplefin.nextSync<=Date.now())){const status=await syncSimplefinBalances(c);if(!c.simplefin.updated||c.simplefin.updated<now||status.includes('attention'))errors.push(status);}
  if(!bankOnly)for(const account of mailboxes(c,users.current().email)){try{await syncMailbox(c,account);}catch(e){account.status='Email needs attention: '+e.message;errors.push(account.email+': '+account.status);}}
  c.status=errors.length?'Sync needs attention — '+errors.join(' · '):'Last sync: '+now;c.lastAttempt=now;write('connections',c);return c;
 }
 async function syncMailbox(c,account,query=null){
- const bills=await scanMailbox(c,account,{request,googleToken,microsoftToken,query,limit:query===null?3:4});
+ const watches=mailboxWatches(read('classic',{}),account.id);
+  const bills=await scanMailbox(c,account,{request,googleToken,microsoftToken,query,watches,limit:query===null?3:10});
  if(bills.length){const p=getPlan();let changed=false;for(const bill of bills)if(!p.state.bills.some(b=>b.sourceId===bill.sourceId||b.sourceKey===bill.sourceKey)){p.state.bills.push(bill);changed=true;}if(changed){validate(p.state);p.revision++;write('plan',p);}}
 }
 async function sync(bankOnly=false,targetId=null,gmailOnly=false){const id=users.current().accountId;if(!syncs.has(id))syncs.set(id,doSync(bankOnly,targetId,gmailOnly).finally(()=>syncs.delete(id)));return syncs.get(id);}
-const staticFiles={'/household-model.mjs':['household-model.mjs','text/javascript'],'/bill-sharing.mjs':['bill-sharing.mjs','text/javascript'],'/rent-browser.mjs':['rent-browser.mjs','text/javascript'],'/debt-payments.mjs':['debt-payments.mjs','text/javascript'],'/rent-model.mjs':['rent-model.mjs','text/javascript'],'/tax-model.mjs':['tax-model.mjs','text/javascript'],'/tax-ui.mjs':['tax-ui.mjs','text/javascript'],'/onboarding.js':['onboarding.js','text/javascript'],'/email-model.mjs':['email-model.mjs','text/javascript'],'/transaction-links.mjs':['transaction-links.mjs','text/javascript'],'/credit-model.mjs':['credit-model.mjs','text/javascript'],'/bank-activity.mjs':['bank-activity.mjs','text/javascript'],'/tabs.js':['tabs.js','text/javascript'],'/tabs.css':['tabs.css','text/css'],'/theme.css':['theme.css','text/css'],'/income-model.mjs':['income-model.mjs','text/javascript'],'/classic.js':['classic.js','text/javascript'],'/classic.css':['classic.css','text/css'],'/classic-theme.js':['classic-theme.js','text/javascript'],'/classic-events.js':['classic-events.js','text/javascript'],'/classic-migrate.mjs':['classic-migrate.mjs','text/javascript'],'/connections.js':['connections.js','text/javascript'],'/connections.css':['connections.css','text/css'],'/purify.min.js':['purify.min.js','text/javascript'],'/setup-key.html':['setup-key.html','text/html'],'/setup-key.mjs':['setup-key.mjs','text/javascript'],'/':['index.html','text/html'],'/plaid-return':['index.html','text/html'],'/index.html':['index.html','text/html'],'/style.css':['style.css','text/css'],'/app.mjs':['app.mjs','text/javascript'],'/engine.mjs':['engine.mjs','text/javascript']};
+const staticFiles={'/connection-model.mjs':['connection-model.mjs','text/javascript'],'/household-model.mjs':['household-model.mjs','text/javascript'],'/bill-sharing.mjs':['bill-sharing.mjs','text/javascript'],'/rent-browser.mjs':['rent-browser.mjs','text/javascript'],'/debt-payments.mjs':['debt-payments.mjs','text/javascript'],'/rent-model.mjs':['rent-model.mjs','text/javascript'],'/tax-model.mjs':['tax-model.mjs','text/javascript'],'/tax-ui.mjs':['tax-ui.mjs','text/javascript'],'/onboarding.js':['onboarding.js','text/javascript'],'/email-model.mjs':['email-model.mjs','text/javascript'],'/transaction-links.mjs':['transaction-links.mjs','text/javascript'],'/credit-model.mjs':['credit-model.mjs','text/javascript'],'/bank-activity.mjs':['bank-activity.mjs','text/javascript'],'/tabs.js':['tabs.js','text/javascript'],'/tabs.css':['tabs.css','text/css'],'/theme.css':['theme.css','text/css'],'/income-model.mjs':['income-model.mjs','text/javascript'],'/classic.js':['classic.js','text/javascript'],'/classic.css':['classic.css','text/css'],'/classic-theme.js':['classic-theme.js','text/javascript'],'/classic-events.js':['classic-events.js','text/javascript'],'/classic-migrate.mjs':['classic-migrate.mjs','text/javascript'],'/connections.js':['connections.js','text/javascript'],'/connections.css':['connections.css','text/css'],'/purify.min.js':['purify.min.js','text/javascript'],'/setup-key.html':['setup-key.html','text/html'],'/setup-key.mjs':['setup-key.mjs','text/javascript'],'/':['index.html','text/html'],'/plaid-return':['index.html','text/html'],'/index.html':['index.html','text/html'],'/style.css':['style.css','text/css'],'/app.mjs':['app.mjs','text/javascript'],'/engine.mjs':['engine.mjs','text/javascript']};
 async function handle(req,res){
  res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Frame-Options','DENY');res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
  res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self' https://cdn.plaid.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.plaid.com wss://live.browser.run; frame-src https://*.plaid.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
@@ -121,7 +127,7 @@ async function handle(req,res){
      }
      if(path==='/api/simplefin/refresh'){c.status=await syncSimplefinBalances(c);write('connections',c);return {status:c.status};}
      if(path==='/api/simplefin/account'){updatePlan(s=>configureSimplefinAccount(s.accounts,b));return {ok:true};}
-     if(path==='/api/simplefin/disconnect'){delete c.simplefin;write('connections',c);updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.source!=='simplefin');});return {ok:true,status:'SimpleFIN disconnected from BearDen. You can also revoke BearDen in SimpleFIN’s Apps section.'};}
+     if(path==='/api/simplefin/disconnect'){delete c.simplefin;c.transactions=c.transactions.filter(t=>t.source!=='simplefin');write('connections',c);updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.source!=='simplefin');});return {ok:true,status:'SimpleFIN disconnected from BearDen. You can also revoke BearDen in SimpleFIN’s Apps section.'};}
      throw Error('Unknown SimpleFIN action.');
     })();syncs.set(identity,task);try{return json(res,200,await task);}finally{syncs.delete(identity);}
    }
@@ -141,7 +147,7 @@ async function handle(req,res){
    }
    if(path==='/api/gmail/search'){
     if(typeof b.query!=='string'||b.query.length>100)throw Error('Use a merchant name of up to 100 characters.');if(runningSync())await runningSync();
-    const c=connections();syncs.set(users.current().accountId,(async()=>{for(const account of mailboxes(c,users.current().email)){try{await syncMailbox(c,account,b.query);}catch(e){account.status='Email needs attention: '+e.message;}}write('connections',c);})().finally(()=>syncs.delete(users.current().accountId)));await runningSync();return json(res,200,publicMail(c,users.current().email));
+    const c=connections();syncs.set(users.current().accountId,(async()=>{for(const account of mailboxes(c,users.current().email).filter(a=>!b.mailboxId||a.id===b.mailboxId)){try{await syncMailbox(c,account,b.query);}catch(e){account.status='Email needs attention: '+e.message;}}write('connections',c);})().finally(()=>syncs.delete(users.current().accountId)));await runningSync();return json(res,200,publicMail(c,users.current().email));
    }
    if(path==='/api/gmail/disconnect'){
     if(runningSync())await runningSync();const c=connections(),accounts=mailboxes(c,users.current().email),id=b.id||(accounts.length===1?accounts[0].id:null),account=accounts.find(a=>a.id===id);if(!account)return json(res,400,{error:'Choose the email account to disconnect.'});

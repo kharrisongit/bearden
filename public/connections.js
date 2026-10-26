@@ -184,7 +184,7 @@ window.BearDen=(()=>{
   syncNoticeDismissed=false;syncNoticeActive=true;syncMessage('Syncing connections…');
   try{
   const results=await refreshEveryBank(syncMessage);if(!results)return;
-  if(legacy?.connections?.emailConnected||legacy?.connections?.gmail){syncMessage('Checking email…');try{const result=await api('/api/sync',{gmailOnly:true});results.push(result.status||'Email checked.');}catch(error){results.push('Email: '+error.message);}await refresh();}
+  if(legacy?.connections?.emailConnected||legacy?.connections?.gmail){syncMessage('Checking email…');try{const result=await bridge.searchGmail('');results.push(...(result.mailAccounts||[]).map(a=>(a.email||'Email')+': '+a.status));}catch(error){results.push('Email: '+error.message);}await refresh();}
   if(legacy?.connections?.sun?.connected&&legacy.connections.sun.enabled!==false){syncMessage('Checking rent…');try{const result=await api('/api/rent/refresh',{});results.push(result.status||'Rent checked.');}catch(error){results.push('Rent: '+error.message);}await refresh();}
   syncMessage(results.join(' · '));
   }catch(error){syncMessage(error.message);}finally{syncNoticeActive=false;$('#classicSync').removeAttribute('aria-busy');}
@@ -197,7 +197,7 @@ window.BearDen=(()=>{
  $('#classicOutlook').onclick=()=>{if(requireLogin()&&config.microsoftConfigured)location.href='/auth/microsoft?mail=1&account='+encodeURIComponent(config.accountId);};
  bridge.billShare=async(action,body={})=>{await bridge.ready;await queue;if(!config.authenticated)throw Error('Sign in to BearDen to share or import bills.');return api('/api/bills/share/'+action,body);};
  bridge.readGmailMessage=async message=>{await queue;const result=await api('/api/gmail/message',{mailboxId:message.mailboxId,id:message.id});if(!result.message)throw Error('Could not read the selected email. Try again.');legacy.connections.gmailMessages=[...(legacy.connections.gmailMessages||[]).filter(m=>m.id!==result.message.id),result.message];return result.message;};
- bridge.searchGmail=async query=>{await queue;const result=await api('/api/gmail/search',{query:String(query||'').slice(0,100)});Object.assign(legacy.connections,result);renderConnections();return result;};
+ bridge.searchGmail=async query=>{await queue;const accounts=legacy?.connections?.mailAccounts||legacy?.connections?.gmailAccounts||[];let result;const errors=[];for(const account of accounts.length?accounts:[null]){try{result=await api('/api/gmail/search',{query:String(query||'').slice(0,100),...(account?{mailboxId:account.id}:{})});Object.assign(legacy.connections,result);}catch(error){errors.push((account?.email||'Email')+': '+error.message);}}renderConnections();if(errors.length)throw Error(errors.join(' · '));return result;};
  $('#checkGmailAccounts').onclick=run(async()=>{$('#gmailFeedback').textContent='Checking email…';try{await bridge.searchGmail('');$('#gmailFeedback').textContent='Email checked.';}catch(error){$('#gmailFeedback').textContent=error.message;}});
  document.addEventListener('click',async e=>{const button=e.target.closest('[data-gmail-disconnect]');if(!button)return;const account=(legacy?.connections?.mailAccounts||legacy?.connections?.gmailAccounts)?.find(a=>a.id===button.dataset.gmailDisconnect);if(!account||!confirm('Disconnect '+account.email+' and stop watching its bill emails?'))return;button.disabled=true;try{await api('/api/gmail/disconnect',{id:account.id});await refresh();}catch(e){message(e.message);}finally{button.disabled=false;}});
 
