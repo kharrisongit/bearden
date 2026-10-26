@@ -1,30 +1,4 @@
-
-  :root{
-    --ink:#2f2a35;
-    --ink-fixed:#37313f;
-    --paper:#eceaee;
-    --card:#ffffff;
-    --line:#ccc0de;
-    --accent:#7f4ac9;
-    --accent-soft:#e6e4ea;
-    --warn:#a8452e;
-    --warn-soft:#eae8ed;
-    --muted:#67587d;
-    color-scheme:light;
-  }
-  [data-theme="dark"]{
-    --ink:#ebe7f1;
-    --paper:#17121d;
-    --card:#231c2c;
-    --line:#3c3349;
-    --accent:#714aa8;
-    --accent-soft:#28242e;
-    --warn:#9360da;
-    --warn-soft:#2c2832;
-    --muted:#a49ab2;
-    color-scheme:dark;
-  }
-  html{background:var(--paper);}
+html{background:var(--paper);}
   /* The hero cards, app title box, and milestone banners below use their
      own fixed decorative gradients rather than the theme variables — they
      were designed to always look bold regardless of theme, so they don't

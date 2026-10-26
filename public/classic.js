@@ -41,7 +41,7 @@ function money(n){
   return sign + '$' + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
-const PIE_COLORS = ['#147d76','#65b9a1','#ebaa8a','#d8bc78','#6f9eac','#b88e9b','#c4d9b7','#477f75'];
+const PIE_COLORS = ['#b0712b','#536c80','#78814b','#b95840','#bf994c','#778d9a','#8a694d','#b6b288'];
 
 // Builds a CSS conic-gradient pie chart with a legend. segments is
 // [{label, value, target}]; colors are assigned automatically. If
@@ -1298,20 +1298,11 @@ function toggleGamesSection(){
   }
 }
 
-// Dark mode: flips a data-theme attribute on <html>, which the CSS custom
-// properties key off of. Also sets the page background directly as an
-// inline style — belt-and-suspenders alongside the CSS variables, so the
-// background is guaranteed to switch even if something about the hosting
-// page/frame around this document paints its own background behind a body
-// that isn't full-height. Persisted directly to localStorage (synchronously,
-// same as the early-apply script in <head>) rather than through the async
-// `storage` wrapper, so the choice sticks the instant it's tapped.
-const THEME_PAPER = { light: '#f6f2e9', dark: '#102321' };
-
-function applyThemeBackground(isDark){
-  const color = isDark ? THEME_PAPER.dark : THEME_PAPER.light;
-  document.documentElement.style.backgroundColor = color;
-  if (document.body) document.body.style.backgroundColor = color;
+// The theme attribute selects one shared palette. Remove legacy inline colors
+// so page backgrounds always match the active CSS theme, including after reload.
+function applyThemeBackground(){
+  document.documentElement.style.removeProperty('background-color');
+  if (document.body) document.body.style.removeProperty('background-color');
 }
 
 function applyThemeButtonIcon(){
@@ -1844,7 +1835,7 @@ function spawnConfetti(){
   const container = document.getElementById('celebrationConfetti');
   if (!container) return;
   container.innerHTML = '';
-  const colors = ['#7042c1','#a58ad1','#62546e','#c2b1de','#975e9c','#ba7eac','#91859e'];
+  const colors = ['#b0712b','#536c80','#78814b','#b95840','#bf994c','#778d9a','#8a694d'];
   for (let i = 0; i < 80; i++) {
     const piece = document.createElement('div');
     piece.className = 'confetti-piece';
