@@ -12,3 +12,7 @@ html,body{overflow-x:clip}
 .header-actions{display:flex;gap:8px}
 
 #simplefinSection input[type=password]{display:block;width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);font:inherit;margin:8px 0}#simplefinSection summary{cursor:pointer;padding:10px 0;font-weight:650}.simplefin-steps{padding-left:22px;font-size:.82rem;line-height:1.6}#simplefinAccounts label{display:block;margin-top:8px}#simplefinAccounts select{font-size:16px}
+.connection-accounts{margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:0 12px}
+#connectionDialog .connection-accounts>summary{padding:12px 0;cursor:pointer;font-size:.8rem;font-weight:650;color:var(--accent)}
+.connection-accounts[open]>summary{border-bottom:1px solid var(--line)}
+.connection-accounts .connection-row:last-child{border-bottom:0}

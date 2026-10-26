@@ -1420,7 +1420,6 @@ function buildAccountDetailHTML(d, idx){
       <div class="pie-chart" style="width:165px;height:165px;flex-shrink:0;background:conic-gradient(var(--accent) 0% ${pct.toFixed(2)}%, #e3e0d8 ${pct.toFixed(2)}% 100%);"></div>
       <div style="display:flex;flex-direction:column;gap:8px;">
         <div class="account-terms-mini account-terms-mini-warn account-terms-mini-sm">
-          <div class="account-terms-mini-row"><span>APR</span><span style="color:var(--warn);">${(d.apr*100).toFixed(2)}%</span></div>
           <div class="account-terms-mini-row"><span>Interest paid</span><span style="color:var(--warn);">${money(d.interestPaid)}</span></div>
         </div>
         <div class="account-terms-mini account-terms-mini-sm">
