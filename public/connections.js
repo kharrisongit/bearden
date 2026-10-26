@@ -37,14 +37,15 @@ window.BearDen=(()=>{
   $('#classicBalances').innerHTML=plaidAccounts.filter(a=>!accountHidden(a.id)).map(a=>`<div class="connection-row"><div class="connection-account-heading"><strong>${esc(a.name)}</strong>${hideAccountButton(a)}</div>${a.balanceUnavailable?'Balance not supplied':money(a.balance)}<small>${esc(a.currency||'USD')}${a.balanceRetrieved?' · Retrieved '+esc(new Date(a.balanceRetrieved).toLocaleString()):''}</small>${['loan','credit'].includes(a.type)&&a.balance===0?'<small>Plaid reports zero; verify with your bank. This is a balance, not a payment due.'+(a.lastPositiveBalance>0?' Last positive balance received: '+money(a.lastPositiveBalance)+'.':'')+'</small>':''}<details><summary>Balance details</summary><small>Connection: ${esc(c.items?.find(i=>i.id===a.itemId)?.name||'Bank')}${c.items?.find(i=>i.id===a.itemId)?.balanceError?'<br>Last balance refresh failed: '+esc(c.items.find(i=>i.id===a.itemId).balanceError):''}<br>Account type: ${esc(a.type||'Not supplied')} / ${esc(a.subtype||'Not supplied')}<br>Current balance reported by Plaid: ${a.reportedCurrent===undefined?'No balance response saved for this account':a.reportedCurrent===null?'Not supplied':money(Math.round(a.reportedCurrent*100))}<br>Available balance reported by Plaid: ${a.reportedAvailable===undefined?'No balance response saved for this account':a.reportedAvailable===null?'Not supplied':money(Math.round(a.reportedAvailable*100))}</small></details></div>`).join('')+hiddenAccountsMarkup(plaidAccounts);
   renderSimplefin(c,s);renderRent(c.sun);
   $('#classicGmail').textContent='Add Gmail account';$('#classicDisconnectGmail').hidden=true;$('#checkGmailAccounts').hidden=!c.gmail;
-  $('#classicEmailStatus').textContent=c.gmail?'Connected. Bills and payment notices update in the background.':'Connect Gmail to find bills and payment notices.';
+  $('#classicEmailStatus').textContent=c.gmail?'Connected':'Not connected';$('#classicEmailStatus').dataset.connected=String(!!c.gmail);
   $('#gmailAccountList').innerHTML=(c.gmailAccounts||[]).map(a=>'<div class="connection-row"><strong>'+esc(a.email||'Gmail account')+'</strong><small>'+esc(a.status||'Connected')+(a.updated?' · '+esc(new Date(a.updated).toLocaleString()):'')+'</small><button type="button" data-gmail-disconnect="'+esc(a.id)+'">Disconnect</button></div>').join('');
  }
  function renderRent(rent){
   const enabled=rent?.enabled??!!rent?.connected;$('#rentEnabledToggle').checked=enabled;$('#rentSection').hidden=!enabled;
   if(document.activeElement!==$('#rentPortalUrl'))$('#rentPortalUrl').value=rent?.pendingPortalUrl||rent?.portalUrl||'';
   $('#rentConnect').disabled=!config.rentConfigured;$('#rentConnect').textContent=rent?.connected?'Sign in again':'Connect rent portal';
-  $('#rentStatus').textContent=!config.rentConfigured?'Rent sign-in is available on the hosted Cloudflare version of BearDen.':rent?.status||'Not connected.';
+  $('#rentStatus').textContent=rent?.needsLogin?'Sign in needed':rent?.connected?'Connected':'Not connected';$('#rentStatus').dataset.connected=String(!!rent?.connected&&!rent?.needsLogin);
+  $('#rentFeedback').textContent=!config.rentConfigured?'Rent sign-in is available on the hosted Cloudflare version of BearDen.':rent?.status||'Not connected.';
   $('#rentActions').hidden=!rent?.connected;$('#rentLogin').hidden=!rent?.pendingUntil;if(rent?.pendingUntil)setConnectionConfig('configureRent',true);
   $('#rentLoginLink').hidden=!rentLoginUrl||!rent?.pendingUntil;
   if(rentLoginUrl)$('#rentLoginLink').href=rentLoginUrl;else $('#rentLoginLink').removeAttribute('href');
@@ -52,12 +53,12 @@ window.BearDen=(()=>{
   const r=rent?.snapshot;$('#rentSnapshot').innerHTML=r?'<div class="connection-row"><strong>Latest rent reading</strong><p>Rent balance owed: '+money(r.currentBalance)+'</p><p>Rent due on the 1st: '+esc(r.dueDate||'Not supplied')+'</p><small>Checked '+esc(new Date(r.checkedAt).toLocaleString())+(rent.needsLogin?' · Sign in again to update.':'')+'</small></div>':'';
  }
  async function rentAction(button,action){
-  if(!requireLogin())return;button.disabled=true;$('#rentStatus').textContent=action==='start'?'Opening a private rent sign-in window…':action==='complete'?'Reading your rent balance and saving the connection…':'Updating rent connection…';
+  if(!requireLogin())return;button.disabled=true;$('#rentFeedback').textContent=action==='start'?'Opening a private rent sign-in window…':action==='complete'?'Reading your rent balance and saving the connection…':'Updating rent connection…';
   try{await queue;const result=await api('/api/rent/'+action,action==='start'?{portalUrl:$('#rentPortalUrl').value.trim()}:{});
    if(action==='start'){const url=new URL(result.url);if(url.protocol!=='https:'||url.hostname!=='live.browser.run')throw Error('The private sign-in address could not be verified.');rentLoginUrl=url.href;}
    if(['complete','cancel','disconnect'].includes(action))rentLoginUrl=null;
-   await refresh();if(result.status)$('#rentStatus').textContent=result.status;
-  }catch(error){$('#rentStatus').textContent=error.message;}finally{button.disabled=false;}
+   await refresh();if(result.status)$('#rentFeedback').textContent=result.status;
+  }catch(error){$('#rentFeedback').textContent=error.message;}finally{button.disabled=false;}
  }
  $('#rentPortalForm').onsubmit=e=>{e.preventDefault();rentAction($('#rentConnect'),'start');};
  $('#rentEnabledToggle').onchange=async e=>{const button=e.currentTarget,enabled=button.checked;button.disabled=true;try{await queue;await api('/api/rent/settings',{enabled});await refresh();$('#featureSettingsStatus').textContent=enabled?'Rent enabled.':'Rent hidden; your saved connection is kept.';}catch(error){button.checked=!enabled;$('#featureSettingsStatus').textContent=error.message;}finally{button.disabled=false;}};
@@ -155,7 +156,7 @@ window.BearDen=(()=>{
  $('#classicBank').onclick=run(()=>connectBank());$('#classicGmail').onclick=()=>{if(requireLogin())location.href='/auth/google?gmail=1&account='+encodeURIComponent(config.accountId);};
  bridge.readGmailMessage=async message=>{await queue;const result=await api('/api/gmail/message',{mailboxId:message.mailboxId,id:message.id});if(!result.message)throw Error('Could not read the selected email. Try again.');legacy.connections.gmailMessages=[...(legacy.connections.gmailMessages||[]).filter(m=>m.id!==result.message.id),result.message];return result.message;};
  bridge.searchGmail=async query=>{await queue;const result=await api('/api/gmail/search',{query:String(query||'').slice(0,100)});Object.assign(legacy.connections,result);renderConnections();return result;};
- $('#checkGmailAccounts').onclick=run(async()=>{$('#classicEmailStatus').textContent='Checking Gmail…';await bridge.searchGmail('');});
+ $('#checkGmailAccounts').onclick=run(async()=>{$('#gmailFeedback').textContent='Checking Gmail…';try{await bridge.searchGmail('');$('#gmailFeedback').textContent='Gmail checked.';}catch(error){$('#gmailFeedback').textContent=error.message;}});
  document.addEventListener('click',async e=>{const button=e.target.closest('[data-gmail-disconnect]');if(!button)return;const account=legacy?.connections?.gmailAccounts?.find(a=>a.id===button.dataset.gmailDisconnect);if(!account||!confirm('Disconnect '+account.email+' and stop watching its bill emails?'))return;button.disabled=true;try{await api('/api/gmail/disconnect',{id:account.id});await refresh();}catch(e){message(e.message);}finally{button.disabled=false;}});
 
  document.addEventListener('click',async e=>{const b=e.target.closest('[data-use-bill],[data-review-accept],[data-review-dismiss]');if(!b)return;b.disabled=true;try{

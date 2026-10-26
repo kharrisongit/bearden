@@ -47,7 +47,7 @@
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});
  function showTransactions(open=true){
-  window.selectBearTab('income');$('#bankActivityCard').hidden=!open;$('#incomeTransactionsToggleBtn').setAttribute('aria-expanded',String(open));
+  window.selectBearTab('income');window.setIncomePanel(open?'bankActivityCard':null);
  }
  $('#incomeTransactionsToggleBtn').onclick=()=>{spendingCategory=null;$('#transactionFilter').value='all';showTransactions($('#bankActivityCard').hidden);renderIncome();};
  document.addEventListener('click',async e=>{
@@ -145,7 +145,7 @@
  document.addEventListener('input',e=>{const input=e.target.closest('[data-email-last4]');if(input)emailDrafts[input.dataset.emailLast4].link.accountLast4=input.value.replace(/\D/g,'').slice(0,4);});
  document.addEventListener('click',async e=>{
   const pick=e.target.closest('[data-pick-email]');if(pick){
-   if(!window.BearDen.plan?.connections?.gmail){for(const id of ['billEditor','debtEditor','creditEditor'])$('#'+id).close();window.selectBearTab('settings');$('#classicEmailStatus').textContent='Add a Gmail account, then choose an email in this account’s details.';$('#classicGmail').focus();return;}
+   if(!window.BearDen.plan?.connections?.gmail){for(const id of ['billEditor','debtEditor','creditEditor'])$('#'+id).close();window.selectBearTab('settings');$('#gmailFeedback').textContent='Add a Gmail account, then choose an email in this account’s details.';$('#classicGmail').focus();return;}
    pickingEmail=pick.dataset.pickEmail;$('#emailSearchQuery').value=$('#'+pickingEmail+'EditorForm').elements.name.value;$('#emailSearchStatus').textContent='';renderEmailChoices();$('#emailLinkPicker').showModal();
   }
   const chosen=e.target.closest('[data-link-email]');if(chosen){
@@ -182,14 +182,17 @@
   const accountId=kind==='debt'?planner.debtAccountLinks?.[id]:kind==='bill'?planner.loanLinks?.[id]:null,account=accounts.find(a=>a.id===accountId);
   const email=planner.emailLinks[target];
   const gmail=(connections.gmail||connections.gmailAccounts?.length)&&(email||bill?.source==='gmail'||bill?.emailConfirmed||bill?.emailAmountConfirmed||bill?.gmailConfirmed||bill&&planner.electricBillId===bill.id);
-  // Show the primary bill/balance feed. Transaction matching is payment history,
-  // and never establishes a provider connection for this bill or debt.
+  // Payment matching is a fallback label, never a primary balance provider.
+  const payment=planner.transactionLinks[target],items=connections.items||[];
+  let bankTracking=kind==='bill'&&!!payment&&items.some(item=>item.id===payment.itemId);
+  if(kind==='bill'&&bill?.source==='bank-tracked'&&bill.groupKey){try{const [itemId,accountId]=JSON.parse(bill.groupKey);bankTracking=bankTracking||items.some(item=>item.id===itemId)||accounts.some(a=>a.id==='plaid-'+accountId);}catch{}}
+
   const source=bill?.rentLinked&&connections.sun?.connected?'Rent portal'
    :kind==='bill'&&gmail?'Gmail'
    :account?.source==='plaid'?'Plaid'
    :account?.source==='simplefin'?'SimpleFIN'
    :kind==='credit'&&(connections.creditCards||[]).some(c=>c.id===id)?'Plaid'
-   :gmail?'Gmail':null;
+   :gmail?'Gmail':bankTracking?'Bank Tracking':null;
   return source?'<p class="account-connection">Connected via '+source+'</p>':'';
  }
  const refreshIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.35 6.65M20 4v7h-7"/></svg>';
@@ -207,12 +210,12 @@
    const action=paid?.paidByPaycheck||paid?.paidByBank||status?.paidOff?'':!p.tracking?'<button data-edit-credit="'+esc(c.id)+'">Track payment</button>':paid?'<button data-bill-unpaid="'+esc(paid.key)+'">Mark unpaid</button>':due?'<button data-bill-paid="'+esc(due.key)+'">✓ Mark paid</button>':'';
    let spark='';if(c.history?.length>1){const values=c.history.map(p=>p.balance),low=Math.min(...values),range=Math.max(...values)-low||1,points=values.map((v,i)=>(i/(values.length-1)*280+5).toFixed(1)+','+(52-(v-low)/range*40).toFixed(1)).join(' ');spark='<svg class="credit-spark" viewBox="0 0 290 60" role="img" aria-label="Balance history since connection"><title>Balance history since connection</title><polyline points="'+points+'" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>';}
    return '<article class="debt-account connected-debt'+(paidOff?' is-paid-off':'')+'" data-account-id="'+esc(c.id)+'">'
-    +'<button type="button" class="bill-icon-button account-edit" data-edit-credit="'+esc(c.id)+'" aria-label="Edit '+esc(c.name)+'">'+pencil+'</button>'
-    +'<div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(p.name||c.name)+'</h4><small>'+esc(c.institution+(c.mask?' · ••'+c.mask:''))+'</small>'+state+'</div></div>'
+    +'<div class="debt-card-header"><div class="debt-account-tools">'+action+'<button type="button" class="bill-icon-button credit-refresh" data-refresh-credit="'+esc(c.itemId)+'" aria-label="Refresh '+esc(c.name)+'">'+refreshIcon+'</button><button type="button" class="bill-icon-button account-edit" data-edit-credit="'+esc(c.id)+'" aria-label="Edit '+esc(c.name)+'">'+pencil+'</button></div>'
+    +'<div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(p.name||c.name)+'</h4><small>'+esc(c.institution+(c.mask?' · ••'+c.mask:''))+'</small>'+state+'</div></div></div>'
     +'<div class="debt-key-amounts"><div><span>'+(status?.paidOff?'Remaining in plan':c.emailBalance?'Statement balance · Gmail':'Current balance')+'</span><strong>'+esc(value(status?.paidOff?0:balance,c))+'</strong></div><div class="minimum-due"><span>'+(c.emailMinimum?'Minimum due · Gmail':c.minimum===null&&p.fallbackAmount!=null?'Est. minimum due':'Minimum due')+'</span><strong>'+esc(value(c.minimum??p.fallbackAmount,c))+'</strong></div></div>'
     +connectionMarkup('credit:'+c.id)
     +(c.overdue&&!paid?'<p class="subtle overdue">Issuer reports overdue</p>':'')+(c.stale?'<p class="subtle">Plaid needs a refresh'+(c.emailBalance||c.emailMinimum||c.emailDue?'; missing details use Gmail.':'; showing last synced details.')+'</p>':'')
-    +'<div class="debt-account-footer"><span class="debt-due-date">'+esc(paymentLabel)+'</span><div class="debt-account-tools">'+action+'<button type="button" class="bill-icon-button credit-refresh" data-refresh-credit="'+esc(c.itemId)+'" aria-label="Refresh '+esc(c.name)+'">'+refreshIcon+'</button></div></div>'
+    +'<div class="debt-account-footer"><span class="debt-due-date">'+esc(paymentLabel)+'</span></div>'
     +paymentMarkup('credit:'+c.id)+'<details class="credit-detail"><summary>Details &amp; payments</summary>'
     +(status?'<p class="subtle">Checked payments update your payoff plan; your issuer balance updates after sync.</p>':'<p class="subtle">Match this card to a debt using Edit to link paycheck checkoffs.</p>')
     +(util!==null?'<div class="debt-progress"><span style="width:'+Math.min(100,util)+'%"></span></div><p class="subtle">'+Math.round(util)+'% of '+esc(value(c.limit,c))+' credit limit</p>':'')+spark
@@ -233,7 +236,7 @@
     +'<div class="debt-account-footer"><span class="debt-due-date">'+esc(status.paidOff?'Paid from checked paychecks':dueDate?'Due '+dateLabel(dueDate):next?'Next payment '+dateLabel(next.date):'Set up paydays in Income')+(next&&!status.paidOff?'<small>'+money(next.amount)+' planned</small>':'')+'</span></div>'
     +debtAccountMarkup(c.id)+paymentMarkup('debt:'+c.id)+'<details class="credit-detail"><summary>Details &amp; progress</summary><div class="debt-progress"><span style="width:'+progress+'%"></span></div><p class="subtle">'+Math.round(progress)+'% paid down · '+money(status.paid)+' in checked payments</p>'+bankPaymentHistoryMarkup(bankHistory)+'<button type="button" data-edit-debt="'+esc(c.id)+'">Account details &amp; history</button></details></article>';
   });
-  const paymentOnly=payments.filter(b=>model.isDebtPayment(b)&&!['tracker-debt','plaid-credit'].includes(b.source)).map(b=>'<article class="debt-account payment-only-debt"><button type="button" class="bill-icon-button account-edit" data-edit-bill="'+esc(b.id)+'" aria-label="Edit '+esc(b.name)+'">'+pencil+'</button><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(b.name)+'</h4><small>Scheduled payment · '+esc(dateLabel(b.date))+'</small></div><div class="debt-compact-amount"><strong>'+money(b.amount)+'</strong></div></div><div class="debt-account-footer"><span>Payment tracking only</span><div class="debt-account-tools"><button data-bill-paid="'+esc(b.key)+'">✓ Mark paid</button></div></div>'+connectionMarkup('bill:'+b.id,b)+'</article>');
+  const paymentOnly=payments.filter(b=>model.isDebtPayment(b)&&!['tracker-debt','plaid-credit'].includes(b.source)).map(b=>'<article class="debt-account payment-only-debt"><div class="debt-card-header"><div class="debt-account-tools"><button data-bill-paid="'+esc(b.key)+'">✓ Mark paid</button><button type="button" class="bill-icon-button account-edit" data-edit-bill="'+esc(b.id)+'" aria-label="Edit '+esc(b.name)+'">'+pencil+'</button></div><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(b.name)+'</h4><small>Scheduled payment · '+esc(dateLabel(b.date))+'</small></div><div class="debt-compact-amount"><strong>'+money(b.amount)+'</strong></div></div></div><div class="debt-account-footer"><span>Payment tracking only</span></div>'+connectionMarkup('bill:'+b.id,b)+'</article>');
   const all=[...connected,...manual,...paymentOnly];$('#debtAccounts').innerHTML=all.join('')||'<p class="subtle">Add a debt to track a balance, or connect your credit card with Plaid.</p>';$('#debtAccountCount').textContent=all.length;
  }
  function debtAccountMarkup(id){
@@ -499,7 +502,6 @@
  async function syncRentBill(){
   if(rentSyncing)return rentSyncing;
   const sun=sunConnection(),bills=existingRentBills().filter(b=>b.billKind==='rent'&&!planner.sunRentDisabled?.[b.id]),bill=bills.find(b=>b.id===planner.sunRent?.billId)||(bills.length===1?bills[0]:null);
-  $('#rentAutoStatus').textContent=!sun?.snapshot?'':bill?'Automatically updating '+bill.name+' from your rent portal.':bills.length>1?'Choose the rent bill to update by enabling portal updates in its editor.':'Mark your bill as Rent in Accounts to use portal updates. You can turn updates on or off in the bill editor.';
   if(!sun?.snapshot||sun.enabled===false||!bill)return;
   const before=JSON.stringify(planner);writeRentBill(bill,'currentBalance');
   const after=JSON.stringify(planner);if(before===after)return;

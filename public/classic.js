@@ -661,10 +661,25 @@ function updateIncomeEstimateDisplay(){
  try{estimate=window.BearDenTaxes?.estimatePay(gross,window.BearDenTaxes.read());}catch(e){error=e.message;}
  box.style.display=gross>0?'block':'none';
  box.innerHTML=gross>0?`Gross: <strong>${money(gross)}</strong>${estimate?` · Estimated take-home: <strong>${money(estimate.net)}</strong><div class="tax-breakdown"><span>Federal <b>${money(estimate.federal)}</b></span><span>Michigan <b>${money(estimate.state)}</b></span><span>Social Security <b>${money(estimate.socialSecurity)}</b></span><span>Medicare <b>${money(estimate.medicare)}</b></span><span>Benefits / other deductions <b>${money(estimate.benefits+estimate.local)}</b></span></div>`:'<p>'+bdEscape(error||'Choose your state and filing status below.')+'</p>'}`:'';
- document.getElementById('useIncomeEstimateButton').disabled=!estimate||estimate.net<=0;
 }
-function useIncomeEstimate(){
- try{const gross=calcGrossPay(Number(document.getElementById('hourlyRate').value)||0,Number(document.getElementById('hoursPerCheck').value)||0),estimate=window.BearDenTaxes.estimatePay(gross,window.BearDenTaxes.read());if(estimate.net>0)document.getElementById('takeHome').value=estimate.net.toFixed(2);calculate();}catch(e){setStorageStatus(e.message);}
+function prepareIncomeForSave(){
+ const takeHome=document.getElementById('takeHome');
+ if(!takeHome.value.trim()){
+  const gross=calcGrossPay(Number(document.getElementById('hourlyRate').value)||0,Number(document.getElementById('hoursPerCheck').value)||0);
+  const estimate=window.BearDenTaxes.estimatePay(gross,window.BearDenTaxes.read());
+  if(estimate.net>0)takeHome.value=estimate.net.toFixed(2);
+ }
+ if(!(Number(takeHome.value)>0)||!document.getElementById('startDate').value)throw Error('Enter your first paycheck date and take-home pay, or add your hourly rate and hours for an estimate.');
+}
+async function saveIncome(button){
+ const status=document.getElementById('incomeEditorStatus');status.textContent='';button.disabled=true;
+ try{prepareIncomeForSave();await window.flushBearDenState();setIncomePanel(null);document.getElementById('incomeToggleBtn').focus();}
+ catch(error){status.textContent=error.message;}finally{button.disabled=false;}
+}
+async function saveBudget(button){
+ const status=document.getElementById('budgetEditorStatus');status.textContent='';button.disabled=true;
+ try{await window.flushBearDenState();setIncomePanel(null);document.getElementById('incomeBudgetToggleBtn').focus();}
+ catch(error){status.textContent=error.message;}finally{button.disabled=false;}
 }
 
 // ---- Reset ----
@@ -1285,8 +1300,20 @@ document.addEventListener('click', (e) => {
   }
 });
 
-function toggleIncomePanel(){ toggleHeroDropdown('incomeDropdown'); }
-function toggleBudgetPanel(){ toggleHeroDropdown('budgetDropdown'); }
+// Income tools share a single open panel, including transaction drilldowns.
+function setIncomePanel(id){
+ for(const [panelId,buttonId,label] of [['incomeDropdown','incomeToggleBtn','Income'],['budgetDropdown','incomeBudgetToggleBtn','Budget'],['bankActivityCard','incomeTransactionsToggleBtn','Transactions']]){
+  const panel=document.getElementById(panelId),button=document.getElementById(buttonId),open=panelId===id;
+  panel.hidden=!open;
+  if(panelId!=='bankActivityCard'){
+   if(open)openSlidingDropdown(panel);
+   else{clearTimeout(heroSlideHideTimers[panelId]);clearTimeout(heroSlideAutoTimers[panelId]);panel.classList.remove('open');panel.style.display='none';panel.style.maxHeight='0px';}
+  }
+  button.textContent=open?'Close':label;button.setAttribute('aria-expanded',String(open));
+ }
+}
+function toggleIncomePanel(){setIncomePanel(document.getElementById('incomeDropdown').classList.contains('open')?null:'incomeDropdown');}
+function toggleBudgetPanel(){setIncomePanel(document.getElementById('budgetDropdown').classList.contains('open')?null:'budgetDropdown');}
 
 function updatePayoffMethodExplain(){
   const avalancheBtn = document.getElementById('pmBtnAvalanche');
@@ -1838,6 +1865,7 @@ function toggleChecked(paycheckNum, checked){
 // Unchecks every paycheck without touching balances, budget, income, or
 // savings — just gives you a clean slate to re-check things off from.
 function resetCheckedPaychecks(){
+  if(!confirm('Uncheck all paychecks? This clears paycheck checkoffs and recalculates your progress. Your income, budget, and accounts stay saved.'))return;
   const section = document.getElementById('schedulePlanSection');
   checkedPaychecks = {};
   if (section) {

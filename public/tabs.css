@@ -109,3 +109,20 @@ body{background:radial-gradient(ellipse at 0 0,#aad3bc16,transparent 38%),var(--
 .income-card .transaction-filters label{flex:1 1 125px;min-width:0;margin:0;font-size:.68rem}
 .income-card .transaction-filters select{padding:7px 5px;font-size:.76rem;min-height:34px}
 @media(max-width:600px){.income-card .compact-account-picker select,.income-card .transaction-filters select{font-size:16px}.bill-amount>strong{font-size:1.2rem}.forecast-stats small{font-size:.6rem}.forecast-stats strong{font-size:.8rem}}
+
+/* Keep the card's actions together at its upper right without covering its title. */
+.debt-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap-reverse}
+.debt-card-header .debt-compact-main{order:0;flex:1 1 140px;min-width:0;padding-right:0}
+.debt-card-header .debt-account-tools{order:1;gap:4px}
+.income-card .debt-card-header .account-edit{position:static}
+.setup-wizard .editor-save-action{display:none!important}
+#incomeEditorStatus:empty,#budgetEditorStatus:empty{display:none}
+#incomeEditorStatus,#budgetEditorStatus{color:var(--warn);margin-top:10px}
+#bankActivityCard{margin-top:16px;padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink);box-shadow:0 8px 24px #081c2029}
+#bankActivityCard .subtle,#bankActivityCard small{color:var(--muted)}
+#bankActivityCard button{background:var(--accent-soft);border-color:var(--line);color:var(--accent)}
+#bankActivityCard label,#bankActivityCard .bill-entry-top{color:var(--ink)}
+#bankActivityCard input,#bankActivityCard select{background:var(--paper);color:var(--ink);border-color:var(--line)}
+.bottom-tabs svg{display:block;flex:none;width:23px;height:23px;overflow:visible}
+.schedule-reset-btn{background:#a73236;color:#fff;border-color:#8e2529;box-shadow:0 2px 6px #a7323626}
+[data-theme=dark] .schedule-reset-btn{background:#a73236;color:#fff;border-color:#d16c70}

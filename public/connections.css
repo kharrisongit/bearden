@@ -29,3 +29,9 @@ html,body{overflow-x:clip}
 #rentPortalForm label{display:block;font-size:.8rem;margin:8px 0}#rentPortalUrl{box-sizing:border-box;display:block;width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit;font-size:16px}
 
 #connectionDialog .connection-state{display:flex;align-items:center;gap:7px;width:fit-content;margin:4px 0 12px;padding:5px 9px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--muted);font-size:.66rem;font-weight:750;letter-spacing:.06em;text-transform:uppercase}#connectionDialog .connection-state::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}#connectionDialog .connection-state[data-connected=true]{color:var(--accent);background:var(--accent-soft);border-color:transparent}#connectionDialog .bank-display-options{margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}#connectionDialog .bank-display-options h4{margin:0 0 6px;font-size:.88rem}
+
+/* Status headers use blue, separate from the teal action buttons. */
+#connectionDialog .connection-state[data-connected=true]{color:#244d89;background:#e6edf9;border-color:#c2d1eb}
+[data-theme=dark] #connectionDialog .connection-state[data-connected=true]{color:#bcd5ff;background:#243a57;border-color:#466184}
+#connectionDialog .reset-tracker-button{display:block;margin-top:18px;background:#a73236;color:#fff;border:1px solid #8e2529;font-weight:700}
+#connectionDialog .reset-tracker-button:hover{background:#8e2529}
