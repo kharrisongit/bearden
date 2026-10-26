@@ -265,11 +265,21 @@ function updateBudgetItemAmount(itemId, paycheckNum, value){
 // avalanche/snowball engine from quietly handing it to a different
 // account instead. A BIGGER payment doesn't get this treatment — that's
 // just extra money going straight at the debt, nothing to explain away.
+function payoffActionPayment(balance,interest,minimum,action){
+ return action==='squash'?balance+interest:Math.min(balance+interest,Math.max(minimum,Math.round(balance*50)/100));
+}
+function paycheckActionAllowance(row,index,action){
+ const amount=payoffActionPayment(row.balancesBefore[index],row.interestByAccount[index],row.minimumPayments[index],action);
+ const required=row.payoffActionPayments.reduce((sum,n)=>sum+n,0)-row.payoffActionPayments[index]+amount;
+ const shortfall=Math.max(0,Math.round(required*100)-Math.round(row.payoffActionFunds*100))/100;
+ return {allowed:row.balancesBefore[index]>.005&&shortfall===0,shortfall};
+}
+
 function togglePaycheckSlice(cardId,paycheck){
  const row=lastSchedule.find(r=>r.paycheck===paycheck),index=lastCardsForSpending.findIndex(c=>String(c.id)===String(cardId));
  if(!row||index<0)return;
  const selected=!!paycheckSlices[paycheck]?.[cardId]&&!paycheckSquashes[paycheck]?.[cardId];
- if(!selected&&!(row.balancesBefore[index]>0.005))return;
+ if(!selected&&!paycheckActionAllowance(row,index,'slice').allowed)return;
  if(paycheckSquashes[paycheck]){delete paycheckSquashes[paycheck][cardId];if(!Object.keys(paycheckSquashes[paycheck]).length)delete paycheckSquashes[paycheck];}
  paycheckSlices[paycheck]={...paycheckSlices[paycheck]};
  if(selected)delete paycheckSlices[paycheck][cardId];else paycheckSlices[paycheck][cardId]=true;
@@ -281,7 +291,7 @@ function togglePaycheckSquash(cardId,paycheck){
  const row=lastSchedule.find(r=>r.paycheck===paycheck),index=lastCardsForSpending.findIndex(c=>String(c.id)===String(cardId));
  if(!row||index<0)return;
  const selected=!!paycheckSquashes[paycheck]?.[cardId];
- if(!selected&&!(row.balancesBefore[index]>0.005))return;
+ if(!selected&&!paycheckActionAllowance(row,index,'squash').allowed)return;
  paycheckSquashes[paycheck]={...paycheckSquashes[paycheck]};
  if(selected)delete paycheckSquashes[paycheck][cardId];else paycheckSquashes[paycheck][cardId]=true;
  if(!Object.keys(paycheckSquashes[paycheck]).length)delete paycheckSquashes[paycheck];
@@ -862,6 +872,16 @@ function calculate(isInitialLoad){
     interest.forEach(v => totalInterest += v);
 
     const minApplied = balances.map((b,i) => b <= 0 ? 0 : Math.min(mins[i], b + interest[i]));
+    // A payoff action replaces automatic extra payments and old manual payment
+    // adjustments. Reserve real spending, savings and every other debt first.
+    const realExtras=(extraExpenses[paycheck]||[]).filter(e=>e.autoFromCardId==null).reduce((sum,e)=>sum+e.amount,0);
+    const payoffActionFunds=Math.max(0,thisCheckTakeHome+bonusThisCheck-expensesThisCheck-realExtras-totalContribThisCheck);
+    const payoffActionPayments=cards.map((card,i)=>squashed[i]?payoffActionPayment(balances[i],interest[i],minApplied[i],'squash'):sliced[i]?payoffActionPayment(balances[i],interest[i],minApplied[i],'slice'):minApplied[i]);
+    const payoffActionShortfall=Math.max(0,Math.round(payoffActionPayments.reduce((sum,n)=>sum+n,0)*100)-Math.round(payoffActionFunds*100))/100;
+    // Keep recorded history intact. Upcoming actions remain selected but pause
+    // at minimums when refreshed balances or budget edits make them unaffordable.
+    const payoffActionsPaused=sliceMode&&payoffActionShortfall>0&&!checkedPaychecks[paycheck];
+
 
     // A manually logged payment for this account/check (e.g. "I actually
     // paid more/less than planned") takes over that account's payment
@@ -870,8 +890,9 @@ function calculate(isInitialLoad){
     // consumes is set aside first so the remaining leftover only gets
     // divided up among accounts that are still on the projected plan.
     const overridePayment = cards.map((c,i) => {
-      if(squashed[i])return balances[i]+interest[i];
-      if(sliceMode)return sliced[i]?Math.min(balances[i]+interest[i],Math.max(minApplied[i],Math.round(balances[i]*50)/100)):null;
+      if(payoffActionsPaused)return null;
+      if(squashed[i]||sliced[i])return payoffActionPayments[i];
+      if(sliceMode)return null;
       const overrideMap = accountPaymentOverrides[c.id] || {};
       const ov = overrideMap[paycheck];
       return ov !== undefined ? Math.max(0, ov) : null;
@@ -963,6 +984,7 @@ function calculate(isInitialLoad){
     schedule.push({
       paycheck, date: new Date(date), avail,
       balancesBefore:balances.slice(),sliced,squashed,sliceMode,
+      minimumPayments:minApplied.slice(),payoffActionFunds,payoffActionPayments,payoffActionShortfall,payoffActionsPaused,
       cashAfterDebt:availAfterSavings-payments.reduce((sum,n)=>sum+n,0),
       takeHomeThisCheck: thisCheckTakeHome,
       isOverridden: paycheckOverrides[paycheck] !== undefined,
@@ -1004,7 +1026,7 @@ function calculate(isInitialLoad){
   }
   const {schedule,totalInterest,savingsEnabled,goalsInfo,debtFreeDate,debtFreePaycheck}=project();
   let sliceComparison=null;
-  if(schedule.some(row=>row.sliceMode)){
+  if(schedule.some(row=>row.sliceMode)&&!schedule.some(row=>row.payoffActionsPaused)){
     const baseline=project(true);
     if(debtFreeDate){const comparedInterest=baseline.debtFreeDate?baseline.totalInterest:baseline.schedule.filter(row=>row.date<=debtFreeDate).reduce((sum,row)=>sum+row.interestThisCheck,0);sliceComparison={difference:comparedInterest-totalInterest,through:baseline.debtFreeDate?null:debtFreeDate,actions:[schedule.some(row=>row.sliced.some(Boolean))?'Slice':'',schedule.some(row=>row.squashed.some(Boolean))?'Squash':''].filter(Boolean).join(' and ')};}
   }
@@ -2138,8 +2160,11 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
       const isPayOverridden = row.paymentOverridden && row.paymentOverridden[i];
       const payInputClass = row.payments[i] > 0.005 ? 'pay-input' : 'pay-input zero';
       const squashSelected=!!paycheckSquashes[row.paycheck]?.[c.id],sliceSelected=!!paycheckSlices[row.paycheck]?.[c.id]&&!squashSelected;
+      const sliceAllowance=paycheckActionAllowance(row,i,'slice'),squashAllowance=paycheckActionAllowance(row,i,'squash');
+      const sliceTitle=sliceSelected?'Undo Slice':sliceAllowance.allowed?'Pay half the balance at this paycheck, at least the minimum':'Slice needs '+money(sliceAllowance.shortfall)+' more in this paycheck';
+      const squashTitle=squashSelected?'Undo Squash':squashAllowance.allowed?'Pay off the full balance, including this paycheck’s projected interest':'Squash needs '+money(squashAllowance.shortfall)+' more in this paycheck';
       lines += `<div class="line paycheck-debt-row" data-paycheck-debt="${bdEscape(c.id)}">
-        <span class="name paycheck-debt-name"><span>${bdEscape(c.name)}${isPayOverridden ? ' <span class="edited-tag">edited</span>' : ''}${justPaidOff ? '<span class="paidoff-badge">PAID OFF</span>' : ''}</span><span class="paycheck-debt-actions"><button type="button" class="slice-payment" aria-pressed="${sliceSelected}" title="Pay half the balance at this paycheck, at least the minimum" data-bd-click="togglePaycheckSlice(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!(row.balancesBefore[i]>.005)&&!sliceSelected?'disabled':''}>${sliceSelected?'Undo Slice':'Slice'}</button><button type="button" class="slice-payment squash-payment" aria-pressed="${squashSelected}" title="Pay off the full balance, including this paycheck’s projected interest" data-bd-click="togglePaycheckSquash(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!(row.balancesBefore[i]>.005)&&!squashSelected?'disabled':''}>${squashSelected?'Undo Squash':'Squash'}</button></span></span>
+        <span class="name paycheck-debt-name"><span>${bdEscape(c.name)}${isPayOverridden ? ' <span class="edited-tag">edited</span>' : ''}${justPaidOff ? '<span class="paidoff-badge">PAID OFF</span>' : ''}</span><span class="paycheck-debt-actions"><button type="button" class="slice-payment" aria-pressed="${sliceSelected}" title="${bdEscape(sliceTitle)}" aria-label="${bdEscape(sliceTitle+' for '+c.name)}" data-bd-click="togglePaycheckSlice(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!sliceAllowance.allowed&&!sliceSelected?'disabled':''}>${sliceSelected?'Undo Slice':'Slice'}</button><button type="button" class="slice-payment squash-payment" aria-pressed="${squashSelected}" title="${bdEscape(squashTitle)}" aria-label="${bdEscape(squashTitle+' for '+c.name)}" data-bd-click="togglePaycheckSquash(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!squashAllowance.allowed&&!squashSelected?'disabled':''}>${squashSelected?'Undo Squash':'Squash'}</button></span></span>
         <div class="paycheck-debt-amounts">
           <div><small>Before</small><span class="balance-before">${money(row.balancesBefore[i])}</span></div>
           <div><small>Interest</small><span class="interest">${money(row.interestByAccount[i])}</span></div>
@@ -2282,7 +2307,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
         <div class="check-summary-row prominent-row"><span>Left over after savings</span><span>${money(row.availAfterSavings)}</span></div>
         ` : ''}
       </div>
-      ${row.sliceMode?'<div class="paycheck-slice-note">'+[row.sliced.some(Boolean)?'Slice':'',row.squashed.some(Boolean)?'Squash':'','minimums'].filter(Boolean).join(' + ')+'<span>Other debts stay at their minimum.</span></div>':''}
+      ${row.payoffActionsPaused?'<div class="paycheck-slice-note payoff-paused" role="status">Slice / Squash paused<span>Needs '+money(row.payoffActionShortfall)+' more this paycheck. Using minimums for now.</span></div>':row.sliceMode?'<div class="paycheck-slice-note">'+[row.sliced.some(Boolean)?'Slice':'',row.squashed.some(Boolean)?'Squash':'','minimums'].filter(Boolean).join(' + ')+'<span>Other debts stay at their minimum.</span></div>':''}
       ${accountsSection}
       <div class="line paycheck-cash-left"><span>${row.cashAfterDebt<-.005?'Extra needed for debt payments':'Left after debt payments'}</span><strong class="${row.cashAfterDebt<-.005?'overdue':''}">${money(Math.abs(row.cashAfterDebt))}</strong></div>
       ${bottomSection}

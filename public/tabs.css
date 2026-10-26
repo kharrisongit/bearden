@@ -324,3 +324,5 @@ dialog::backdrop{touch-action:none}
 .paycheck-debt-amounts small{display:block;font-size:.56rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
 .paycheck-debt-amounts .balance-before,.paycheck-debt-amounts .interest,.paycheck-debt-amounts .bal{display:block;min-width:0;font-size:.75rem;overflow-wrap:anywhere;font-variant-numeric:tabular-nums;line-height:1.5}
 .paycheck .paycheck-debt-amounts .pay-input{width:100%;min-width:0;font-size:.75rem;line-height:1.5;padding:0 2px}
+
+.paycheck-slice-note.payoff-paused{background:var(--warn-soft);color:var(--warn);border:1px solid currentColor}
