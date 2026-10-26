@@ -156,3 +156,6 @@ body{background:radial-gradient(ellipse at 0 0,#aad3bc16,transparent 38%),var(--
 .income-card .bill-card-header .bill-paid-button{padding:7px 8px;white-space:nowrap}
 .bill-due-date{margin:0 15px 14px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--accent-soft);color:var(--accent);font-size:1.12rem;font-weight:800;line-height:1.4;letter-spacing:-.015em}
 .bill-due-date.is-overdue{background:var(--warn-soft);color:var(--warn)}
+
+.calendar-payments{margin:0 0 20px}
+.calendar-payments .account-list-heading{margin:0 0 10px}
