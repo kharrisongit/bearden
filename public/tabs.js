@@ -178,21 +178,19 @@
  }
  const debtKinds={'credit-card':'Credit card','car-loan':'Car loan',loan:'Personal loan',other:'Debt'};
  function connectionMarkup(target,bill=null){
-  const connections=window.BearDen.plan?.connections||{},accounts=window.BearDen.plan?.state?.accounts||[],sources=new Set(),[kind,...parts]=target.split(':'),id=parts.join(':');
+  const connections=window.BearDen.plan?.connections||{},accounts=window.BearDen.plan?.state?.accounts||[],[kind,...parts]=target.split(':'),id=parts.join(':');
   const accountId=kind==='debt'?planner.debtAccountLinks?.[id]:kind==='bill'?planner.loanLinks?.[id]:null,account=accounts.find(a=>a.id===accountId);
-  if(account?.source==='plaid')sources.add('Plaid');
-  if(account?.source==='simplefin')sources.add('SimpleFIN');
-  if(kind==='credit'&&(connections.creditCards||[]).some(c=>c.id===id))sources.add('Plaid');
   const email=planner.emailLinks[target];
-  if((connections.gmail||connections.gmailAccounts?.length)&&(email||bill?.source==='gmail'||bill?.emailConfirmed||bill?.emailAmountConfirmed||bill?.gmailConfirmed||bill&&planner.electricBillId===bill.id))sources.add('Gmail');
-  if(bill?.rentLinked&&connections.sun?.connected){sources.clear();sources.add('Sun');}
-  // A checking payment identifies payment history, not the source of a bill's amount.
-  if(!sources.size){
-   const payment=planner.transactionLinks[target];
-   if(payment&&(connections.items||[]).some(i=>i.id===payment.itemId))sources.add('Plaid');
-   if(bill?.source==='bank-tracked'&&bill.groupKey){try{const [itemId,bankAccountId]=JSON.parse(bill.groupKey);if((connections.items||[]).some(i=>i.id===itemId)||accounts.some(a=>a.id==='plaid-'+bankAccountId))sources.add('Plaid');}catch{}}
-  }
-  return sources.size?'<p class="account-connection">Connected via '+esc([...sources].join(' · '))+'</p>':'';
+  const gmail=(connections.gmail||connections.gmailAccounts?.length)&&(email||bill?.source==='gmail'||bill?.emailConfirmed||bill?.emailAmountConfirmed||bill?.gmailConfirmed||bill&&planner.electricBillId===bill.id);
+  // Show the primary bill/balance feed. Transaction matching is payment history,
+  // and never establishes a provider connection for this bill or debt.
+  const source=bill?.rentLinked&&connections.sun?.connected?'Sun'
+   :kind==='bill'&&gmail?'Gmail'
+   :account?.source==='plaid'?'Plaid'
+   :account?.source==='simplefin'?'SimpleFIN'
+   :kind==='credit'&&(connections.creditCards||[]).some(c=>c.id===id)?'Plaid'
+   :gmail?'Gmail':null;
+  return source?'<p class="account-connection">Connected via '+source+'</p>':'';
  }
  const refreshIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.35 6.65M20 4v7h-7"/></svg>';
  function renderDebtAccounts(plan,connections,accounts,payments,paidPayments){
