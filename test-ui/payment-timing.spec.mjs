@@ -42,7 +42,7 @@ test('a paid Credit One cycle keeps $0 due while its future estimate can be edit
  const issuer={id:'credit-a',accountId:'a',itemId:'bank',name:'Credit One Visa',currency:'USD',balance:14203,minimum:0,dueDate:null,updated:'2026-10-26T10:00:00Z',aprs:[{type:'purchase_apr',rate:29}]};
  const f=await fixture(page,{goalContribution:50,debtOverrides:{name:'Credit One',balance:142.03,apr:29,min:16.15,monthlyMinimum:35,dueDate:''},connectionOverrides:{creditCards:[issuer]},incomePlanner:{creditCards:{'credit-a':{tracking:true,trackerCardId:'1',fallbackDate:'2026-11-23',fallbackAmount:3500}}}});
  await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().syncedDebtTerms[1]?.forecastMonthlyMinimum)).toBe(35);
- await expect(page.locator('#heroDate')).not.toContainText('30 years');await expect(page.locator('#debtForecastNote')).toContainText('estimated monthly minimum');
+ await expect(page.locator('#heroDate')).not.toContainText('30 years');await expect(page.locator('#debtForecastNote')).toBeHidden();
  await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();
  const edit=page.locator('[data-edit-credit="credit-a"]');await edit.click();
  const amount=page.locator('#creditEditorForm [name="amount"]');await expect(amount).toBeEnabled();await expect(amount).toHaveValue('35');

@@ -53,7 +53,7 @@ test('a paid current cycle resumes future minimums without changing checked paym
   const terms={1:{date:'2026-10-26',monthlyMinimum:0,currentCycleMinimum:true,currentCycleThrough:'2026-11-23',dueDate:'2026-11-23',forecastMonthlyMinimum:35}};
   for(const timing of [{mode:'every-paycheck'},{mode:'due-date',leadDays:3}]){
     const p=plan({cards:[card],terms,timing});assert.ok(p.date);assert.equal(p.schedule[0].payments[0],0);assert.equal(p.schedule[1].payments[0],0);
-    assert.match(p.notice,/estimated monthly minimum.*Credit One.*35.00/);assert.ok(p.interest<50);
+    assert.equal(p.notice,'');assert.ok(p.interest<50);
   }
   const p=plan({cards:[card],terms,checked:{1:true},history:{1:{1:20}}});assert.equal(p.schedule[0].payments[0],20);
 });

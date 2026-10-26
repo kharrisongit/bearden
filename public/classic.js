@@ -2079,13 +2079,9 @@ function buildSavingsGoalHeroHTML(g, canDelete, isEditing, isWithdrawing){
 // A capped simulation is not a lifetime-interest estimate. Explain which
 // unpaid debts have no payment or fail to reduce principal in upcoming checks.
 function debtForecastNotice(cards,schedule,debtFreeDate,checked={},today=new Date()){
+  if(debtFreeDate!==null)return '';
   const midnight=new Date(today);midnight.setHours(0,0,0,0);
   const future=schedule.filter(row=>!checked[row.paycheck]&&row.date>=midnight);
-  const estimates=cards.flatMap((card,i)=>{
-    const row=future.find(row=>row.balancesBefore[i]>0&&row.debtTiming?.[i]?.estimatedMinimum);
-    return row?[card.name+' ($'+row.debtTiming[i].forecastMonthlyMinimum.toFixed(2)+'/month)']:[];
-  });
-  if(debtFreeDate!==null)return estimates.length?'Future payments use an estimated monthly minimum for '+estimates.join(', ')+'. The current cycle’s $0 due stays unchanged; new statements update the forecast.':'';
   const last=schedule.at(-1);
   if(!last||last.total<=0.01)return '';
   const missing=cards.filter((card,i)=>last.balancesAfter[i]>0.005&&future.some(row=>row.debtTiming?.[i]?.missingFutureMinimum)).map(c=>c.name);
