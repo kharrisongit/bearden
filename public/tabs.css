@@ -314,3 +314,13 @@ dialog::backdrop{touch-action:none}
 .paycheck .pay-input::-webkit-inner-spin-button,.paycheck .pay-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 
 .paycheck-debt-actions{display:flex;flex-wrap:wrap;gap:4px;max-width:100%}
+
+.paycheck .paycheck-debt-row{display:block;padding:12px 0;border-bottom:1px solid var(--line)}
+.paycheck-debt-row .paycheck-debt-name{flex-direction:row;justify-content:space-between;align-items:flex-start;gap:10px}
+.paycheck-debt-row .paycheck-debt-name>span:first-child{min-width:0;flex:1}
+.paycheck-debt-row .paycheck-debt-actions{flex-shrink:0;justify-content:flex-end;max-width:60%}
+.paycheck-debt-amounts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px;text-align:right}
+.paycheck-debt-amounts>div,.paycheck-debt-amounts>label{min-width:0;margin:0}
+.paycheck-debt-amounts small{display:block;font-size:.56rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.paycheck-debt-amounts .balance-before,.paycheck-debt-amounts .interest,.paycheck-debt-amounts .bal{display:block;min-width:0;font-size:.75rem;overflow-wrap:anywhere;font-variant-numeric:tabular-nums;line-height:1.5}
+.paycheck .paycheck-debt-amounts .pay-input{width:100%;min-width:0;font-size:.75rem;line-height:1.5;padding:0 2px}

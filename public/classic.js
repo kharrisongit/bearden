@@ -2128,7 +2128,9 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
     // PAID OFF badge) on the exact paycheck they're cleared on.
     let lines = '';
     const paidOffNamesThisRow = [];
-    cards.forEach((c, i) => {
+    // Sort the view only: payment arrays and actions keep their original account index.
+    const orderedAccounts=cards.map((c,i)=>({c,i})).sort((a,b)=>(row.balancesBefore[a.i]-row.balancesBefore[b.i])||a.c.name.localeCompare(b.c.name));
+    orderedAccounts.forEach(({c,i}) => {
       if (alreadyDone[i]) return;
       const paid = row.balancesAfter[i] <= 0;
       const justPaidOff = paid && row.payments[i] > 0;
@@ -2136,15 +2138,14 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
       const isPayOverridden = row.paymentOverridden && row.paymentOverridden[i];
       const payInputClass = row.payments[i] > 0.005 ? 'pay-input' : 'pay-input zero';
       const squashSelected=!!paycheckSquashes[row.paycheck]?.[c.id],sliceSelected=!!paycheckSlices[row.paycheck]?.[c.id]&&!squashSelected;
-      lines += `<div class="line">
+      lines += `<div class="line paycheck-debt-row" data-paycheck-debt="${bdEscape(c.id)}">
         <span class="name paycheck-debt-name"><span>${bdEscape(c.name)}${isPayOverridden ? ' <span class="edited-tag">edited</span>' : ''}${justPaidOff ? '<span class="paidoff-badge">PAID OFF</span>' : ''}</span><span class="paycheck-debt-actions"><button type="button" class="slice-payment" aria-pressed="${sliceSelected}" title="Pay half the balance at this paycheck, at least the minimum" data-bd-click="togglePaycheckSlice(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!(row.balancesBefore[i]>.005)&&!sliceSelected?'disabled':''}>${sliceSelected?'Undo Slice':'Slice'}</button><button type="button" class="slice-payment squash-payment" aria-pressed="${squashSelected}" title="Pay off the full balance, including this paycheck’s projected interest" data-bd-click="togglePaycheckSquash(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!(row.balancesBefore[i]>.005)&&!squashSelected?'disabled':''}>${squashSelected?'Undo Squash':'Squash'}</button></span></span>
-        <span class="pay-bal-wrap">
-          <span class="interest">${money(row.interestByAccount[i])}</span>
-          <span class="col-divider"></span>
-          <input type="number" class="${payInputClass}" ${row.sliceMode?'readonly title="Undo Slice or Squash to edit this paycheck’s payments"':''} value="${row.payments[i].toFixed(2)}" step="0.01" data-bd-change="updateAccountPayment(${c.id}, ${row.paycheck}, this.value, ${row.naturalPayments[i]})">
-          <span class="col-divider"></span>
-          <span class="bal">${money(row.balancesAfter[i])}</span>
-        </span>
+        <div class="paycheck-debt-amounts">
+          <div><small>Before</small><span class="balance-before">${money(row.balancesBefore[i])}</span></div>
+          <div><small>Interest</small><span class="interest">${money(row.interestByAccount[i])}</span></div>
+          <label><small>Payment</small><input type="number" class="${payInputClass}" aria-label="Payment for ${bdEscape(c.name)}" ${row.sliceMode?'readonly title="Undo Slice or Squash to edit this paycheck’s payments"':''} value="${row.payments[i].toFixed(2)}" step="0.01" data-bd-change="updateAccountPayment(${c.id}, ${row.paycheck}, this.value, ${row.naturalPayments[i]})"></label>
+          <div><small>After</small><span class="bal">${money(row.balancesAfter[i])}</span></div>
+        </div>
       </div>`;
       if (paid) alreadyDone[i] = true;
     });
@@ -2184,7 +2185,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
       </div>
     `).join('');
 
-    const accountBillLines=(row.accountBillsThisCheck||[]).map(bill=>`<div class="check-summary-row paycheck-account-bill"><span>− ${bdEscape(bill.name)}<small>${bill.transfer?'Transfer to shared bills account':'Due '+fmtDate(new Date(bill.date+'T00:00:00'))}</small></span><span>${money(bill.amount/100)}</span></div>${bill.transfer?`<details class="paycheck-shared-details" data-paycheck-date="${bdEscape(bill.date)}"><summary>Shared bills & contributions</summary><div class="paycheck-shared-balances" aria-live="polite"></div><p>Your Fixed Bills amount above is your only deduction for these shared bills.</p>${(bill.sharedBills||[]).map(b=>`<div class="check-summary-row"><span>${bdEscape(b.name)} · ${fmtDate(new Date(b.date+'T00:00:00'))}</span><span>${money(b.amount/100)}</span></div>`).join('')}${(bill.spouseContributions||[]).map(c=>`<div class="check-summary-row"><span>Spouse contribution · ${fmtDate(new Date(c.date+'T00:00:00'))}</span><span>+${money(c.amount/100)}</span></div>`).join('')}</details>`:''}`).join('');
+    const accountBillLines=[...(row.accountBillsThisCheck||[])].sort((a,b)=>a.amount-b.amount||a.name.localeCompare(b.name)).map(bill=>`<div class="check-summary-row paycheck-account-bill"><span>− ${bdEscape(bill.name)}<small>${bill.transfer?'Transfer to shared bills account':'Due '+fmtDate(new Date(bill.date+'T00:00:00'))}</small></span><span>${money(bill.amount/100)}</span></div>${bill.transfer?`<details class="paycheck-shared-details" data-paycheck-date="${bdEscape(bill.date)}"><summary>Shared bills & contributions</summary><div class="paycheck-shared-balances" aria-live="polite"></div><p>Your Fixed Bills amount above is your only deduction for these shared bills.</p>${[...(bill.sharedBills||[])].sort((a,b)=>a.amount-b.amount||a.name.localeCompare(b.name)).map(b=>`<div class="check-summary-row"><span>${bdEscape(b.name)} · ${fmtDate(new Date(b.date+'T00:00:00'))}</span><span>${money(b.amount/100)}</span></div>`).join('')}${(bill.spouseContributions||[]).map(c=>`<div class="check-summary-row"><span>Spouse contribution · ${fmtDate(new Date(c.date+'T00:00:00'))}</span><span>+${money(c.amount/100)}</span></div>`).join('')}</details>`:''}`).join('');
     const extraExpenseLines = row.extrasThisCheck.map(e => `
       <div class="check-summary-row"><span>− ${bdEscape(e.label)} <span class="edited-tag" style="background:#fdf1e6;color:#a15f22;">one-time</span></span><span class="amount-input-wrap">${money(e.amount)}<span class="remove" style="margin-left:6px;" data-bd-click="removeExtraExpense(${row.paycheck}, ${e.id})">✕</span></span></div>
     `).join('');
@@ -2210,18 +2211,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
     // since the bottom section below switches to showing savings instead.
     let accountsSection = '';
     if (lines) {
-      accountsSection = `
-      <div class="col-labels">
-        <span></span>
-        <span class="pay-bal-wrap">
-          <span class="col-label-cell">Interest</span>
-          <span class="col-divider" style="visibility:hidden;"></span>
-          <span class="col-label-cell">Payment</span>
-          <span class="col-divider" style="visibility:hidden;"></span>
-          <span class="col-label-cell">Balance</span>
-        </span>
-      </div>
-      ${lines}`;
+      accountsSection = lines;
     } else if (!isAfterDebtFree) {
       accountsSection = `<p style="text-align:center;color:var(--muted);font-size:0.8rem;padding:6px 0;">All accounts paid off 🎉</p>`;
     }
