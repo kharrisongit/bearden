@@ -3,8 +3,9 @@ import {createSunBrowser,parseSunBalance,publicSun,syncSun,sunMessage,SunError} 
 import {fakeSunBrowser} from './helpers/sun-browser.mjs';
 test('Sun keeps amount due, current balance, and due date distinct',()=>{
  assert.deepEqual(parseSunBalance({totalDue:1050.12,balance:1200.05,dueDate:'2026-11-01T00:00:00',currencyCode:'USD'},null,1),{amountDue:105012,currentBalance:120005,dueDate:'2026-11-01',currency:'USD',checkedAt:1});
+ assert.equal(parseSunBalance({totalDue:10,balance:20,dueDate:'2026-02-30'},'USD').dueDate,null);
  assert.equal(parseSunBalance({totalDue:0,balance:-20,dueDate:null},'USD').currentBalance,-2000);
- for(const data of [{},{totalDue:null,balance:10},{totalDue:'10',balance:10},{totalDue:10,balance:20,dueDate:'2026-02-30'},{totalDue:10,balance:20,dueDate:'2026-11-01',currencyCode:'CAD'}])assert.throws(()=>parseSunBalance(data,'USD'));
+ for(const data of [{},{totalDue:null,balance:10},{totalDue:'10',balance:10},{totalDue:10,balance:20,dueDate:'2026-11-01',currencyCode:'CAD'}])assert.throws(()=>parseSunBalance(data,'USD'));
 });
 test('public rent projection never includes sessions, property IDs or live URLs',()=>{
  const publicData=publicSun({connected:true,pending:{expires:999,sessionId:'secret-browser',url:'secret-live'},session:'secret-auth',agreement:'secret-property',snapshot:{amountDue:1,currentBalance:2,currency:'USD',checkedAt:1,secret:'secret-extra'}},2);

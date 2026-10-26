@@ -55,3 +55,18 @@ export function reviewBankActivity(transactions,rules={},suggestions=[],today=ne
  return {rows,bills,spending:{start,end:today,total:[...categories.values()].reduce((n,c)=>n+c.amount,0),categories:[...categories.values()].sort((a,b)=>b.amount-a.amount)}};
 }
 function nextMonth(date){const d=new Date(date+'T12:00:00Z'),n=d.getUTCDate();d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+1);const last=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate();d.setUTCDate(Math.min(n,last));return d.toISOString().slice(0,10);}
+
+// Posted outflows from the selected bills account, including tracked bills and debt payments.
+export function billsAccountSpending(transactions,account,today,rules={},links={}){
+ const start=day(today,-29),groups=new Map(),rows=[];
+ if(account?.source!=='plaid')return {categories:[],total:0,rows};
+ for(const t of transactions){
+  if('plaid-'+t.account_id!==account.id||t.pending||t.currency!=='USD'||!(t.amount>0)||!Number.isFinite(t.amount)||t.date<start||t.date>today)continue;
+  const linked=Object.values(links).find(link=>matchesPayment(t,link)),rule=rules[transactionKey(t)],tracked=rule?.choice==='bill';
+  if(!linked&&!tracked&&(/TRANSFER/.test(t.category||'')||/\btransfer\b/i.test(t.name||'')))continue;
+  const kind=classifyBankTransaction(t),billKind=rule?.billKind||kind.billKind;
+  const label=linked?.targetName||(tracked?rule.name:null)||({rent:'Rent',electric:'Electric',utility:'Utilities',insurance:'Insurance','car-payment':'Car payments'})[billKind]||(/LOAN_PAYMENTS/.test(t.category||'')?'Debt payments':/BANK_FEES/.test(t.category||'')?'Fees':kind.label||'Other spending');
+  const key=normalize(label),amount=Math.round(t.amount*100),group=groups.get(key)||{key,label,amount:0,count:0};group.amount+=amount;group.count++;groups.set(key,group);rows.push({...t,spendingLabel:label});
+ }
+ const categories=[...groups.values()].sort((a,b)=>b.amount-a.amount);return {categories,total:categories.reduce((n,g)=>n+g.amount,0),rows:rows.sort((a,b)=>b.date.localeCompare(a.date))};
+}

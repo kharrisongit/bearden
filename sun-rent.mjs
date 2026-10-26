@@ -1,3 +1,4 @@
+import {nextRentDate,rememberRentReadings} from './public/rent-model.mjs';
 // Sun portal adapter. Only the portal's own balance response is observed; no payment requests are made.
 // Session and pending-browser records must be encrypted by the caller and never returned in public state.
 const PORTAL='https://app.sunwebportal.com',DAY=86400000,LOGIN_MS=5*60000;
@@ -11,12 +12,11 @@ export function parseSunBalance(data,currency,now=Date.now()){
  if(!data||typeof data!=='object')fail('unreadable');
  const code=data.currencyCode||currency;if(code!=='USD')fail('unreadable');
  const amountDue=money(data.totalDue),currentBalance=money(data.balance),dueDate=date(data.dueDate);
- if(amountDue>0&&!dueDate)fail('unreadable');
  return {amountDue,currentBalance,dueDate,currency:'USD',checkedAt:now};
 }
 export function publicSun(connection,now=Date.now()){
  if(!connection)return null;
- return {connected:!!connection.connected,status:connection.status||'Not connected.',needsLogin:!!connection.needsLogin,updated:connection.updated||null,nextSync:connection.nextSync||null,pendingUntil:connection.pending?.expires>now?connection.pending.expires:null,snapshot:connection.snapshot?{amountDue:connection.snapshot.amountDue,currentBalance:connection.snapshot.currentBalance,dueDate:connection.snapshot.dueDate,currency:connection.snapshot.currency,checkedAt:connection.snapshot.checkedAt}:null};
+ return {connected:!!connection.connected,status:connection.status||'Not connected.',needsLogin:!!connection.needsLogin,updated:connection.updated||null,nextSync:connection.nextSync||null,pendingUntil:connection.pending?.expires>now?connection.pending.expires:null,rentReadings:(connection.rentReadings||[]).map(r=>({date:r.date,currentBalance:r.currentBalance,amountDue:r.amountDue,checkedAt:r.checkedAt})),snapshot:connection.snapshot?{amountDue:connection.snapshot.amountDue,currentBalance:connection.snapshot.currentBalance,dueDate:nextRentDate(connection.snapshot.checkedAt),currency:connection.snapshot.currency,checkedAt:connection.snapshot.checkedAt}:null};
 }
 function balanceRequest(url){try{const u=new URL(url);return u.origin==='https://portal-api.app.sunwebportal.com'&&/^\/Payment\/GetCurrentBalanceBySelf\/[^/]+$/.test(u.pathname)?decodeURIComponent(u.pathname.split('/').at(-1)):null;}catch{return null;}}
 export function createSunBrowser(binding){
@@ -88,7 +88,7 @@ export async function syncSun(connection,session,browser,saveSession,{force=fals
  if(connection.lastAttempt&&now-connection.lastAttempt<5*60000)return 'Sun was checked recently. Showing the last saved amounts.';
  if(!force&&connection.nextSync>now)return connection.status;
  connection.lastAttempt=now;connection.nextSync=now+DAY;
- try{const result=await browser.check(session);await saveSession(result.session);connection.snapshot=result.snapshot;connection.updated=now;connection.needsLogin=false;connection.status='Sun balance and due date checked. Scheduled again in about a day.';}
+ try{const result=await browser.check(session);await saveSession(result.session);rememberRentReadings(connection);connection.snapshot=result.snapshot;rememberRentReadings(connection);connection.updated=now;connection.needsLogin=false;connection.status='Sun balance checked. Rent is due on the 1st. Scheduled again in about a day.';}
  catch(error){connection.needsLogin=error.code==='login'||error.code==='property';connection.status=sunMessage(error);if(!connection.needsLogin)connection.nextSync=now+6*3600000;}
  return connection.status;
 }

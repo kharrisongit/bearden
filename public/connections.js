@@ -39,7 +39,7 @@ window.BearDen=(()=>{
   $('#rentLoginLink').hidden=!rentLoginUrl||!rent?.pendingUntil;
   if(rentLoginUrl)$('#rentLoginLink').href=rentLoginUrl;else $('#rentLoginLink').removeAttribute('href');
   $('#rentExpiry').textContent=rent?.pendingUntil?'Window expires at '+new Date(rent.pendingUntil).toLocaleTimeString()+'.'+(!rentLoginUrl?' Use the private window you already opened, or start a new connection.':''):'';
-  const r=rent?.snapshot;$('#rentSnapshot').innerHTML=r?'<div class="connection-row"><strong>Latest Sun reading</strong><p>Minimum payment: '+money(r.amountDue)+'</p><p>Current balance: '+money(r.currentBalance)+'</p><p>Due date: '+esc(r.dueDate||'Not supplied')+'</p><small>Checked '+esc(new Date(r.checkedAt).toLocaleString())+(rent.needsLogin?' · Sign in again to update.':'')+'</small></div>':'';
+  const r=rent?.snapshot;$('#rentSnapshot').innerHTML=r?'<div class="connection-row"><strong>Latest Sun reading</strong><p>Minimum payment: '+money(r.amountDue)+'</p><p>Current balance: '+money(r.currentBalance)+'</p><p>Rent due on the 1st: '+esc(r.dueDate||'Not supplied')+'</p><small>Checked '+esc(new Date(r.checkedAt).toLocaleString())+(rent.needsLogin?' · Sign in again to update.':'')+'</small></div>':'';
  }
  async function rentAction(button,action){
   if(!requireLogin())return;button.disabled=true;$('#rentStatus').textContent=action==='start'?'Opening a private Sun sign-in window…':action==='complete'?'Reading Sun’s balance and saving the connection…':'Updating rent connection…';

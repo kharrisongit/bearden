@@ -275,7 +275,7 @@ test('rent browser is authenticated, origin checked, encrypted, and absent from 
  const saved=f.get('sun-session');assert.match(saved.session,/sun-access-secret/);assert.ok(!f.db.prepare("SELECT value FROM vault WHERE id='sun-session'").get().value.includes('sun-access-secret'));
  view=await(await app.handle(f.req('/api/state'))).text();assert.doesNotMatch(view,/sun-access-secret|sun-refresh-secret|sun-cookie-secret|property-a/);assert.equal(JSON.parse(view).connections.sun.snapshot.amountDue,102545);
  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM vault WHERE id='plan' OR id='classic'").get().n,0);
- await app.handle(f.req('/api/rent/disconnect',{}));assert.equal(f.get('sun-session'),null);assert.equal(f.get('connections').sun,undefined);f.db.close();
+ await app.handle(f.req('/api/rent/disconnect',{}));assert.equal(f.get('sun-session'),null);assert.equal(f.get('connections').sun.connected,false);assert.equal(f.get('connections').sun.snapshot.amountDue,102545);f.db.close();
 });
 test('rent browser routes cannot access another BearDen account pending sign-in',async()=>{
  const f=fixture(),browser=fakeSunBrowser();f.env.BROWSER=browser.binding;const app=runtime(f.env);await app.handle(f.req('/api/rent/start',{}));
@@ -283,4 +283,9 @@ test('rent browser routes cannot access another BearDen account pending sign-in'
  f.db.prepare('INSERT INTO sessions VALUES(?,?)').run(hash,Date.now()+60000);f.set('auth-session:'+hash,identity);
  const req=new Request(f.env.APP_URL+'/api/rent/complete',{method:'POST',headers:{Cookie:'bearden='+token,Origin:f.env.APP_URL,'Content-Type':'application/json','X-BearDen-Account':identity.accountId},body:'{}'});
  const result=await app.handle(req);assert.equal(result.status,400);assert.match((await result.json()).error,/expired/);assert.equal(browser.state.calls.length,0);assert.ok(f.get('connections').sun.pending);f.db.close();
+});
+
+test('saved Sun readings use the first for rent without another portal login',async()=>{
+ const f=fixture();f.set('connections',{items:[],transactions:[],candidates:[],sun:{connected:true,snapshot:{amountDue:120000,currentBalance:123456,currency:'USD',dueDate:'2026-10-26',checkedAt:Date.parse('2026-10-26T12:00:00Z')}}});
+ const data=await(await f.app.handle(f.req('/api/state'))).json();assert.equal(data.connections.sun.snapshot.dueDate,'2026-11-01');assert.equal(data.connections.sun.snapshot.currentBalance,123456);assert.equal((await f.app.handle(f.req('/rent-model.mjs'))).status,200);f.db.close();
 });

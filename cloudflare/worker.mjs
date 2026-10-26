@@ -1,3 +1,4 @@
+import {rememberRentReadings} from '../public/rent-model.mjs';
 import {createSunBrowser,publicSun,sunMessage,syncSun} from '../sun-rent.mjs';
 import {claimSimplefin,publicSimplefin,syncSimplefin,configureSimplefinAccount} from '../simplefin.mjs';
 import {plaidAccountEntry,bankAccounts,combineBankConnections} from '../providers.mjs';
@@ -123,7 +124,7 @@ export function runtime(env,fetcher=fetch){
       if(path==='/api/rent/complete'){
        const result=await sunBrowser.finish(c.sun?.pending);await write('sun-session',result.session);
        const pending=c.sun.pending;c.sun={connected:true,snapshot:result.snapshot,updated:now,lastAttempt:now,nextSync:now+86400000,needsLogin:false,status:'Sun connected. Balance and due date saved; checks run about daily.'};
-       await write('connections',c);await sunBrowser.close(pending.sessionId).catch(()=>{});return json({status:c.sun.status});
+       rememberRentReadings(c.sun);await write('connections',c);await sunBrowser.close(pending.sessionId).catch(()=>{});return json({status:c.sun.status});
       }
       if(path==='/api/rent/refresh'){const status=await syncSunRent(c,true);await write('connections',c);return json({status});}
       if(path==='/api/rent/cancel'){
@@ -132,7 +133,7 @@ export function runtime(env,fetcher=fetch){
       }
       if(path==='/api/rent/disconnect'){
        if(c.sun?.pending)await sunBrowser.close(c.sun.pending.sessionId).catch(()=>{});
-       await write('sun-session',null);delete c.sun;await write('connections',c);return json({status:'Sun disconnected. The saved sign-in session has been removed from BearDen.'});
+       await write('sun-session',null);if(c.sun){rememberRentReadings(c.sun);delete c.sun.pending;c.sun.connected=false;c.sun.status='Sun disconnected. Your last rent reading is kept.';}await write('connections',c);return json({status:'Sun disconnected. The saved sign-in session has been removed from BearDen.'});
       }
       return json({error:'Not found'},404);
      }catch(error){return json({error:sunMessage(error)},400);}
@@ -195,7 +196,7 @@ export function runtime(env,fetcher=fetch){
    });
   }
   if(!['GET','HEAD'].includes(req.method))return json({error:'Method not allowed'},405);
-  if(!['/','/index.html','/plaid-return','/style.css','/app.mjs','/engine.mjs','/setup-key','/setup-key.html','/setup-key.mjs','/favicon.ico','/tabs.js','/tabs.css','/income-model.mjs','/household-model.mjs','/credit-model.mjs','/transaction-links.mjs','/email-model.mjs','/tax-model.mjs','/tax-ui.mjs','/onboarding.js','/bank-activity.mjs','/classic.js','/classic.css','/classic-theme.js','/classic-events.js','/classic-migrate.mjs','/connections.js','/connections.css','/purify.min.js'].includes(path))return json({error:'Not found'},404);
+  if(!['/','/index.html','/plaid-return','/style.css','/app.mjs','/engine.mjs','/setup-key','/setup-key.html','/setup-key.mjs','/favicon.ico','/tabs.js','/tabs.css','/income-model.mjs','/rent-model.mjs','/household-model.mjs','/credit-model.mjs','/transaction-links.mjs','/email-model.mjs','/tax-model.mjs','/tax-ui.mjs','/onboarding.js','/bank-activity.mjs','/classic.js','/classic.css','/classic-theme.js','/classic-events.js','/classic-migrate.mjs','/connections.js','/connections.css','/purify.min.js'].includes(path))return json({error:'Not found'},404);
   const target=new URL(req.url);if(path==='/plaid-return')target.pathname='/';const asset=await env.ASSETS.fetch(new Request(target,req)),response=new Response(asset.body,asset);for(const [k,v]of Object.entries(headers))response.headers.set(k,v);return response;
  }
  async function handle(req){const identity=await sessionIdentity(req);return users.run(identity,()=>handleScoped(req));}

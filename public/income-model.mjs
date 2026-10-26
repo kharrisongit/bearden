@@ -1,6 +1,7 @@
+import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-link1';
 import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=shared-bill-list3';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
-export {reviewBankActivity,transactionKey} from './bank-activity.mjs';
+export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs';
 export {creditBills} from './credit-model.mjs';
 export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment} from './transaction-links.mjs';
 import {day,occurrences} from './engine.mjs';
@@ -74,9 +75,9 @@ export function paydayEvents(plan,start,end,{billsOnly=false,debtMode='full'}={}
  }
  return out;
 }
-export function scenarioForecast(accounts,plan,bills,start,{debtMode='full',length=30,household,scope,transactions=[]}={}){
+export function scenarioForecast(accounts,plan,bills,start,{debtMode='full',length=30,household,scope,transactions=[],includePersonalSpending=false}={}){
  const mode=['full','minimum','none'].includes(debtMode)?debtMode:'full';
- const paydays=paydayEvents(plan,start,day(start,length),{billsOnly:true,debtMode:mode});
+ const paydays=paydayEvents(plan,start,day(start,length),{billsOnly:!includePersonalSpending,debtMode:mode});
  // Matched credit cards remain covered by the paycheck allocation, preventing
  // an issuer minimum and a tracker minimum from being deducted twice.
  const scheduled=mode==='none'?bills.filter(b=>!isDebtPayment(b)):bills;
@@ -94,7 +95,8 @@ export function billEvents(legacy,planner,linked,start,end){
   bills=bills.filter(b=>b.source!=='gmail'||!(b.billKind==='electric'||/consumers\s*energy/i.test(b.name)));
   bills.push(...[...monthlyEmails.values()].map(b=>({...b,id:electric.id,name:electric.name,billKind:'electric',source:electric.source,groupKey:electric.groupKey,repeat:'once',gmailConfirmed:true,originalEmailId:b.id})));
  }
- for(const bill of bills){
+ for(const original of bills){
+  const bill=rentSchedule(original);
   if(!bill.date)continue;
   const dates=occurrences(bill.date,bill.repeat||'once',start,end);
   if(bill.repeat==='once'&&bill.date<start&&bill.source!=='tracker-debt')dates.unshift(bill.date);
@@ -104,10 +106,10 @@ export function billEvents(legacy,planner,linked,start,end){
    const norm=s=>String(s).toLowerCase().replace(/[^a-z0-9]/g,'');
    if(!bill.gmailConfirmed&&['bank-estimate','bank-tracked'].includes(bill.source)&&bills.some(other=>!['bank-estimate','bank-tracked'].includes(other.source)&&(norm(other.name)===norm(bill.name)||(!electric&&bill.billKind==='electric'&&(other.billKind==='electric'||/consumers\s*energy/i.test(other.name))))&&occurrences(other.date,other.repeat||'once',day(date,-7),day(date,7)).length))continue;
    const key=bill.id+':'+date;
-   if(paid.has(key)||legacy?.paid?.includes(key)||(bill.gmailConfirmed&&[...paid,...(legacy?.paid||[])].some(k=>k.startsWith(bill.id+':'+date.slice(0,7)))))continue;
+   if((bill.billKind==='rent'&&[...paid,...(legacy?.paid||[])].some(k=>rentPaidKey(k,bill)===key))||paid.has(key)||legacy?.paid?.includes(key)||(bill.gmailConfirmed&&[...paid,...(legacy?.paid||[])].some(k=>k.startsWith(bill.id+':'+date.slice(0,7)))))continue;
    const covered=Boolean(linked[bill.id])||bill.paidByCard||bill.source==='tracker-debt'||(bill.source==='plaid-credit'?bill.covered:(overrides[bill.id]??(bill.source!=='gmail'&&bill.source!=='manual'&&bill.source!=='bank-estimate'&&bill.source!=='bank-tracked')));
    const shared=sharedBill(bill,planner);
-   out.push({...bill,date,key,type:'bill',covered:shared?false:covered,shared,overdue:date<start,emailConfirmed:!!bill.emailConfirmed&&date===(bill.emailDueDate||bill.date)});
+   out.push({...rentOccurrence(bill,date),date,key,type:'bill',covered:shared?false:covered,shared,overdue:date<start,emailConfirmed:!!bill.emailConfirmed&&date===(bill.emailDueDate||bill.date)});
   }
  }
  return out.sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name));
@@ -165,4 +167,12 @@ export function syncedDebtBalances(planner,accounts,today){
   if(a&&!a.balanceUnavailable&&a.currency==='USD'&&Number.isSafeInteger(a.balance)&&a.balance>0)result[id]={balance:a.balance,date:today};
  }
  return result;
+}
+
+export function personalChecking(accounts,household={}){
+ const checking=accounts.filter(a=>(a.currency||'USD')==='USD'&&a.type==='depository'&&(a.subtype==='checking'||/checking/i.test(a.name||''))&&a.id!==household.billsAccountId);
+ return household.personalAccountId?checking.find(a=>a.id===household.personalAccountId)||null:checking.length===1?checking[0]:null;
+}
+export function personalCheckingTransactions(transactions,account){
+ return account?.source==='plaid'?transactions.filter(t=>'plaid-'+t.account_id===account.id):[];
 }
