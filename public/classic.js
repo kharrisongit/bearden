@@ -2075,13 +2075,38 @@ function buildSavingsGoalHeroHTML(g, canDelete, isEditing, isWithdrawing){
   `;
 }
 
+// A capped simulation is not a lifetime-interest estimate. Explain which
+// unpaid debts have no payment or fail to reduce principal in upcoming checks.
+function debtForecastNotice(cards,schedule,debtFreeDate,checked={},today=new Date()){
+  if(debtFreeDate!==null)return '';
+  const last=schedule.at(-1);
+  if(!last||last.total<=0.01)return '';
+  const midnight=new Date(today);midnight.setHours(0,0,0,0);
+  const upcoming=schedule.filter(row=>!checked[row.paycheck]&&row.date>=midnight).slice(0,26);
+  const unpaid=[],notReducing=[];
+  if(upcoming.length===26)cards.forEach((card,i)=>{
+    if(!(last.balancesAfter[i]>0.005))return;
+    const payments=upcoming.reduce((sum,row)=>sum+(row.payments[i]||0),0);
+    const interest=upcoming.reduce((sum,row)=>sum+(row.interestByAccount[i]||0),0);
+    if(payments<0.005)unpaid.push(card.name);
+    else if(interest>0&&payments<=interest+0.005)notReducing.push(card.name);
+  });
+  const reasons=[];
+  if(unpaid.length)reasons.push('No payments scheduled over the next 26 paychecks for: '+unpaid.join(', ')+'.');
+  if(notReducing.length)reasons.push('Payments do not exceed projected interest over the next 26 paychecks for: '+notReducing.join(', ')+'.');
+  if(reasons.length)reasons.push('Review payment amounts and monthly minimums in Accounts.');
+  else reasons.push('The current plan still has debt at the end of the 30-year forecast.');
+  reasons.push('Total payoff interest is unavailable until the plan pays off.');
+  return reasons.join(' ');
+}
+
 function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo, debtFreeDate, debtFreePaycheck, budgetItemsSnapshot, sliceComparison=null){
   const startTotal = cards.reduce((a,c)=>a+c.balance,0);
   lastStartTotal = startTotal;
   const neverPaysOff = debtFreeDate === null;
 
   if (neverPaysOff) {
-    document.getElementById('heroDate').textContent = cards.some(c=>c.balance>0)&&Number(document.getElementById('takeHome').value)>0?'No payoff date with these payments':'Set up income, budget, and debt to begin';
+    document.getElementById('heroDate').textContent = cards.some(c=>c.balance>0)&&Number(document.getElementById('takeHome').value)>0?'No payoff within 30 years':'Set up income, budget, and debt to begin';
     document.getElementById('heroDate').style.color = '#e8a15c';
     document.getElementById('heroDate').style.fontSize = '1.15rem';
     document.getElementById('heroDayCounter').textContent = '';
@@ -2093,7 +2118,12 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
     document.getElementById('heroDayCounter').textContent = daysCounterText(debtFreeDate);
     document.getElementById('heroPaycheckCounter').textContent = paychecksCounterText(debtFreePaycheck);
   }
-  document.getElementById('heroInterest').textContent = money(totalInterest);
+  document.getElementById('heroDayCounter').style.display=neverPaysOff?'none':'';
+  document.getElementById('heroPaycheckCounter').style.display=neverPaysOff?'none':'';
+  document.getElementById('heroInterest').textContent = neverPaysOff?'Unavailable':money(totalInterest);
+  const forecastNote=document.getElementById('debtForecastNote');
+  forecastNote.textContent=debtForecastNotice(cards,schedule,debtFreeDate,checkedPaychecks);
+  forecastNote.hidden=!forecastNote.textContent;
   const sliceNote=document.getElementById('sliceInterestNote');
   sliceNote.hidden=!sliceComparison;
   if(sliceComparison){const difference=Math.round(sliceComparison.difference*100)/100,method={avalanche:'Avalanche',snowball:'Snowball',minimum:'Minimums'}[currentPayoffMethod];sliceNote.textContent=(Math.abs(difference)<.01?'No projected interest change':money(Math.abs(difference))+(difference>0?' less':' more')+' projected interest')+' vs '+method+' without '+sliceComparison.actions+(sliceComparison.through?' through '+fmtDate(sliceComparison.through):'')+'.';}
@@ -6933,3 +6963,4 @@ document.getElementById('addDebtPaymentForm').onsubmit=async event=>{
   await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('addDebtPaymentDialog').close();
  }catch(error){accountPaymentOverrides=before;paycheckSlices=slices;paycheckSquashes=squashes;calculate();clearTimeout(saveDebounceTimer);status.textContent=error.message;}finally{button.disabled=false;}
 };
+

@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';import {readFileSync} from 'node:fs';import {blank} from '../public/engine.mjs';import {parseAccountEmail} from '../email-parser.mjs';
-async function fixture(page,{messages=[],debtKind='credit-card',accounts=[],incomePlanner={},connectionOverrides={}}={}){
- let tracker={state:{version:1,values:{'app-state':JSON.stringify({cards:[{id:1,name:'Visa',debtKind,balance:10000,apr:0,min:46.15,monthlyMinimum:100,dueDate:'2026-11-30'}],cardIdCounter:1,budgetItems:[],budgetSetupVersion:2,startDate:'2026-11-06',takeHome:'1000',payoffMethod:'minimum',savingsGoals:[{id:1,name:'Emergency',goal:1000,start:100,contribution:0}],savingsGoalIdCounter:1}),'income-planner':JSON.stringify(incomePlanner),onboarding:JSON.stringify({completed:true})}},revision:0};
+async function fixture(page,{messages=[],debtKind='credit-card',accounts=[],incomePlanner={},connectionOverrides={},debtOverrides={}}={}){
+ let tracker={state:{version:1,values:{'app-state':JSON.stringify({cards:[{id:1,name:'Visa',debtKind,balance:10000,apr:0,min:46.15,monthlyMinimum:100,dueDate:'2026-11-30',...debtOverrides}],cardIdCounter:1,budgetItems:[],budgetSetupVersion:2,startDate:'2026-11-06',takeHome:'1000',payoffMethod:'minimum',savingsGoals:[{id:1,name:'Emergency',goal:1000,start:100,contribution:0}],savingsGoalIdCounter:1}),'income-planner':JSON.stringify(incomePlanner),onboarding:JSON.stringify({completed:true})}},revision:0};
  let releaseSync,startedSync;const started=new Promise(r=>startedSync=r),gate=new Promise(r=>releaseSync=r);let bankRefreshes=0;
  const emailCalls=[];const connections={items:[{id:'bank',name:'Bank'}],simplefin:{connected:true,status:'Connected'},emailConnected:true,mailAccounts:[{id:'mail',email:'person@hotmail.com',provider:'microsoft'}],sun:{enabled:true,connected:true,status:'Connected'},transactions:[],candidates:[],creditCards:[],gmailMessages:messages,recurringBills:[],...connectionOverrides};
  await page.route('https://bearden.test/**',async route=>{
@@ -18,6 +18,23 @@ async function fixture(page,{messages=[],debtKind='credit-card',accounts=[],inco
  await page.goto('https://bearden.test/');await page.evaluate(()=>window.classicReady);
  return {started,releaseSync,connections,emailCalls,get tracker(){return tracker;}};
 }
+test('Minimums explains an unfinished forecast and restores valid totals when the method changes',async({page})=>{
+ test.setTimeout(90000); // The capped fixture renders the full 780-paycheck schedule.
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.setViewportSize({width:390,height:844});
+ await page.clock.setFixedTime(new Date('2026-10-26T12:00:00Z'));
+ await fixture(page,{debtOverrides:{balance:4125.31,apr:18,min:0,monthlyMinimum:0}});
+ await expect(page.locator('#heroDate')).toHaveText('No payoff within 30 years');
+ await expect(page.locator('#heroInterest')).toHaveText('Unavailable');
+ await expect(page.locator('#debtForecastNote')).toContainText('No payments scheduled over the next 26 paychecks for: Visa.');
+ await expect(page.locator('#heroDayCounter')).toBeHidden();await expect(page.locator('#heroPaycheckCounter')).toBeHidden();
+ expect(await page.locator('#debtHeroBox').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+ await page.locator('#pmBtnAvalanche').click();
+ await expect(page.locator('#heroInterest')).toHaveText(/^\$[\d,.]+$/);
+ await expect(page.locator('#debtForecastNote')).toBeHidden();await expect(page.locator('#heroDayCounter')).toBeVisible();await expect(page.locator('#heroPaycheckCounter')).toBeVisible();
+ await page.locator('#pmBtnMinimum').click();await expect(page.locator('#heroInterest')).toHaveText('Unavailable');
+ expect(errors).toEqual([]);
+});
 test('timing settings persist, debt due dates edit, and an extra payment can be added to an empty check',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));const f=await fixture(page);
  await page.locator('#nav-settings').click();await page.locator('#debtPaymentTiming').selectOption('due-date');await expect(page.locator('#featureSettingsStatus')).toHaveText('Debt payment timing saved.');
@@ -75,3 +92,4 @@ test('Sync connections checks every connected inbox in separate requests',async(
  const f=await fixture(page,{connectionOverrides:{mailAccounts:[{id:'first',email:'first@hotmail.com',provider:'microsoft'},{id:'second',email:'second@gmail.com',provider:'google'}]}});
  await page.locator('#nav-settings').click();await page.locator('#classicSync').click();await f.started;f.releaseSync();await expect(page.locator('#classicSync')).toBeEnabled();expect(f.emailCalls.map(c=>c.mailboxId)).toEqual(['first','second']);
 });
+
