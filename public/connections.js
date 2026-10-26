@@ -25,8 +25,8 @@ window.BearDen=(()=>{
   const c=legacy?.connections||{},s=legacy?.state;
   $('#classicBank').textContent=c.items?.length?'Add another bank connection':'Connect bank with Plaid';
   $('#classicBankStatus').textContent=c.items?.length?`${c.items.length} bank connection(s). To sign in again, use Reconnect existing bank below. ${config.syncDescription||''}`:'Connect a bank to see its balances here.';
-  $('#classicBalances').innerHTML=(s?.accounts||[]).filter(a=>a.source==='plaid').map(a=>`<div class="connection-row"><strong>${esc(a.name)}</strong>${a.balanceUnavailable?'Balance not supplied':money(a.balance)}<small>${esc(a.currency||'USD')}${a.balanceRetrieved?' · Retrieved '+esc(new Date(a.balanceRetrieved).toLocaleString()):''}</small>${['loan','credit'].includes(a.type)&&a.balance===0?'<small>Plaid reports zero; verify with your bank. This is a balance, not a payment due.'+(a.lastPositiveBalance>0?' Last positive balance received: '+money(a.lastPositiveBalance)+'.':'')+'</small>':''}<details><summary>Balance details</summary><small>Connection: ${esc(c.items?.find(i=>i.id===a.itemId)?.name||'Bank')}<br>Account type: ${esc(a.type||'Not supplied')} / ${esc(a.subtype||'Not supplied')}<br>Current balance reported by Plaid: ${a.reportedCurrent===undefined?'Refresh to load details':a.reportedCurrent===null?'Not supplied':money(Math.round(a.reportedCurrent*100))}<br>Available balance reported by Plaid: ${a.reportedAvailable===undefined?'Refresh to load details':a.reportedAvailable===null?'Not supplied':money(Math.round(a.reportedAvailable*100))}</small></details></div>`).join('');
-  $('#classicBanks').innerHTML=(c.items||[]).map((i,index)=>`<div class="connection-row"><strong>${esc(i.name)}</strong><button data-bank-reconnect="${esc(i.id)}">Reconnect existing bank</button><button data-credit-update="${esc(i.id)}">${i.liabilities?'Manage extra card permissions':'Request due dates & minimums'}</button><small>Balances already sync. Extra card details may require additional Plaid permission; linking an existing account in Accounts does not.</small><button data-bank-disconnect="${esc(i.id)}">Disconnect</button>${i.liabilitiesStatus?'<small>'+esc(i.liabilitiesStatus)+'</small>':''}${c.items.slice(0,index).find(other=>other.name===i.name)?'<button data-bank-combine="'+esc(i.id)+'" data-bank-keep="'+esc(c.items.slice(0,index).find(other=>other.name===i.name).id)+'">Combine duplicate '+esc(i.name)+' connections</button>':''}</div>`).join('');
+  $('#classicBalances').innerHTML=(s?.accounts||[]).filter(a=>a.source==='plaid').map(a=>`<div class="connection-row"><strong>${esc(a.name)}</strong>${a.balanceUnavailable?'Balance not supplied':money(a.balance)}<small>${esc(a.currency||'USD')}${a.balanceRetrieved?' · Retrieved '+esc(new Date(a.balanceRetrieved).toLocaleString()):''}</small>${['loan','credit'].includes(a.type)&&a.balance===0?'<small>Plaid reports zero; verify with your bank. This is a balance, not a payment due.'+(a.lastPositiveBalance>0?' Last positive balance received: '+money(a.lastPositiveBalance)+'.':'')+'</small>':''}<details><summary>Balance details</summary><small>Connection: ${esc(c.items?.find(i=>i.id===a.itemId)?.name||'Bank')}${c.items?.find(i=>i.id===a.itemId)?.balanceError?'<br>Last balance refresh failed: '+esc(c.items.find(i=>i.id===a.itemId).balanceError):''}<br>Account type: ${esc(a.type||'Not supplied')} / ${esc(a.subtype||'Not supplied')}<br>Current balance reported by Plaid: ${a.reportedCurrent===undefined?'No balance response saved for this account':a.reportedCurrent===null?'Not supplied':money(Math.round(a.reportedCurrent*100))}<br>Available balance reported by Plaid: ${a.reportedAvailable===undefined?'No balance response saved for this account':a.reportedAvailable===null?'Not supplied':money(Math.round(a.reportedAvailable*100))}</small></details></div>`).join('');
+  $('#classicBanks').innerHTML=(c.items||[]).map((i,index)=>`<div class="connection-row"><strong>${esc(i.name)}</strong><button data-bank-reconnect="${esc(i.id)}">Reconnect existing bank</button><button data-credit-update="${esc(i.id)}">${i.liabilities?'Manage extra card permissions':'Request due dates & minimums'}</button><small>Balances already sync. Extra card details may require additional Plaid permission; linking an existing account in Accounts does not.</small><button data-bank-disconnect="${esc(i.id)}">Disconnect</button>${i.balanceError?'<small role="status">Balance refresh failed: '+esc(i.balanceError)+'</small>':i.balanceWarning?'<small role="status">'+esc(i.balanceWarning)+'</small>':''}${i.liabilitiesStatus?'<small>'+esc(i.liabilitiesStatus)+'</small>':''}${c.items.slice(0,index).find(other=>other.name===i.name)?'<button data-bank-combine="'+esc(i.id)+'" data-bank-keep="'+esc(c.items.slice(0,index).find(other=>other.name===i.name).id)+'">Combine duplicate '+esc(i.name)+' connections</button>':''}</div>`).join('');
   $('#classicGmail').textContent='Add Gmail account';$('#classicDisconnectGmail').hidden=true;$('#checkGmailAccounts').hidden=!c.gmail;
   $('#classicEmailStatus').textContent=c.gmail?'Connected. Bills and payment notices update in the background.':'Connect Gmail to find bills and payment notices.';
   $('#gmailAccountList').innerHTML=(c.gmailAccounts||[]).map(a=>'<div class="connection-row"><strong>'+esc(a.email||'Gmail account')+'</strong><small>'+esc(a.status||'Connected')+(a.updated?' · '+esc(new Date(a.updated).toLocaleString()):'')+'</small><button type="button" data-gmail-disconnect="'+esc(a.id)+'">Disconnect</button></div>').join('');
@@ -60,15 +60,29 @@ window.BearDen=(()=>{
  });
  function run(fn){return async e=>{const b=e?.currentTarget;if(b)b.disabled=true;try{await fn();}catch(err){message(err.message);}finally{if(b)b.disabled=false;}};}
  $('#classicLogout').onclick=run(async()=>{await window.performSaveAppState?.();await queue;await api('/api/logout',{});location.reload();});
- $('#classicSync').onclick=run(async()=>{await queue;const r=await api('/api/sync',{});await refresh();message(r.status||'Connections synced.');});
  let refreshingBank=false;
+ async function refreshEveryBank(report){
+  if(refreshingBank)return null;refreshingBank=true;
+  const buttons=[...document.querySelectorAll('[data-refresh-bank]'),$('#classicSync')],results=[];
+  buttons.forEach(b=>{b.disabled=true;b.setAttribute('aria-busy','true');});
+  try{
+   await queue;await refresh();const items=[...(legacy?.connections?.items||[])];
+   for(const [index,item] of items.entries()){
+    report('Refreshing '+item.name+' ('+(index+1)+' of '+items.length+')…');
+    try{await queue;const result=await api('/api/bank/refresh',{itemId:item.id});results.push(item.name+': '+(result.status||'No refresh status returned.'));}catch(error){results.push(item.name+': Refresh failed — '+error.message);}
+    await refresh();
+   }
+   return results.length?results:['No bank connections to refresh.'];
+  }finally{refreshingBank=false;buttons.forEach(b=>{b.disabled=false;b.removeAttribute('aria-busy');});}
+ }
+ $('#classicSync').onclick=run(async()=>{
+  const results=await refreshEveryBank(message);if(!results)return;
+  if(legacy?.connections?.gmail){message('Checking Gmail…');try{const result=await api('/api/sync',{gmailOnly:true});results.push(result.status||'Gmail checked.');}catch(error){results.push('Gmail: '+error.message);}await refresh();}
+  message(results.join(' · '));
+ });
  document.querySelectorAll('[data-refresh-bank]').forEach(button=>button.onclick=async()=>{
-  if(refreshingBank)return;refreshingBank=true;
-  const buttons=document.querySelectorAll('[data-refresh-bank]'),statuses=document.querySelectorAll('.bank-refresh-status');
-  buttons.forEach(b=>{b.disabled=true;b.setAttribute('aria-busy','true');});statuses.forEach(s=>s.textContent='Refreshing…');
-  try{await queue;const r=await api('/api/bank/refresh',{});await refresh();statuses.forEach(s=>s.textContent=/attention|loading/i.test(r.status||'')?r.status:'Balances refreshed.');}
-  catch(e){statuses.forEach(s=>s.textContent=e.message);}
-  finally{refreshingBank=false;buttons.forEach(b=>{b.disabled=false;b.removeAttribute('aria-busy');});}
+  const statuses=document.querySelectorAll('.bank-refresh-status'),report=text=>statuses.forEach(s=>s.textContent=text);
+  try{const results=await refreshEveryBank(report);if(results)report(results.join(' · '));}catch(error){report(error.message);}
  });
  $('#classicBank').onclick=run(()=>connectBank());$('#classicGmail').onclick=()=>{if(requireLogin())location.href='/auth/google?gmail=1&account='+encodeURIComponent(config.accountId);};
  bridge.readGmailMessage=async message=>{await queue;const result=await api('/api/gmail/message',{mailboxId:message.mailboxId,id:message.id});if(!result.message)throw Error('Could not read the selected email. Try again.');legacy.connections.gmailMessages=[...(legacy.connections.gmailMessages||[]).filter(m=>m.id!==result.message.id),result.message];return result.message;};

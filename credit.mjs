@@ -15,4 +15,4 @@ export async function syncCredit(c,item,plaid,force=false){
  }catch(e){item.liabilitiesError=e.code||e.message;item.liabilitiesStatus='Card details need attention: '+(e.code||e.message)+'. Previous details are kept; retry or update card access in Settings.';}
 }
 export function publicCredit(c){return (c.creditCards||[]).map(card=>({...card,payments:cardPayments(card,c.transactions),stale:!!c.items.find(i=>i.id===card.itemId)?.liabilitiesError}));}
-export const publicItem=i=>({id:i.id,name:i.name,liabilities:!!i.liabilities,liabilitiesStatus:i.liabilitiesStatus,liabilitiesUpdated:i.liabilitiesUpdated});
+export const publicItem=i=>({id:i.id,name:i.name,liabilities:!!i.liabilities,liabilitiesStatus:i.liabilitiesStatus,liabilitiesUpdated:i.liabilitiesUpdated,balanceAttempt:i.balanceAttempt,balancesUpdated:i.balancesUpdated,balanceWarning:i.balanceWarning,balanceError:i.balanceError});
