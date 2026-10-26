@@ -173,9 +173,8 @@ body{background:radial-gradient(ellipse at 0 0,#aad3bc16,transparent 38%),var(--
 .calendar-agenda-scroll .calendar-agenda-row{padding:12px;margin:6px 0;font-size:.76rem}
 .calendar-agenda-scroll:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 
-/* Keep spending membership and the primary connection together at the card bottom. */
-.account-card-footer{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:center;gap:12px;border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
-.account-card-footer .account-spending{color:var(--muted);font-size:.62rem;line-height:1.5;overflow-wrap:anywhere}
+/* Keep the primary connection at the bottom right of each card. */
+.account-card-footer{display:flex;justify-content:flex-end;align-items:center;border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
 .account-card-footer .account-connection{margin:0;font-size:.62rem;font-weight:600;line-height:1.5;text-align:right;justify-self:end;overflow-wrap:anywhere}
 .bill-tile>.account-card-footer{margin-top:0;padding:10px 12px;background:var(--paper)}
 .bill-loan-summary{padding:0 15px 14px}
@@ -208,3 +207,26 @@ body{background:radial-gradient(ellipse at 0 0,#aad3bc16,transparent 38%),var(--
 
 .income-card #chooseBillsAccount{min-height:38px;padding:8px 12px;margin:2px 0 12px;border:1px solid var(--line);background:var(--accent-soft);color:var(--accent);border-radius:9px}
 .income-card #chooseBillsAccount:hover{border-color:var(--accent);text-decoration:none}
+
+html.popup-scroll-locked{overflow:hidden;overscroll-behavior:none}
+.popup-scroll-locked body{position:fixed;top:var(--popup-scroll-top);left:var(--popup-scroll-left);width:100%;overflow:hidden;overscroll-behavior:none}
+dialog[open]{max-height:85dvh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+dialog::backdrop{touch-action:none}
+.celebration-overlay{overflow-y:auto;overscroll-behavior:contain}
+
+.account-total-card{background:var(--accent-soft);border-color:var(--line)}
+.account-total-card h3{font-size:.85rem;color:var(--muted);margin:0 0 8px}
+.account-total-amount{display:block;color:var(--accent);font-size:1.8rem;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.account-total-card .subtle{margin:8px 0 0}
+
+.account-heading-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-left:auto}
+.income-card .account-heading-actions>button{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:.72rem;padding:9px 11px;white-space:nowrap}
+.income-card .account-heading-actions>button[hidden]{display:none}
+.account-heading-actions svg{width:16px;height:16px}
+#refreshAllDebts[aria-busy=true] svg{animation:bank-spin 1s linear infinite}
+#debtProgressDialog .card-heading{flex-wrap:nowrap;align-items:flex-start}
+#debtProgressTitle{overflow-wrap:anywhere;min-width:0}
+#debtProgressContent .email-payment-status{margin-inline:0}
+
+.dashboard-intro{margin:0 0 68px}
+.dashboard-intro p{margin-bottom:0}

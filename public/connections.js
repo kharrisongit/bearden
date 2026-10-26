@@ -25,7 +25,7 @@ window.BearDen=(()=>{
  async function refresh(){legacy=await api('/api/state');renderConnections();}
  function renderConnections(){
   $('#accountMode').textContent=config.authenticated?'You are signed in with '+(config.email||'your BearDen')+' account. Your budget, accounts, and income update to the cloud securely via your account.':'Not signed in. Tracker changes are saved on this device.';
-  $('#classicLogin').hidden=!!config.authenticated;$('#classicLogout').hidden=!config.authenticated;$('#classicSync').hidden=!config.authenticated;document.querySelectorAll('[data-refresh-bank]').forEach(b=>b.hidden=!config.authenticated);$('#privateConnections').hidden=!config.authenticated;$('#rentTrackingOption').hidden=!config.authenticated;
+  $('#classicLogin').hidden=!!config.authenticated;$('#classicLogout').hidden=!config.authenticated;$('#classicSync').hidden=!config.authenticated;document.querySelectorAll('[data-refresh-bank],[data-refresh-debts]').forEach(b=>b.hidden=!config.authenticated);$('#privateConnections').hidden=!config.authenticated;$('#rentTrackingOption').hidden=!config.authenticated;
   bridge.config=config;bridge.plan=legacy;window.dispatchEvent(new Event('bearden-connections'));
   if(!config.authenticated)return;
   const c=legacy?.connections||{},s=legacy?.state;
@@ -127,21 +127,31 @@ window.BearDen=(()=>{
   await refresh();if(errors.length)throw Error(errors.join(' · '));message('Plaid disconnected.');
  });
  let refreshingBank=false;
- async function refreshEveryBank(report,{includeSimplefin=true}={}){
+ async function refreshEveryBank(report,{includeSimplefin=true,creditDetails=false}={}){
   if(refreshingBank)return null;refreshingBank=true;
-  const buttons=[...document.querySelectorAll('[data-refresh-bank]'),$('#classicSync'),$('#refreshPlaid')],results=[];
+  const buttons=[...document.querySelectorAll('[data-refresh-bank],[data-refresh-debts]'),$('#classicSync'),$('#refreshPlaid')],results=[];
   buttons.forEach(b=>{b.disabled=true;b.setAttribute('aria-busy','true');});
   try{
    await queue;await refresh();const items=[...(legacy?.connections?.items||[])];
    for(const [index,item] of items.entries()){
     report('Refreshing '+item.name+' ('+(index+1)+' of '+items.length+')…');
-    try{await queue;const result=await api('/api/bank/refresh',{itemId:item.id});results.push(item.name+': '+(result.status||'No refresh status returned.'));}catch(error){results.push(item.name+': Refresh failed — '+error.message);}
+    try{await queue;const result=await api(creditDetails?'/api/cards/refresh':'/api/bank/refresh',{itemId:item.id});results.push(item.name+': '+(result.status||'No refresh status returned.'));}catch(error){results.push(item.name+': Refresh failed — '+error.message);}
     await refresh();
    }
    if(includeSimplefin&&legacy?.connections?.simplefin){report('Refreshing SimpleFIN…');try{const r=await api('/api/simplefin/refresh',{});results.push('SimpleFIN: '+r.status);}catch(e){results.push('SimpleFIN: '+e.message);}await refresh();}
    return results.length?results:['No bank connections to refresh.'];
   }finally{refreshingBank=false;buttons.forEach(b=>{b.disabled=false;b.removeAttribute('aria-busy');});}
  }
+ $('#refreshAllDebts').onclick=async()=>{
+  const button=$('#refreshAllDebts'),report=text=>$('#creditStatus').textContent=text;
+  if(button.disabled)return;
+  try{
+   const results=await refreshEveryBank(report,{creditDetails:true});if(!results)return;
+   button.disabled=true;button.setAttribute('aria-busy','true');
+   if(legacy?.connections?.gmail||legacy?.connections?.gmailAccounts?.length){report('Checking Gmail…');try{await bridge.searchGmail('');results.push('Gmail checked.');}catch(error){results.push('Gmail: '+error.message);}}
+   report(results.join(' · '));
+  }catch(error){report(error.message);}finally{button.disabled=false;button.removeAttribute('aria-busy');}
+ };
  $('#refreshPlaid').onclick=run(async()=>{const report=text=>$('#plaidConfigStatus').textContent=text;const results=await refreshEveryBank(report,{includeSimplefin:false});if(results)report(results.join(' · '));});
  $('#classicSync').onclick=run(async()=>{
   const results=await refreshEveryBank(message);if(!results)return;

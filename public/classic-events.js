@@ -13,3 +13,38 @@
  function plainControls(root){const controls=[];if(!root||root.nodeType!==1)return;if(root.matches('button,summary,.hero-title,.section-title,.spending-summary-link,.milestone-banner'))controls.push(root);controls.push(...root.querySelectorAll('button,summary,.hero-title,.section-title,.spending-summary-link,.milestone-banner'));for(const el of controls){if(el.closest('#gamesSection'))continue;const old=el.textContent;if(el.classList.contains('icon-btn')&&el.title&&!el.querySelector('svg')){const title=el.title;const kind=/withdraw/i.test(title)?'withdraw':/delete/i.test(title)?'delete':/add|new page/i.test(title)?'add':'edit';el.setAttribute('aria-label',title);el.innerHTML='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+iconPaths[kind]+'"/></svg>';continue;}const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let n;while(n=walker.nextNode()){const next=n.data.replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu,'').trimStart();if(next!==n.data)n.data=next;}if(!el.textContent.trim()&&!el.querySelector('svg'))el.textContent=el.getAttribute('title')||symbols[old.replace(/\uFE0F/g,'').trim()]||'Edit';}}
  plainControls(document.body);new MutationObserver(list=>{for(const change of list){if(change.type==='characterData')plainControls(change.target.parentElement);for(const node of change.addedNodes)if(node.nodeType===1)plainControls(node);}}).observe(document.body,{childList:true,subtree:true,characterData:true});
 })();
+
+// Native dialogs make the page inert but do not stop backdrop scrolling on iOS.
+// Freeze it at its current position until the last popup closes.
+(()=>{
+ const root=document.documentElement;
+ const popupSelector='dialog[open],#celebrationOverlay.show';
+ let position=null;
+ function lock(){
+  if(position)return;
+  position={x:window.scrollX,y:window.scrollY};
+  root.style.setProperty('--popup-scroll-top',-position.y+'px');
+  root.style.setProperty('--popup-scroll-left',-position.x+'px');
+  root.classList.add('popup-scroll-locked');
+ }
+ function sync(){
+  if(document.querySelector(popupSelector)){lock();return;}
+  if(!position)return;
+  const saved=position;position=null;
+  root.classList.remove('popup-scroll-locked');
+  root.style.removeProperty('--popup-scroll-top');
+  root.style.removeProperty('--popup-scroll-left');
+  window.scrollTo({left:saved.x,top:saved.y,behavior:'instant'});
+ }
+ // Run synchronously so closing a dialog before changing tabs restores the
+ // old tab's position before navigation chooses the new tab's position.
+ const prototype=HTMLDialogElement.prototype,showModal=prototype.showModal,close=prototype.close;
+ prototype.showModal=function(...args){lock();try{return showModal.apply(this,args);}finally{sync();}};
+ prototype.close=function(...args){try{return close.apply(this,args);}finally{sync();}};
+ new MutationObserver(changes=>{
+  if(changes.some(change=>change.type==='childList'||change.target.matches('dialog,#celebrationOverlay')))sync();
+ }).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['open','class']});
+ // Escape, native form submission and removal also release the lock.
+ document.addEventListener('close',sync,true);
+ sync();
+})();
