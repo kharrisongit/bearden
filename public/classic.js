@@ -705,7 +705,8 @@ function updateIncomeEstimateDisplay(){
  const rate=Number(document.getElementById('hourlyRate').value)||0,hours=Number(document.getElementById('hoursPerCheck').value)||0,gross=calcGrossPay(rate,hours),box=document.getElementById('incomeEstimate');let estimate=null,error='';
  try{estimate=window.BearDenTaxes?.estimatePay(gross,window.BearDenTaxes.read());}catch(e){error=e.message;}
  box.style.display=gross>0?'block':'none';
- box.innerHTML=gross>0?`Gross: <strong>${money(gross)}</strong>${estimate?` · Estimated take-home: <strong>${money(estimate.net)}</strong><div class="tax-breakdown"><span>Federal <b>${money(estimate.federal)}</b></span><span>Michigan <b>${money(estimate.state)}</b></span><span>Social Security <b>${money(estimate.socialSecurity)}</b></span><span>Medicare <b>${money(estimate.medicare)}</b></span><span>Benefits / other deductions <b>${money(estimate.benefits+estimate.local)}</b></span></div>`:'<p>'+bdEscape(error||'Choose your state and filing status below.')+'</p>'}`:'';
+ document.getElementById('useIncomeEstimate').disabled=!(estimate&&estimate.net>0);
+ box.innerHTML=gross>0?`Gross: <strong>${money(gross)}</strong>${estimate?` · Estimated take-home: <strong>${money(estimate.net)}</strong><div class="tax-breakdown"><span>Federal <b>${money(estimate.federal)}</b></span><span>Michigan <b>${money(estimate.state)}</b></span><span>Social Security <b>${money(estimate.socialSecurity)}</b></span><span>Medicare <b>${money(estimate.medicare)}</b></span><span>401(k) deduction <b>${money(estimate.retirement)}</b></span><span>Benefits / other deductions <b>${money(estimate.benefits-estimate.retirement+estimate.local)}</b></span></div>`:'<p>'+bdEscape(error||'Choose your state and filing status below.')+'</p>'}`:'';
 }
 function prepareIncomeForSave(){
  const takeHome=document.getElementById('takeHome');
@@ -1956,8 +1957,8 @@ function buildSavingsGoalHeroHTML(g, canDelete, isEditing, isWithdrawing){
   return `
     <div class="hero-peek-wrap savings-peek-wrap">
     <div class="hero savings-hero" id="savingsHero-${g.id}">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-        <div class="hero-title" style="margin-bottom:0;">🐷 Savings Tracker</div>
+      <div class="tracker-header">
+        <div class="hero-title">🐷 Savings Tracker</div>
         <div class="hero-controls">
           <button class="icon-btn" data-bd-click="addSavingsGoal()" title="Add another goal" style="font-size:1.3rem;">+</button>
           <button class="icon-btn" data-bd-click="toggleSavingsWithdrawPanel(${g.id})" title="Withdraw from savings">💸</button>
@@ -6717,7 +6718,7 @@ function setupPaycheckBears(){
 window.classicReady=(async function init(){
   await window.BearDen.ready;
   window.BearDenDebtPayments=await import('./debt-payments.mjs?v=monthly-dues1');
-  window.BearDenTaxes=await import('./tax-ui.mjs?v=rent-portal1');window.BearDenTaxes.mount();
+  window.BearDenTaxes=await import('./tax-ui.mjs?v=tracker-401k1');window.BearDenTaxes.mount();
   applyThemeButtonIcon(); // reflect whatever the early <head> script already applied
   applyThemeBackground(document.documentElement.getAttribute('data-theme') === 'dark');
   applyHolidayMenuState();
@@ -6842,3 +6843,4 @@ window.setSyncedDebtBalances=snapshots=>{
  if(signature===JSON.stringify(window.syncedDebtBalances||{}))return false;
  window.syncedDebtBalances=snapshots;calculate();return true;
 };
+

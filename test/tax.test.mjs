@@ -21,3 +21,25 @@ test('unconfigured or unsupported states and invalid inputs do not create a misl
 test('fixed household bills entered during setup count once per paycheck',()=>{
  const state={cards:[],budgetItems:[{id:1,label:'Household bills',kind:'household-bills',amount:640}],takeHome:1500,startDate:'2026-11-06'};const events=paydayEvents({state,schedule:[]},'2026-11-01','2026-11-30',{billsOnly:true});assert.deepEqual(events.map(e=>e.allocations),[64000,64000]);
 });
+
+test('traditional and Roth 401(k) contributions are deducted once with different income-tax treatment',()=>{
+ const traditional=estimatePay(2000,{...mi,retirement:200,retirementType:'traditional'});
+ const roth=estimatePay(2000,{...mi,retirement:200,retirementType:'roth'});
+ // (1800 * 26 - 12900 - 19300) * 10% / 26 = $56.15 federal.
+ assert.equal(traditional.federal,56.15);assert.equal(traditional.state,66.86);assert.equal(traditional.net,1523.99);
+ assert.equal(roth.federal,76.15);assert.equal(roth.state,75.36);assert.equal(roth.net,1495.49);
+ for(const result of [traditional,roth]){
+  assert.equal(result.socialSecurity,124);assert.equal(result.medicare,29);
+  assert.equal(result.retirement,200);assert.equal(result.benefits,200);
+  assert.equal(Math.round((result.gross-result.net)*100),Math.round(result.total*100));
+ }
+ assert.deepEqual(estimatePay(2000,{...mi,retirement:200}),traditional);
+});
+
+test('401(k) validation and bonus estimates preserve regular-paycheck deduction behavior',()=>{
+ for(const retirement of [-1,NaN,2001])assert.throws(()=>estimatePay(2000,{...mi,retirement}));
+ assert.equal(estimatePay(2000,{...mi,retirement:0,retirementType:'roth'}).net,1695.49);
+ const bonus=estimatePay(1000,{...mi,retirement:200,retirementType:'roth'},{bonus:true});
+ assert.equal(bonus.retirement,0);assert.equal(bonus.net,661);
+});
+

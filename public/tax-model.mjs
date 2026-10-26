@@ -11,14 +11,15 @@ export function estimatePay(gross,settings={},options={}){
  gross=value(gross,'gross pay');if(!['single','joint','head'].includes(settings.filing))throw Error('Choose your filing status.');
  if(settings.state!=='MI')throw Error('Automatic state withholding currently supports Michigan. For another state, enter your actual take-home pay.');
  const n=26,bonus=!!options.bonus,exempt=settings.federalExempt===true,step2=settings.twoJobs===true;
- const health=bonus?0:value(settings.health,'pre-tax benefits'),retirement=bonus?0:value(settings.retirement,'pre-tax retirement'),afterTax=bonus?0:value(settings.afterTax,'other paycheck deductions'),local=bonus?0:value(settings.localTax,'local tax');
+ const health=bonus?0:value(settings.health,'pre-tax benefits'),retirement=bonus?0:value(settings.retirement,'401(k) deduction'),afterTax=bonus?0:value(settings.afterTax,'other paycheck deductions'),local=bonus?0:value(settings.localTax,'local tax');
  if(health+retirement+afterTax>gross)throw Error('Paycheck deductions cannot exceed gross pay.');
- const taxable=Math.max(0,gross-health-retirement),ficaWages=Math.max(0,gross-health),ytd=value(settings.ytdWages,'year-to-date Social Security and Medicare wages');
+ const taxable=Math.max(0,gross-health-(settings.retirementType==='roth'?0:retirement)),ficaWages=Math.max(0,gross-health),ytd=value(settings.ytdWages,'year-to-date Social Security and Medicare wages');
  const allowance=value(settings.stateExemptions,'MI-W4 exemptions');if(!Number.isInteger(allowance)||allowance>99)throw Error('Use a whole number of MI-W4 exemptions (0–99).');
  let federal=0;
  if(!exempt){if(bonus){if(gross>1e6)throw Error('For a bonus over $1 million, use the payroll amount.');federal=taxable*.22;}else{const annual=Math.max(0,taxable*n+value(settings.otherIncome,'W-4 other income')-value(settings.deductions,'W-4 deductions')-(step2?0:settings.filing==='joint'?12900:8600)),table=(step2?twoJobs:standard)[settings.filing];let row=0;for(let i=1;i<table.length;i++)if(annual>=table[i][0])row=i;federal=Math.max(0,(table[row][1]+(annual-table[row][0])*rates[row]-value(settings.credits,'W-4 credits'))/n)+value(settings.extraFederal,'extra federal withholding');}}
  const state=settings.stateExempt===true?0:Math.max(0,taxable-(bonus?0:allowance*5900/n))*.0425+(bonus?0:value(settings.extraState,'extra state withholding'));
  const socialSecurity=Math.min(ficaWages,Math.max(0,184500-ytd))*.062,medicare=ficaWages*.0145+(Math.max(0,ytd+ficaWages-200000)-Math.max(0,ytd-200000))*.009;
  const parts={federal:round(federal),state:round(state),socialSecurity:round(socialSecurity),medicare:round(medicare),benefits:round(health+retirement+afterTax),local:round(local)};
- const total=round(Object.values(parts).reduce((a,b)=>a+b,0));return {year:TAX_YEAR,gross:round(gross),...parts,total,net:round(Math.max(0,gross-total)),rate:gross?round(total/gross*100):0};
+ const total=round(Object.values(parts).reduce((a,b)=>a+b,0));return {year:TAX_YEAR,gross:round(gross),...parts,retirement:round(retirement),total,net:round(Math.max(0,gross-total)),rate:gross?round(total/gross*100):0};
 }
+
