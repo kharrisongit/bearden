@@ -24,3 +24,4 @@ html,body{overflow-x:clip}
 .hidden-connection-accounts .connection-account-heading{padding:7px 0;font-size:.78rem}
 
 #connectionDialog .bank-provider{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}#connectionDialog .bank-provider h4{font-size:.9rem;margin:0 0 10px;color:var(--ink)}
+.connection-config{margin:10px 0;padding:12px;background:var(--paper);border:1px solid var(--line);border-radius:10px}

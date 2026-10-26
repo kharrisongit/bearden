@@ -8,6 +8,8 @@ window.BearDen=(()=>{
  const hideAccountButton=a=>'<button type="button" class="hide-account-button" data-hide-connected-account="'+esc(a.id)+'" aria-label="Hide '+esc(a.name)+'">Hide</button>';
  function hiddenAccountsMarkup(accounts){const hidden=accounts.filter(a=>accountHidden(a.id));return hidden.length?'<details class="hidden-connection-accounts"><summary>Hidden accounts ('+hidden.length+')</summary>'+hidden.map(a=>'<div class="connection-account-heading"><strong>'+esc(a.name)+'</strong><button type="button" data-show-connected-account="'+esc(a.id)+'" aria-label="Show '+esc(a.name)+'">Show</button></div>').join('')+'</details>':'';}
  bridge.refreshAccountLists=()=>renderConnections();
+ function setConnectionConfig(id,open){const button=$('#'+id);$('#'+button.getAttribute('aria-controls')).hidden=!open;button.setAttribute('aria-expanded',String(open));}
+ for(const id of ['configureSimplefin','configureSun'])$('#'+id).onclick=()=>setConnectionConfig(id,$('#'+id).getAttribute('aria-expanded')!=='true');
  function message(t){$('#connectionMessage').textContent=t;}
  async function api(path,body){const r=await fetch(path,{method:body===undefined?'GET':'POST',headers:{...(body===undefined?{}:{'Content-Type':'application/json'}),...(config.accountId?{'X-BearDen-Account':config.accountId}:{})},body:body===undefined?undefined:JSON.stringify(body)});let d;try{d=await r.json();}catch{throw Error('Could not read the server response.');}if(!r.ok){const error=Error(d.error||'Request failed');error.status=r.status;throw error;}return d;}
  function persist(){
@@ -22,18 +24,17 @@ window.BearDen=(()=>{
  function requireLogin(){if(!config.googleConfigured){message('Sign-in is unavailable right now.');return false;}if(!config.authenticated){location.href='/auth/google';return false;}return true;}
  async function refresh(){legacy=await api('/api/state');renderConnections();}
  function renderConnections(){
-  $('#accountMode').textContent=config.authenticated?'Signed in'+(config.email?' as '+config.email:'')+'. Your budget and connections are private to this login.':'Not signed in. Tracker changes are saved on this device.';
+  $('#accountMode').textContent=config.authenticated?'You are signed in with '+(config.email||'your BearDen')+' account. Your budget, accounts, and income update to the cloud securely via your account.':'Not signed in. Tracker changes are saved on this device.';
   $('#classicLogin').hidden=!!config.authenticated;$('#classicLogout').hidden=!config.authenticated;$('#classicSync').hidden=!config.authenticated;document.querySelectorAll('[data-refresh-bank]').forEach(b=>b.hidden=!config.authenticated);$('#privateConnections').hidden=!config.authenticated;
-  bridge.config=config;bridge.plan=legacy;$('#cloudSaveStatus').textContent=config.authenticated?'Your budget and settings back up automatically to your private BearDen account in the cloud.':'Not signed in. Changes are saved only on this device.';window.dispatchEvent(new Event('bearden-connections'));
+  bridge.config=config;bridge.plan=legacy;window.dispatchEvent(new Event('bearden-connections'));
   if(!config.authenticated)return;
   const c=legacy?.connections||{},s=legacy?.state;
   for(const [id,label,count]of [['plaidAccountSummary','Plaid accounts',(s?.accounts||[]).filter(a=>a.source==='plaid').length],['simplefinAccountSummary','SimpleFIN accounts',(s?.accounts||[]).filter(a=>a.source==='simplefin').length],['gmailAccountSummary','Gmail accounts',(c.gmailAccounts||[]).length]])$('#'+id).textContent=label+' ('+count+')';
-  $('#classicBank').textContent=c.items?.length?'Add another bank connection':'Connect bank with Plaid';
-  $('#classicBankStatus').textContent=c.items?.length?`${c.items.length} bank connection(s). To sign in again, use Reconnect existing bank below. ${config.syncDescription||''}`:'Connect a bank to see its balances here.';
+  $('#classicBank').hidden=!!c.items?.length;$('#disconnectPlaid').hidden=!c.items?.length;
+  $('#classicBankStatus').textContent=c.items?.length?'Connected.':'Not connected.';
   const plaidAccounts=(s?.accounts||[]).filter(a=>a.source==='plaid');
   $('#plaidAccountSummary').textContent='Plaid accounts ('+plaidAccounts.filter(a=>!accountHidden(a.id)).length+' shown)';
   $('#classicBalances').innerHTML=plaidAccounts.filter(a=>!accountHidden(a.id)).map(a=>`<div class="connection-row"><div class="connection-account-heading"><strong>${esc(a.name)}</strong>${hideAccountButton(a)}</div>${a.balanceUnavailable?'Balance not supplied':money(a.balance)}<small>${esc(a.currency||'USD')}${a.balanceRetrieved?' · Retrieved '+esc(new Date(a.balanceRetrieved).toLocaleString()):''}</small>${['loan','credit'].includes(a.type)&&a.balance===0?'<small>Plaid reports zero; verify with your bank. This is a balance, not a payment due.'+(a.lastPositiveBalance>0?' Last positive balance received: '+money(a.lastPositiveBalance)+'.':'')+'</small>':''}<details><summary>Balance details</summary><small>Connection: ${esc(c.items?.find(i=>i.id===a.itemId)?.name||'Bank')}${c.items?.find(i=>i.id===a.itemId)?.balanceError?'<br>Last balance refresh failed: '+esc(c.items.find(i=>i.id===a.itemId).balanceError):''}<br>Account type: ${esc(a.type||'Not supplied')} / ${esc(a.subtype||'Not supplied')}<br>Current balance reported by Plaid: ${a.reportedCurrent===undefined?'No balance response saved for this account':a.reportedCurrent===null?'Not supplied':money(Math.round(a.reportedCurrent*100))}<br>Available balance reported by Plaid: ${a.reportedAvailable===undefined?'No balance response saved for this account':a.reportedAvailable===null?'Not supplied':money(Math.round(a.reportedAvailable*100))}</small></details></div>`).join('')+hiddenAccountsMarkup(plaidAccounts);
-  $('#classicBanks').innerHTML=(c.items||[]).map((i,index)=>`<div class="connection-row"><strong>${esc(i.name)}</strong><button data-bank-reconnect="${esc(i.id)}">Reconnect existing bank</button><button data-credit-update="${esc(i.id)}">${i.liabilities?'Manage extra card permissions':'Request due dates & minimums'}</button><small>Balances already sync. Extra card details may require additional Plaid permission; linking an existing account in Accounts does not.</small><button data-bank-disconnect="${esc(i.id)}">Disconnect</button>${i.balanceError?'<small role="status">Balance refresh failed: '+esc(i.balanceError)+'</small>':i.balanceWarning?'<small role="status">'+esc(i.balanceWarning)+'</small>':''}${i.liabilitiesStatus?'<small>'+esc(i.liabilitiesStatus)+'</small>':''}${c.items.slice(0,index).find(other=>other.name===i.name)?'<button data-bank-combine="'+esc(i.id)+'" data-bank-keep="'+esc(c.items.slice(0,index).find(other=>other.name===i.name).id)+'">Combine duplicate '+esc(i.name)+' connections</button>':''}</div>`).join('');
   renderSimplefin(c,s);renderRent(c.sun);
   $('#classicGmail').textContent='Add Gmail account';$('#classicDisconnectGmail').hidden=true;$('#checkGmailAccounts').hidden=!c.gmail;
   $('#classicEmailStatus').textContent=c.gmail?'Connected. Bills and payment notices update in the background.':'Connect Gmail to find bills and payment notices.';
@@ -42,7 +43,7 @@ window.BearDen=(()=>{
  function renderRent(rent){
   $('#rentConnect').disabled=!config.rentConfigured;$('#rentConnect').textContent=rent?.connected?'Reconnect Sun rent portal':'Connect Sun rent portal';
   $('#rentStatus').textContent=!config.rentConfigured?'Rent sign-in is available on the hosted Cloudflare version of BearDen.':rent?.status||'Not connected.';
-  $('#rentActions').hidden=!rent?.connected;$('#rentLogin').hidden=!rent?.pendingUntil;
+  $('#rentActions').hidden=!rent?.connected;$('#rentLogin').hidden=!rent?.pendingUntil;if(rent?.pendingUntil)setConnectionConfig('configureSun',true);
   $('#rentLoginLink').hidden=!rentLoginUrl||!rent?.pendingUntil;
   if(rentLoginUrl)$('#rentLoginLink').href=rentLoginUrl;else $('#rentLoginLink').removeAttribute('href');
   $('#rentExpiry').textContent=rent?.pendingUntil?'Window expires at '+new Date(rent.pendingUntil).toLocaleTimeString()+'.'+(!rentLoginUrl?' Use the private window you already opened, or start a new connection.':''):'';
@@ -112,14 +113,14 @@ window.BearDen=(()=>{
   }catch(e){message(e.message);if(status)status.textContent=e.message;if(options.fromAccount)window.dispatchEvent(new CustomEvent('bearden-credit-cancelled',{detail:{options,error:e.message}}));else window.selectBearTab('settings');}finally{b.disabled=false;b.removeAttribute('aria-busy');}
  });
 
- document.addEventListener('click',async e=>{
-  const reconnect=e.target.closest('[data-bank-reconnect]');if(reconnect){reconnect.disabled=true;try{await connectBank(false,{kind:'bank',itemId:reconnect.dataset.bankReconnect});}catch(error){message(error.message);}finally{reconnect.disabled=false;}return;}
-  const combine=e.target.closest('[data-bank-combine]');if(!combine)return;
-  if(!confirm('Combine these only if they are duplicate connections to the SAME bank login, not separate logins for you and your spouse. Matching account names and types will be checked. Bill and debt links will move to the other connection; the duplicate data is kept privately for recovery. Continue?'))return;
-  combine.disabled=true;try{await window.flushBearDenState?.();await queue;await api('/api/plaid/combine',{removeId:combine.dataset.bankCombine,keepId:combine.dataset.bankKeep,revision});location.reload();}catch(error){message(error.message);combine.disabled=false;}
- });
  function run(fn){return async e=>{const b=e?.currentTarget;if(b)b.disabled=true;try{await fn();}catch(err){message(err.message);}finally{if(b)b.disabled=false;}};}
  $('#classicLogout').onclick=run(async()=>{await window.performSaveAppState?.();await queue;await api('/api/logout',{});location.reload();});
+ $('#disconnectPlaid').onclick=run(async()=>{
+  if(!confirm('Disconnect Plaid and stop syncing its connected banks?'))return;
+  await queue;const items=[...(legacy?.connections?.items||[])],errors=[];
+  for(const item of items){try{await api('/api/plaid/disconnect',{id:item.id});}catch(error){errors.push(item.name+': '+error.message);}}
+  await refresh();if(errors.length)throw Error(errors.join(' · '));message('Plaid disconnected.');
+ });
  let refreshingBank=false;
  async function refreshEveryBank(report){
   if(refreshingBank)return null;refreshingBank=true;
@@ -139,6 +140,7 @@ window.BearDen=(()=>{
  $('#classicSync').onclick=run(async()=>{
   const results=await refreshEveryBank(message);if(!results)return;
   if(legacy?.connections?.gmail){message('Checking Gmail…');try{const result=await api('/api/sync',{gmailOnly:true});results.push(result.status||'Gmail checked.');}catch(error){results.push('Gmail: '+error.message);}await refresh();}
+  if(legacy?.connections?.sun?.connected){message('Checking Sun rent…');try{const result=await api('/api/rent/refresh',{});results.push(result.status||'Sun rent checked.');}catch(error){results.push('Sun: '+error.message);}await refresh();}
   message(results.join(' · '));
  });
  document.querySelectorAll('[data-refresh-bank]').forEach(button=>button.onclick=async()=>{
@@ -151,8 +153,7 @@ window.BearDen=(()=>{
  $('#checkGmailAccounts').onclick=run(async()=>{$('#classicEmailStatus').textContent='Checking Gmail…';await bridge.searchGmail('');});
  document.addEventListener('click',async e=>{const button=e.target.closest('[data-gmail-disconnect]');if(!button)return;const account=legacy?.connections?.gmailAccounts?.find(a=>a.id===button.dataset.gmailDisconnect);if(!account||!confirm('Disconnect '+account.email+' and stop watching its bill emails?'))return;button.disabled=true;try{await api('/api/gmail/disconnect',{id:account.id});await refresh();}catch(e){message(e.message);}finally{button.disabled=false;}});
 
- document.addEventListener('click',async e=>{const b=e.target.closest('[data-bank-disconnect],[data-use-bill],[data-review-accept],[data-review-dismiss]');if(!b)return;b.disabled=true;try{
-  if(b.dataset.bankDisconnect&&confirm('Disconnect this bank?')){await api('/api/plaid/disconnect',{id:b.dataset.bankDisconnect});await refresh();}
+ document.addEventListener('click',async e=>{const b=e.target.closest('[data-use-bill],[data-review-accept],[data-review-dismiss]');if(!b)return;b.disabled=true;try{
   if(b.dataset.reviewDismiss){await api('/api/candidate/dismiss',{id:b.dataset.reviewDismiss});await refresh();}
   if(b.dataset.reviewAccept){const id=b.dataset.reviewAccept,c=legacy.connections.candidates.find(c=>c.id===id),row=b.closest('.connection-review'),raw=row.querySelector('[data-review-amount]').value,amount=Math.round(Number(raw)*100),date=row.querySelector('[data-review-date]').value;if(raw===''||!Number.isSafeInteger(amount)||amount<0||!date)throw Error('Enter the bill amount and due date.');await refresh();const state=structuredClone(legacy.state);if(!state.bills.some(x=>x.sourceId===id))state.bills.push({id:crypto.randomUUID(),name:c.name||c.sender,amount,date,repeat:'once',source:'gmail',sourceId:id,sourceKey:c.sourceKey});await api('/api/state',{state,revision:legacy.revision});await refresh();}
   if(b.dataset.useBill){const bill=legacy.state.bills.find(x=>x.id===b.dataset.useBill),d=b.closest('.connection-row').querySelector('[data-bill-date]').value;const n=window.addConnectedBill(bill,d);const linked=JSON.parse(values['linked-bills']||'{}');linked[bill.id]=n;await bridge.storage.set('linked-bills',JSON.stringify(linked));await window.performSaveAppState();renderConnections();message('Bill added to paycheck '+n+'.');}
