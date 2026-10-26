@@ -368,6 +368,7 @@ function gatherAppState(){
       balance: c.balance,
       apr: c.apr,
       min: c.min,
+      monthlyMinimum: c.monthlyMinimum,
       debtKind: c.debtKind || 'other',
       payoffHistory: c.payoffHistory || [],
       activelyPaidOff: !!c.activelyPaidOff,
@@ -698,13 +699,15 @@ function calculate(isInitialLoad){
   const cards = cardsData.map((c)=>{
     const balEl = document.getElementById(`bal_${c.id}`);
     const aprEl = document.getElementById(`apr_${c.id}`);
-    const minEl = document.getElementById(`min_${c.id}`);
+    const minEl = document.getElementById(`monthlyMin_${c.id}`);
     return {
       id: c.id,
       name: c.name,
       balance: balEl ? (parseFloat(balEl.value)||0) : c.balance,
       apr: (aprEl ? (parseFloat(aprEl.value)||0) : c.apr)/100,
-      min: minEl ? (parseFloat(minEl.value)||0) : c.min,
+      ...(minEl&&Number(minEl.value)!==window.BearDenDebtPayments.monthlyMinimum(c)
+        ?window.BearDenDebtPayments.monthlyPaymentSettings(c,Number(minEl.value)||0)
+        :{min:c.min,monthlyMinimum:c.monthlyMinimum}),
     };
   });
   // Persist any live edits back into cardsData so they survive after the
@@ -713,6 +716,7 @@ function calculate(isInitialLoad){
     c.balance = cards[idx].balance;
     c.apr = cards[idx].apr * 100;
     c.min = cards[idx].min;
+    c.monthlyMinimum = cards[idx].monthlyMinimum;
   });
 
   const takeHome = parseFloat(document.getElementById('takeHome').value)||0;
@@ -1469,8 +1473,8 @@ function buildAccountDetailHTML(d, idx){
       <input type="number" id="apr_${d.id}" value="${(d.apr*100).toFixed(2)}" step="0.01" data-bd-change="calculate()">
     </div>
     <div class="field-row">
-      <div class="field-name">Min payment</div>
-      <input type="number" id="min_${d.id}" value="${d.min.toFixed(2)}" step="0.01" data-bd-change="calculate()">
+      <div class="field-name">Monthly amount due</div>
+      <input type="number" id="monthlyMin_${d.id}" value="${window.BearDenDebtPayments.monthlyMinimum(d).toFixed(2)}" step="0.01" data-bd-change="calculate()">
     </div>
     <div style="text-align:right;margin-top:8px;">
       <span class="remove" data-bd-click="removeCard(${d.id}); closeAccountDetail();">Remove account</span>
@@ -1654,7 +1658,7 @@ function computeAndRenderSpendingTracker(){
       payoffHistory = persistentCard.payoffHistory;
     }
 
-    return { id: c.id, name: c.name, balance: c.balance, apr: c.apr, min: c.min, paid, remaining, interestPaid, lifetimeInterestPaid, isComplete, payoffHistory, estimatedPayoffDate };
+    return { id: c.id, name: c.name, balance: c.balance, apr: c.apr, min: c.min, monthlyMinimum: c.monthlyMinimum, paid, remaining, interestPaid, lifetimeInterestPaid, isComplete, payoffHistory, estimatedPayoffDate };
   });
 
   renderSpendingTracker();
@@ -6639,6 +6643,7 @@ function setupPaycheckBears(){
 
 window.classicReady=(async function init(){
   await window.BearDen.ready;
+  window.BearDenDebtPayments=await import('./debt-payments.mjs?v=monthly-dues1');
   window.BearDenTaxes=await import('./tax-ui.mjs?v=rent-portal1');window.BearDenTaxes.mount();
   applyThemeButtonIcon(); // reflect whatever the early <head> script already applied
   applyThemeBackground(document.documentElement.getAttribute('data-theme') === 'dark');
@@ -6695,14 +6700,15 @@ window.getDebtPlan=()=>({state:gatherAppState(),syncedDebtBalances:window.synced
 // Account creation uses the same payoff state as the original tracker.
 window.saveDebtAccount=async function(data){
  await window.classicReady;
- const name=String(data.name||'').trim(),balance=Number(data.balance),apr=Number(data.apr),min=Number(data.minimum);
- if(!name||name.length>100||![balance,apr,min].every(Number.isFinite)||balance<0||balance>1e9||min<0||min>1e9||apr<0||apr>100)throw Error('Enter a name, balance, APR, and payment amount.');
+ const name=String(data.name||'').trim(),balance=Number(data.balance),apr=Number(data.apr),monthly=Number(data.minimum);
+ if(!name||name.length>100||![balance,apr,monthly].every(Number.isFinite)||balance<0||balance>1e9||monthly<0||monthly>1e9||apr<0||apr>100)throw Error('Enter a name, balance, APR, and payment amount.');
  const oldCards=structuredClone(cardsData),oldCounter=cardIdCounter;
  let card=data.id===null||data.id===undefined?null:cardsData.find(c=>String(c.id)===String(data.id));
  if(data.id!==null&&data.id!==undefined&&!card)throw Error('That debt no longer exists.');
+ const payment=window.BearDenDebtPayments.monthlyPaymentSettings(card,monthly);
  if(!card){cardIdCounter=Math.max(cardIdCounter,...cardsData.map(c=>Number(c.id)||0))+1;card={id:cardIdCounter};cardsData.push(card);}
- Object.assign(card,{name,balance,apr,min,debtKind:['credit-card','car-loan','loan','other'].includes(data.debtKind)?data.debtKind:'other'});
- const syncInputs=()=>cardsData.forEach(c=>{for(const [prefix,key]of [['bal','balance'],['apr','apr'],['min','min']]){const input=document.getElementById(prefix+'_'+c.id);if(input)input.value=c[key];}});
+ Object.assign(card,{name,balance,apr,...payment,debtKind:['credit-card','car-loan','loan','other'].includes(data.debtKind)?data.debtKind:'other'});
+ const syncInputs=()=>cardsData.forEach(c=>{for(const [prefix,key]of [['bal','balance'],['apr','apr'],['monthlyMin','monthlyMinimum']]){const input=document.getElementById(prefix+'_'+c.id);if(input)input.value=prefix==='monthlyMin'?window.BearDenDebtPayments.monthlyMinimum(c):c[key];}});
  try{syncInputs();calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));setStorageStatus('Saved');return card.id;}
  catch(e){cardsData=oldCards;cardIdCounter=oldCounter;syncInputs();calculate();clearTimeout(saveDebounceTimer);throw e;}
 };

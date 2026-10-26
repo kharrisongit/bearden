@@ -1,3 +1,4 @@
+export {monthlyMinimum} from './debt-payments.mjs?v=monthly-dues1';
 import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-portal1';
 import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=shared-bill-list3';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
