@@ -2,15 +2,18 @@ import {day} from './engine.mjs';
 
 // Keep account/loan numbers significant. Only explicitly labelled reference
 // numbers vary freely; fuzzy substring matching could merge two different bills.
-export const merchantIdentity=name=>String(name||'').toLowerCase()
- .replace(/\b(?:ref(?:erence)?|confirmation|auth|trace)\s*[:#-]?\s*[a-z0-9-]+\b/g,' ')
- .replace(/[^a-z0-9]+/g,' ').trim();
+export const merchantIdentity=name=>{
+ const normalized=String(name||'').toLowerCase().replace(/\b(?:ref(?:erence)?|confirmation|auth|trace)\s*[:#-]?\s*[a-z0-9-]+\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
+ // Affirm is tracked as one debt; bank descriptions can include a different
+ // purchase or payment reference for each installment.
+ return /^affirm(?:\s|$)/.test(normalized)?'affirm':normalized;
+};
 export const postedPayment=t=>!t.pending&&t.currency==='USD'&&Number.isFinite(t.amount)&&t.amount>0&&!!t.transaction_id&&!/\b(refund|reversal|reversed)\b/i.test(t.name||'');
 export function paymentLink(transaction,{exactAmount=false}={}){
  return {itemId:transaction.itemId,accountId:transaction.account_id,merchant:merchantIdentity(transaction.name),name:transaction.name,amount:exactAmount?Math.round(transaction.amount*100):null,sampleAmount:Math.round(transaction.amount*100)};
 }
 export function matchesPayment(transaction,link){
- return !!link&&!!link.merchant&&postedPayment(transaction)&&transaction.itemId===link.itemId&&transaction.account_id===link.accountId&&merchantIdentity(transaction.name)===link.merchant&&(link.amount==null||Math.round(transaction.amount*100)===link.amount);
+ return !!link&&!!link.merchant&&postedPayment(transaction)&&transaction.itemId===link.itemId&&transaction.account_id===link.accountId&&merchantIdentity(transaction.name)===merchantIdentity(link.merchant)&&(link.amount==null||Math.round(transaction.amount*100)===link.amount);
 }
 export function matchingPayments(transactions,link,today=new Date().toISOString().slice(0,10)){
  const seen=new Set();return (transactions||[]).filter(t=>{
@@ -19,7 +22,7 @@ export function matchingPayments(transactions,link,today=new Date().toISOString(
  }).sort((a,b)=>b.date.localeCompare(a.date)||String(a.transaction_id).localeCompare(String(b.transaction_id)));
 }
 export function linkConflict(links,target,link){
- return Object.entries(links).find(([key,other])=>key!==target&&other.itemId===link.itemId&&other.accountId===link.accountId&&other.merchant===link.merchant&&(other.amount==null||link.amount==null||other.amount===link.amount))?.[0]||null;
+ return Object.entries(links).find(([key,other])=>key!==target&&other.itemId===link.itemId&&other.accountId===link.accountId&&merchantIdentity(other.merchant)===merchantIdentity(link.merchant)&&(other.amount==null||link.amount==null||other.amount===link.amount))?.[0]||null;
 }
 export const paymentTarget=bill=>bill.source==='tracker-debt'?'debt:'+bill.trackerCardId:bill.source==='plaid-credit'?'credit:'+bill.id:'bill:'+bill.id;
 

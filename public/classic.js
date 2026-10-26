@@ -1373,6 +1373,8 @@ function togglePaymentHistoryShowAll(){
 }
 
 function buildAccountDetailHTML(d, idx){
+  const bankPayments=window.getDebtBankPaymentHistory?.(d.id)||[];
+  const bankHistory=bankPayments.length?`<div class="history-section-title">Bank payment history</div><p class="subtle">${bankPayments.length} posted payments · ${money(bankPayments.reduce((sum,t)=>sum+t.amount,0))}</p><div class="linked-payment-list">${bankPayments.map(t=>`<div class="spend-item-numbers"><span>${bdEscape(t.name)}<small style="display:block;color:var(--muted)">${fmtDate(new Date(t.date+'T12:00:00'))}</small></span><span>${money(t.amount)}</span></div>`).join('')}</div><hr class="history-section-divider">`:'';
   const total = d.paid + Math.max(0, d.remaining);
   const pct = d.isComplete ? 100 : (total > 0 ? Math.min(100, (d.paid / total) * 100) : 0);
   const wasEverPaidOff = d.payoffHistory && d.payoffHistory.length > 0;
@@ -1459,7 +1461,8 @@ function buildAccountDetailHTML(d, idx){
 
     <hr class="history-section-divider">
 
-    <div class="history-section-title">🧾 Payment History</div>
+    ${bankHistory}
+    <div class="history-section-title">Checked paycheck history</div>
     ${paymentRowsArr.length ? (paymentHistoryShowAll ? paymentRowsArr.join('') : paymentRowsArr.slice(-2).join('')) : '<p style="color:var(--muted);font-size:0.8rem;text-align:center;margin:6px 0 0;">No checked-off paychecks yet.</p>'}
     ${paymentRowsArr.length > 2 ? `<button class="add-toggle-btn" data-bd-click="togglePaymentHistoryShowAll()">${paymentHistoryShowAll ? '▾ Show fewer' : `▸ Show all ${paymentRowsArr.length} payments`}</button>` : ''}
     </div>

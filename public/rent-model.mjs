@@ -25,12 +25,14 @@ export function linkSunRent(planner,id,field,sun,bill){
  if(!['currentBalance','amountDue'].includes(field))throw Error('Choose which Sun amount to use.');
  if(!sun?.connected&&!sun?.snapshot)throw Error('Connect Sun in Settings first.');
  const old=planner.sunRent?.billId===id?planner.sunRent:null;
- planner.sunRent={billId:id,amountField:field,baseAmount:old?.baseAmount??bill.amount,readings:rentReadings(sun,field),linkedAt:new Date().toISOString()};
+ const readings=new Map((old?.amountField==='currentBalance'?old.readings||[]:[]).map(r=>[r.date,r]));
+ for(const reading of rentReadings(sun))readings.set(reading.date,reading);
+ planner.sunRent={billId:id,amountField:'currentBalance',baseAmount:old?.baseAmount??bill.amount,readings:[...readings.values()].sort((a,b)=>a.date.localeCompare(b.date)).slice(-24),linkedAt:old?.linkedAt||new Date().toISOString()};
 }
 export function sunRentBill(bill,link,sun){
  const scheduled=rentSchedule(bill);if(bill.billKind!=='rent'||link?.billId!==bill.id)return scheduled;
- const byDate=new Map((link.readings||[]).filter(r=>validDate(r.date)&&positive(r.amount)).map(r=>[r.date,r]));
- for(const r of rentReadings(sun,link.amountField))byDate.set(r.date,r);
+ const byDate=new Map((link.amountField==='amountDue'?[]:link.readings||[]).filter(r=>validDate(r.date)&&positive(r.amount)).map(r=>[r.date,r]));
+ for(const r of rentReadings(sun))byDate.set(r.date,r);
  const readings=[...byDate.values()].sort((a,b)=>a.date.localeCompare(b.date));
  return {...scheduled,amount:readings.at(-1)?.amount??scheduled.amount,rentBaseAmount:positive(link.baseAmount)?link.baseAmount:scheduled.amount,rentReadings:readings,rentLinked:true,rentNeedsLogin:!!sun?.needsLogin||!sun?.connected};
 }

@@ -30,8 +30,8 @@ test('daily sync changes the selected bill only and keeps prior cycle readings',
  const updated=sunRentBill(bill,planner.sunRent,sun),other=sunRentBill({...bill,id:'another-rent'},planner.sunRent,sun);
  assert.equal(other.amount,100000);assert.deepEqual(billEvents({},{manual:[updated]},{},'2026-11-01','2026-12-31').map(b=>b.amount),[123456,135000]);
 });
-test('minimum payment can be selected explicitly and malformed/foreign/zero readings are ignored',()=>{
- const sun=connection(),planner={};linkSunRent(planner,bill.id,'amountDue',sun,bill);assert.equal(sunRentBill(bill,planner.sunRent,sun).amount,120000);
+test('legacy minimum-payment links use the full balance and malformed/foreign readings are ignored',()=>{
+ const sun=connection(),planner={};linkSunRent(planner,bill.id,'amountDue',sun,bill);assert.equal(planner.sunRent.amountField,'currentBalance');assert.equal(sunRentBill(bill,planner.sunRent,sun).amount,123456);
  assert.throws(()=>linkSunRent(planner,bill.id,'password',sun,bill));assert.deepEqual(rentReadings({...sun,snapshot:{...sun.snapshot,currency:'CAD'}}),[]);
  assert.deepEqual(rentReadings({...sun,snapshot:{...sun.snapshot,currentBalance:null}}),[]);
 });

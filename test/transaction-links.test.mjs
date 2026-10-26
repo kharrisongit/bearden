@@ -47,3 +47,10 @@ test('paid bills retain the actual matched bank transaction date',()=>{
  const t=transaction(),bill={id:'car',key:'car:2026-10-25',date:'2026-10-25',amount:30000,repeat:'monthly',source:'manual'};
  assert.deepEqual(matchedBillPayments([bill],[t],{'bill:car':paymentLink(t)},'2026-10-25',{details:true}),[{key:bill.key,paidDate:'2026-10-24'}]);
 });
+
+test('Affirm description variations match existing links and retain account, amount and posted safeguards',()=>{
+ const link={...paymentLink(transaction({name:'Affirm Inc payment 1234'})),merchant:'affirm inc payment 1234'};
+ const history=[transaction({transaction_id:'a',name:'Affirm.com Pay 5678'}),transaction({transaction_id:'b',name:'AFFIRM',date:'2026-09-24',amount:44}),transaction({transaction_id:'c',name:'Affirm Inc',account_id:'other'}),transaction({transaction_id:'d',name:'Affirm',pending:true}),transaction({transaction_id:'e',name:'Affirm',amount:-20})];
+ assert.deepEqual(matchingPayments(history,link,'2026-10-25').map(t=>t.transaction_id),['a','b']);
+ assert.equal(matchingPayments(history,{...link,amount:30000},'2026-10-25').length,1);
+});
