@@ -1,15 +1,15 @@
 
   :root{
-    --ink:#3d2b22;
-    --ink-fixed:#4a3626;
-    --paper:#f2eee6;
+    --ink:#2a2d35;
+    --ink-fixed:#31353f;
+    --paper:#eaebee;
     --card:#ffffff;
-    --line:#ded2c0;
-    --accent:#c96f4a;
-    --accent-soft:#f6e3d8;
+    --line:#c0c9de;
+    --accent:#4a70c9;
+    --accent-soft:#e4e6ea;
     --warn:#a8452e;
-    --warn-soft:#fbe4da;
-    --muted:#7d6a58;
+    --warn-soft:#e8eaed;
+    --muted:#58637d;
     color-scheme:light;
   }
   [data-theme="dark"]{
@@ -17,10 +17,10 @@
     --paper:#12161d;
     --card:#1c222c;
     --line:#333c49;
-    --accent:#a8704a;
-    --accent-soft:#36261c;
-    --warn:#e07a5a;
-    --warn-soft:#3a2620;
+    --accent:#4a66a8;
+    --accent-soft:#24272e;
+    --warn:#5d84dd;
+    --warn-soft:#282b32;
     --muted:#9aa4b2;
     color-scheme:dark;
   }
@@ -52,21 +52,21 @@
   }
   [data-theme="dark"] .savings-hero .hero-pie-hole-sm{background:#242838;}
   [data-theme="dark"] .milestone-banner-debt{
-    background:linear-gradient(135deg, #6f492f, #a16c48);
+    background:linear-gradient(135deg, #2f426f, #4863a1);
   }
   [data-theme="dark"] .milestone-both{
-    background:linear-gradient(135deg, #6f492f, #c8a15a);
+    background:linear-gradient(135deg, #2f426f, #5a7bc8);
   }
   [data-theme="dark"] .milestone-banner-account{
-    background:linear-gradient(135deg, #8f5c3a, #b8815c);
+    background:linear-gradient(135deg, #3a538f, #5c78b8);
   }
   [data-theme="dark"] .paycheck.milestone-debt{
-    border-color:#6f492f;
+    border-color:#2f426f;
     box-shadow:0 4px 18px rgba(47,111,94,0.25);
   }
-  [data-theme="dark"] .paycheck.milestone-account{border-left-color:#8f5c3a;}
+  [data-theme="dark"] .paycheck.milestone-account{border-left-color:#3a538f;}
   [data-theme="dark"] .paycheck.milestone-debt.milestone-savings{
-    border-image:linear-gradient(135deg, #6f492f, #c8a15a) 1;
+    border-image:linear-gradient(135deg, #2f426f, #5a7bc8) 1;
   }
   *{box-sizing:border-box;}
   body{
@@ -84,14 +84,14 @@
     letter-spacing:-0.02em;
     margin:0;
     text-align:center;
-    background:linear-gradient(135deg, #fff3d6, #ffffff);
+    background:linear-gradient(135deg, #e8eaed, #ffffff);
     -webkit-background-clip:text;
     background-clip:text;
     color:transparent;
     filter:drop-shadow(0 2px 6px rgba(0,0,0,0.25));
   }
   .app-title-box{
-    background:linear-gradient(135deg, #c96f4a, #e8a868);
+    background:linear-gradient(135deg, #4a70c9, #6f91e1);
     border-radius:18px;
     padding:18px 20px;
     margin:0 0 34px;
@@ -378,7 +378,7 @@
   .hero.savings-hero{
     background:
       radial-gradient(circle at 14% 8%, rgba(255,255,255,0.28), transparent 45%),
-      linear-gradient(135deg, #a8752e 0%, #c99548 48%, #e8bd75 100%);
+      linear-gradient(135deg, #2e53a8 0%, #486fc9 48%, #7a9ae3 100%);
     margin-bottom:14px;
   }
   /* Slight honey-tinted variation on the translucent overlay pieces within
@@ -408,8 +408,8 @@
   }
   .icon-btn:active{opacity:0.7;}
   .icon-btn.active{
-    background:linear-gradient(135deg, #ffd166, #e8a020);
-    color:#3a2400;
+    background:linear-gradient(135deg, #819fe4, #3464d4);
+    color:#1a1c20;
     box-shadow:0 0 8px 2px rgba(255,209,102,0.7), inset 0 0 4px rgba(0,0,0,0.25);
     transform:scale(0.94);
   }
@@ -781,7 +781,7 @@
   }
   .add-item-box{
     display:none;
-    background:#f6f5f1;
+    background:#f2f3f5;
     border:1px dashed transparent;
     border-radius:10px;
     padding:0 12px;
@@ -893,10 +893,10 @@
   .bonus-inline-btn{
     width:auto;
     padding:5px 10px;
-    border:1.5px dashed #c8a15a;
+    border:1.5px dashed #5a7bc8;
     border-radius:7px;
-    background:#fdf7ea;
-    color:#8a6a1f;
+    background:#f2f3f5;
+    color:#1f3f8a;
     font-size:0.68rem;
     font-weight:700;
     cursor:pointer;
@@ -907,12 +907,12 @@
     display:flex;
     align-items:center;
     gap:8px;
-    background:#fdf7ea;
-    border:1px solid #e9d7a8;
+    background:#f2f3f5;
+    border:1px solid #a8bbe9;
     border-radius:8px;
     padding:8px 10px;
     margin:6px 0;
-    color:#5c4a1a;
+    color:#343842;
   }
   .bonus-inline-input input{
     flex:1;
@@ -921,7 +921,7 @@
     box-sizing:border-box;
   }
   .bonus-inline-input button{
-    background:#c8a15a;
+    background:#5a7bc8;
     color:#fff;
     border:none;
     border-radius:6px;
@@ -935,12 +935,12 @@
     display:flex;
     flex-direction:column;
     gap:8px;
-    background:#fdf1e6;
-    border:1px solid #f0d9bb;
+    background:#f0f1f3;
+    border:1px solid #bbcbf0;
     border-radius:8px;
     padding:10px;
     margin:6px 0;
-    color:#7a4a22;
+    color:#223c7a;
   }
   .extra-expense-input input[type="text"]{
     width:100%;
@@ -959,7 +959,7 @@
     box-sizing:border-box;
   }
   .extra-expense-input button{
-    background:#c97b3f;
+    background:#3f68c9;
     color:#fff;
     border:none;
     border-radius:6px;
@@ -1028,7 +1028,7 @@
   }
   .account-terms-section-warn{
     background:var(--warn-soft);
-    border-color:#f0ddd4;
+    border-color:#dfe1e5;
   }
   .account-terms-mini{
     background:var(--paper);
@@ -1040,7 +1040,7 @@
   }
   .account-terms-mini-warn{
     background:var(--warn-soft);
-    border-color:#f0ddd4;
+    border-color:#dfe1e5;
   }
   .account-terms-mini-row{
     display:flex;
@@ -1071,7 +1071,7 @@
   .account-terms-mini-sm .account-terms-mini-row span:last-child{font-size:0.74rem;}
   .account-detail-title-box{
     text-align:center;
-    background:linear-gradient(135deg, #6f492f, #96684a);
+    background:linear-gradient(135deg, #2f426f, #4a6196);
     border-radius:18px;
     padding:22px 16px;
     box-shadow:0 8px 22px rgba(47,111,94,0.32);
@@ -1152,7 +1152,7 @@
   .hero.debt-hero{
     background:
       radial-gradient(circle at 86% 8%, rgba(255,255,255,0.18), transparent 45%),
-      linear-gradient(135deg, #7a3d28 0%, #a8542f 50%, #c96f4a 100%);
+      linear-gradient(135deg, #28417a 0%, #2f53a8 50%, #4a70c9 100%);
   }
   /* Bear Run: a little Chrome-Dino-style endless runner living in its own
      hero card. Teal/green so it reads as a distinct, playful "bonus" card
@@ -1405,7 +1405,7 @@
     padding:10px 24px;
     border:none;
     border-radius:999px;
-    background:linear-gradient(135deg, #c96f4a, #e8a868);
+    background:linear-gradient(135deg, #4a70c9, #6f91e1);
     color:#fff;
     font-size:0.85rem;
     font-weight:800;
@@ -1680,14 +1680,14 @@
   .notebook-page-wrap{
     position:relative;
     border-radius:14px;
-    background:linear-gradient(135deg, #fffdf8, #f6ecd8);
+    background:linear-gradient(135deg, #fbfbfc, #e4e6ea);
     border:1px solid rgba(255,255,255,0.35);
     box-shadow:inset 0 1px 0 rgba(255,255,255,0.6), 0 4px 10px rgba(0,0,0,0.15);
     padding:14px 14px 10px;
     overflow:hidden;
   }
   [data-theme="dark"] .notebook-page-wrap{
-    background:linear-gradient(135deg, #26211a, #332a1e);
+    background:linear-gradient(135deg, #1c1e24, #24272d);
     border-color:rgba(255,255,255,0.1);
   }
   /* A faint paw print watermark tucked in the corner of the page, purely
@@ -1723,7 +1723,7 @@
     padding:2px 4px 4px;
     font-family:inherit;
     font-size:0.88rem;
-    color:#4a3626;
+    color:#31353f;
   }
   [data-theme="dark"] .notebook-textarea{
     color:#e7ebf1;
@@ -1736,7 +1736,7 @@
       );
     background-position:0 4px;
   }
-  .notebook-textarea::placeholder{color:#a4917a;}
+  .notebook-textarea::placeholder{color:#7a87a4;}
   [data-theme="dark"] .notebook-textarea::placeholder{color:#7a8291;}
   .notebook-save-indicator{
     text-align:center;
@@ -1842,8 +1842,8 @@
     justify-content:center;
     color:#fff;
   }
-  .debt-hero .hero-pie-hole-sm{background:#7a3d28;}
-  .savings-hero .hero-pie-hole-sm{background:#a8752e;}
+  .debt-hero .hero-pie-hole-sm{background:#28417a;}
+  .savings-hero .hero-pie-hole-sm{background:#2e53a8;}
   .hero-pie-hole-sm .pct{font-size:0.8rem;font-weight:800;}
   .spend-item{
     padding:10px 0;
@@ -2091,8 +2091,8 @@
 
   .paycheck{
     position:relative;
-    background:linear-gradient(135deg, #fffdf9, #f3e6d4);
-    border:1.5px solid #e0bf94;
+    background:linear-gradient(135deg, #fcfcfc, #e0e2e7);
+    border:1.5px solid #94abe0;
     border-radius:14px;
     padding:14px 16px;
     margin-bottom:24px;
@@ -2532,15 +2532,15 @@
     align-items:center;
   }
   .check-summary-row.bonus-row{
-    background:#fdf7ea;
-    border:1px solid #e9d7a8;
+    background:#f2f3f5;
+    border:1px solid #a8bbe9;
     border-radius:8px;
     padding:8px 10px;
     margin:4px 0;
     font-weight:700;
   }
   .check-summary-row.bonus-row span:last-child{
-    color:#8a6a1f;
+    color:#1f3f8a;
   }
   .check-summary-row.prominent-row{
     background:var(--accent-soft);
@@ -2677,24 +2677,24 @@
     letter-spacing:0.01em;
   }
   .milestone-banner-debt{
-    background:linear-gradient(135deg, #a8452e, #c96f4a);
+    background:linear-gradient(135deg, #a8452e, #4a70c9);
     color:#fff;
     border-radius:13px 13px 0 0;
   }
   .milestone-banner-savings{
-    background:linear-gradient(135deg, #c8a15a, #e8c179);
-    color:#3a2c0f;
+    background:linear-gradient(135deg, #5a7bc8, #7d9ce4);
+    color:#202329;
     border-radius:13px 13px 0 0;
   }
   .milestone-both{
-    background:linear-gradient(135deg, #a8452e, #c8a15a);
+    background:linear-gradient(135deg, #a8452e, #5a7bc8);
     color:#fff;
     border-radius:13px 13px 0 0;
   }
   .milestone-banner-account{
     display:block;
     width:fit-content;
-    background:linear-gradient(135deg, #8a4a30, #c96f4a);
+    background:linear-gradient(135deg, #304b8a, #4a70c9);
     color:#fff;
     border-radius:20px;
     padding:6px 16px;
@@ -2703,18 +2703,18 @@
     margin:12px auto 0;
   }
   .paycheck.milestone-debt{
-    border:2px solid #c96f4a;
+    border:2px solid #4a70c9;
     box-shadow:0 4px 18px rgba(201,111,74,0.25);
   }
   .paycheck.milestone-account{
-    border-left:4px solid #8a4a30;
+    border-left:4px solid #304b8a;
   }
   .paycheck.milestone-savings{
-    border:2px solid #c8a15a;
+    border:2px solid #5a7bc8;
     box-shadow:0 4px 18px rgba(200,161,90,0.25);
   }
   .paycheck.milestone-debt.milestone-savings{
-    border-image:linear-gradient(135deg, #c96f4a, #c8a15a) 1;
+    border-image:linear-gradient(135deg, #4a70c9, #5a7bc8) 1;
   }
   .paycheck.milestone-debt .paycheck-head .date,
   .paycheck.milestone-savings .paycheck-head .date{
