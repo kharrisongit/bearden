@@ -7,7 +7,7 @@ test('SimpleFIN controls clear the token, refresh imported accounts, and save ex
  const elements=new Map(),requests=[];
  function element(id){if(!elements.has(id))elements.set(id,{hidden:false,textContent:'',innerHTML:'',value:'',disabled:false,dataset:{},handlers:{},addEventListener(name,fn){this.handlers[name]=fn;},focus(){},setAttribute(){},removeAttribute(){}});return elements.get(id);}
  const state={accounts:[],debts:[],income:[],goals:[]},connections={items:[],creditCards:[],transactions:[],gmailAccounts:[],simplefin:null};
- const window={dispatchEvent(){},selectBearTab(){}};
+ const window={dispatchEvent(){},addEventListener(){},selectBearTab(){}};
  const context={window,document:{querySelector:element,querySelectorAll:()=>[],addEventListener(){}},Event,URLSearchParams,structuredClone,Intl,console,confirm:()=>true,history:{replaceState(){}},location:{search:''},sessionStorage:{getItem:()=>null},localStorage:{getItem:()=>null},fetch:async(path,options)=>{
   const body=options?.body?JSON.parse(options.body):null;requests.push({path,body});
   if(path==='/api/config')return Response.json({authenticated:true,accountId:'owner',googleConfigured:true});
