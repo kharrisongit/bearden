@@ -372,8 +372,8 @@ test('bill sharing requires sign-in, origin and current account, and exposes onl
  const preview=await(await f.app.handle(member.req('/api/bills/share/preview',{code:created.code}))).json();assert.equal(preview.bills[0].name,'Shared Water');assert.doesNotMatch(JSON.stringify(preview),/private-|ownerId/);
  assert.equal((await(await f.app.handle(member.req('/api/bills/share/status',{}))).json()).code,null);
  const state=await(await f.app.handle(member.req('/api/classic'))).json();assert.deepEqual(state.state.values,{});assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM vault WHERE id LIKE '%connections'").get().n,0);
- await f.app.handle(member.req('/api/bills/share/revoke',{code:created.code}));assert.equal((await f.app.handle(f.req('/api/bills/share/preview',{code:created.code}))).status,200);
- await f.app.handle(f.req('/api/bills/share/revoke',{}));await assert.rejects(()=>f.app.handle(member.req('/api/bills/share/preview',{code:created.code})),/revoked/);f.db.close();
+ await f.app.handle(member.req('/api/bills/share/revoke',{code:created.code}));assert.equal((await f.app.handle(f.req('/api/bills/share/preview',{code:created.code.toLowerCase()}))).status,200);
+ await f.app.handle(f.req('/api/bills/share/revoke',{}));await assert.rejects(()=>f.app.handle(member.req('/api/bills/share/preview',{code:created.code})),/not found or expired/);f.db.close();
 });
 
 test('Plaid balance failure still refreshes posted transactions and keeps prior balances',async()=>{
@@ -386,3 +386,4 @@ test('mailbox-scoped email refresh checks only the requested connected inbox',as
  f.set('connections',{items:[],transactions:[],candidates:[],gmailAccounts:[{id:'a',email:'a@example.com',refreshToken:'first'},{id:'b',email:'b@example.com',refreshToken:'second'}]});
  const response=await f.app.handle(f.req('/api/gmail/search',{query:'',mailboxId:'b'}));assert.equal(response.status,200);assert.equal(tokens.length,1);assert.match(tokens[0],/second/);assert.doesNotMatch(tokens[0],/first/);f.db.close();
 });
+

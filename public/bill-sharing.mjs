@@ -2,6 +2,15 @@
 // settings never belong in an invitation or a recipient's imported bill.
 const kinds=new Set(['electric','rent','utility','car-payment','insurance','phone-internet','subscription','other']);
 const repeats=new Set(['once','weekly','biweekly','monthly']);
+export function normalizeBillShareCode(value){
+ let code=String(value||'').trim().replace(/[\u2010-\u2015\u2212]/g,'-');
+ const link=code.match(/[#?]bills=([A-Za-z0-9_-]+)/);if(link)code=link[1];
+ code=code.replace(/\s/g,'');
+ if(/^BD1-[A-Za-z0-9_-]{32}$/i.test(code))return 'BD1-'+code.slice(4);
+ const short=code.replace(/-/g,'').toUpperCase();
+ if(/^[A-HJ-NP-Z2-9]{8}$/.test(short))return short.slice(0,4)+'-'+short.slice(4);
+ throw Error('Enter the 8-character code or paste the share link.');
+}
 export function cleanSharedBill(bill){
  const name=typeof bill?.name==='string'?bill.name.trim():'';
  if(!name||name.length>100)throw Error('Each shared bill needs a name of up to 100 characters.');
@@ -41,3 +50,4 @@ export function importSharedBills(planner,bundle,selected,existing=[],newId=()=>
  }
  return {planner:next,added,skipped};
 }
+
