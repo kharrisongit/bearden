@@ -20,6 +20,7 @@ let savingsGoals = [];
 
 let appliedBonuses = {};
 let bonusControlsEnabled=true;
+let payoffControlsEnabled=false;
 let paycheckOverrides = {};
 let savingsContributionOverrides = {}; // { [goalId]: { [paycheckNum]: amount } }
 let checkedPaychecks = {};
@@ -425,6 +426,7 @@ function gatherAppState(){
     taxSettings: window.BearDenTaxes?.read(),
     appliedBonuses,
     bonusControlsEnabled,
+    payoffControlsEnabled,
     savingsGoals: savingsGoals.map(g => ({ id: g.id, name: g.name, goal: g.goal, start: g.start, contribution: g.contribution, withdrawalHistory: g.withdrawalHistory || [] })),
     savingsGoalIdCounter,
     takeHome: document.getElementById('takeHome').value,
@@ -728,7 +730,7 @@ async function saveBudget(button){
 // ---- Reset ----
 async function resetAll(){
  await window.classicReady;
- const fresh={cards:[],cardIdCounter:0,budgetItems:starterBudgetItems(),budgetItemIdCounter:3,budgetSetupVersion:2,savingsGoals:[],savingsGoalIdCounter:0,hourlyRate:'',hoursPerCheck:'',takeHome:'',startDate:'',taxSettings:{},bonusControlsEnabled:false,appliedBonuses:{},paycheckOverrides:{},savingsContributionOverrides:{},budgetItemOverrides:{},accountPaymentOverrides:{},paycheckSlices:{},paycheckSquashes:{},extraExpenses:{},extraExpenseIdCounter:0,checkedPaychecks:{},payoffMethod:'avalanche'};
+ const fresh={cards:[],cardIdCounter:0,budgetItems:starterBudgetItems(),budgetItemIdCounter:3,budgetSetupVersion:2,savingsGoals:[],savingsGoalIdCounter:0,hourlyRate:'',hoursPerCheck:'',takeHome:'',startDate:'',taxSettings:{},bonusControlsEnabled:false,payoffControlsEnabled:false,appliedBonuses:{},paycheckOverrides:{},savingsContributionOverrides:{},budgetItemOverrides:{},accountPaymentOverrides:{},paycheckSlices:{},paycheckSquashes:{},extraExpenses:{},extraExpenseIdCounter:0,checkedPaychecks:{},payoffMethod:'avalanche'};
  clearTimeout(saveDebounceTimer);await window.BearDen.resetSetup(fresh);location.reload();
 }
 
@@ -1310,8 +1312,9 @@ function applyThemeButtonIcon(){
   if (!btn) return;
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   // Shows the icon for what tapping it switches TO, not the current state.
-  btn.textContent = isDark ? '☀️' : '🌙';
+  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(isDark?'<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>':'<path d="M20.8 13A8.8 8.8 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z"/>')+'</svg>';
   btn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+  btn.setAttribute('aria-label',btn.title);
 }
 
 function toggleTheme(){
@@ -2155,11 +2158,11 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
       const sliceTitle=sliceSelected?'Undo Slice':sliceAllowance.allowed?'Pay half the balance at this paycheck, at least the minimum':'Slice needs '+money(sliceAllowance.shortfall)+' more in this paycheck';
       const squashTitle=squashSelected?'Undo Squash':squashAllowance.allowed?'Pay off the full balance, including this paycheck’s projected interest':'Squash needs '+money(squashAllowance.shortfall)+' more in this paycheck';
       lines += `<div class="line paycheck-debt-row" data-paycheck-debt="${bdEscape(c.id)}">
-        <span class="name paycheck-debt-name"><span>${bdEscape(c.name)}${isPayOverridden ? ' <span class="edited-tag">edited</span>' : ''}${justPaidOff ? '<span class="paidoff-badge">PAID OFF</span>' : ''}</span><span class="paycheck-debt-actions"><button type="button" class="slice-payment" aria-pressed="${sliceSelected}" title="${bdEscape(sliceTitle)}" aria-label="${bdEscape(sliceTitle+' for '+c.name)}" data-bd-click="togglePaycheckSlice(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!sliceAllowance.allowed&&!sliceSelected?'disabled':''}>${sliceSelected?'Undo Slice':'Slice'}</button><button type="button" class="slice-payment squash-payment" aria-pressed="${squashSelected}" title="${bdEscape(squashTitle)}" aria-label="${bdEscape(squashTitle+' for '+c.name)}" data-bd-click="togglePaycheckSquash(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!squashAllowance.allowed&&!squashSelected?'disabled':''}>${squashSelected?'Undo Squash':'Squash'}</button></span></span>
+        <span class="name paycheck-debt-name"><span>${bdEscape(c.name)}${isPayOverridden ? ' <span class="edited-tag">edited</span>' : ''}${justPaidOff ? '<span class="paidoff-badge">PAID OFF</span>' : ''}</span>${payoffControlsEnabled?`<span class="paycheck-debt-actions"><button type="button" class="slice-payment" aria-pressed="${sliceSelected}" title="${bdEscape(sliceTitle)}" aria-label="${bdEscape(sliceTitle+' for '+c.name)}" data-bd-click="togglePaycheckSlice(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!sliceAllowance.allowed&&!sliceSelected?'disabled':''}>${sliceSelected?'Undo Slice':'Slice'}</button><button type="button" class="slice-payment squash-payment" aria-pressed="${squashSelected}" title="${bdEscape(squashTitle)}" aria-label="${bdEscape(squashTitle+' for '+c.name)}" data-bd-click="togglePaycheckSquash(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!squashAllowance.allowed&&!squashSelected?'disabled':''}>${squashSelected?'Undo Squash':'Squash'}</button></span>`:''}</span>
         <div class="paycheck-debt-amounts">
           <div><small>Before</small><span class="balance-before">${money(row.balancesBefore[i])}</span></div>
           <div><small>Interest</small><span class="interest">${money(row.interestByAccount[i])}</span></div>
-          <label><small>Payment</small><input type="number" class="${payInputClass}" aria-label="Payment for ${bdEscape(c.name)}" ${row.sliceMode?'readonly title="Undo Slice or Squash to edit this paycheck’s payments"':''} value="${row.payments[i].toFixed(2)}" step="0.01" data-bd-change="updateAccountPayment(${c.id}, ${row.paycheck}, this.value, ${row.naturalPayments[i]})"></label>
+          <label><small>Payment</small><input type="number" class="${payInputClass}" aria-label="Payment for ${bdEscape(c.name)}" ${row.sliceMode?`readonly title="${payoffControlsEnabled?'Undo Slice or Squash':'Enable Slice / Squash in Settings, then undo the choice'} to edit this paycheck’s payments"`:''} value="${row.payments[i].toFixed(2)}" step="0.01" data-bd-change="updateAccountPayment(${c.id}, ${row.paycheck}, this.value, ${row.naturalPayments[i]})"></label>
           <div><small>After</small><span class="bal">${money(row.balancesAfter[i])}</span></div>
         </div>
       </div>`;
@@ -2201,7 +2204,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
       </div>
     `).join('');
 
-    const accountBillLines=[...(row.accountBillsThisCheck||[])].sort((a,b)=>a.amount-b.amount||a.name.localeCompare(b.name)).map(bill=>`<div class="check-summary-row paycheck-account-bill"><span>− ${bdEscape(bill.name)}<small>${bill.transfer?'Transfer to shared bills account':'Due '+fmtDate(new Date(bill.date+'T00:00:00'))}</small></span><span>${money(bill.amount/100)}</span></div>${bill.transfer?`<details class="paycheck-shared-details" data-paycheck-date="${bdEscape(bill.date)}"><summary>Shared bills & contributions</summary><div class="paycheck-shared-balances" aria-live="polite"></div><p>Your Fixed Bills amount above is your only deduction for these shared bills.</p>${[...(bill.sharedBills||[])].sort((a,b)=>a.amount-b.amount||a.name.localeCompare(b.name)).map(b=>`<div class="check-summary-row"><span>${bdEscape(b.name)} · ${fmtDate(new Date(b.date+'T00:00:00'))}</span><span>${money(b.amount/100)}</span></div>`).join('')}${(bill.spouseContributions||[]).map(c=>`<div class="check-summary-row"><span>Spouse contribution · ${fmtDate(new Date(c.date+'T00:00:00'))}</span><span>+${money(c.amount/100)}</span></div>`).join('')}</details>`:''}`).join('');
+    const accountBillLines=[...(row.accountBillsThisCheck||[])].sort((a,b)=>a.amount-b.amount||a.name.localeCompare(b.name)).map(bill=>`<div class="check-summary-row paycheck-account-bill"><span>− ${bdEscape(bill.name)}<small>${bill.transfer?'Transfer to shared bills account':'Due '+fmtDate(new Date(bill.date+'T00:00:00'))}</small></span><span>${money(bill.amount/100)}</span></div>${bill.transfer?`<details class="paycheck-shared-details" data-paycheck-date="${bdEscape(bill.date)}"><summary>Shared bills & contributions</summary><div class="paycheck-shared-content"><div class="paycheck-shared-balances" aria-live="polite"></div><p>Your Fixed Bills amount above is your only deduction for these shared bills.</p>${[...(bill.sharedBills||[])].sort((a,b)=>a.amount-b.amount||a.name.localeCompare(b.name)).map(b=>`<div class="check-summary-row"><span>${bdEscape(b.name)}<small>${fmtDate(new Date(b.date+'T00:00:00'))}</small></span><span class="cash-outgoing">${money(b.amount/100)}</span></div>`).join('')}${(bill.spouseContributions||[]).map(c=>`<div class="check-summary-row"><span>Spouse contribution<small>${fmtDate(new Date(c.date+'T00:00:00'))}</small></span><span class="cash-incoming">+${money(c.amount/100)}</span></div>`).join('')}</div></details>`:''}`).join('');
     const extraExpenseLines = row.extrasThisCheck.map(e => `
       <div class="check-summary-row"><span>− ${bdEscape(e.label)} <span class="edited-tag" style="background:#fdf1e6;color:#a15f22;">one-time</span></span><span class="amount-input-wrap">${money(e.amount)}<span class="remove" style="margin-left:6px;" data-bd-click="removeExtraExpense(${row.paycheck}, ${e.id})">✕</span></span></div>
     `).join('');
@@ -2270,7 +2273,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
         </span>
       </div>
       <div class="check-summary">
-        <div class="check-summary-row editable">
+        <div class="check-summary-row editable paycheck-income">
           <span>Paycheck amount (after taxes)${row.isOverridden ? ' <span class="edited-tag">edited</span>' : ''}</span>
           <span class="amount-input-wrap">$<input type="number" class="amount-input" value="${row.takeHomeThisCheck.toFixed(2)}" step="0.01" data-bd-change="updatePaycheckAmount(${row.paycheck}, this.value)"></span>
         </div>
@@ -6731,6 +6734,8 @@ window.classicReady=(async function init(){
   }
   bonusControlsEnabled=savedState?savedState.bonusControlsEnabled!==false:false;
   document.getElementById('bonusControlsToggle').checked=bonusControlsEnabled;
+  payoffControlsEnabled=savedState?.payoffControlsEnabled===true;
+  document.getElementById('payoffControlsToggle').checked=payoffControlsEnabled;
   budgetSetupVersion=Number(savedState?.budgetSetupVersion)||0;
   if(window.BearDen.isNew&&!budgetSetupVersion&&!budgetItems.length){budgetItems=starterBudgetItems();budgetItemIdCounter=3;budgetSetupVersion=1;}
   if(budgetSetupVersion<2){
@@ -6816,6 +6821,13 @@ let paycheckBillSignature;
 window.setPaycheckBills=(signature,resolve,sharedForecast)=>{
  if(signature===paycheckBillSignature)return false;
  paycheckBillSignature=signature;window.accountBillsForPaycheck=resolve;window.sharedBillsForPaycheck=sharedForecast;calculate();return true;
+};
+
+document.getElementById('payoffControlsToggle').onchange=async e=>{
+ const before=payoffControlsEnabled;payoffControlsEnabled=e.target.checked;e.target.disabled=true;
+ try{calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('featureSettingsStatus').textContent='Slice / Squash preference saved.';}
+ catch(error){payoffControlsEnabled=before;e.target.checked=before;calculate();clearTimeout(saveDebounceTimer);document.getElementById('featureSettingsStatus').textContent=error.message;}
+ finally{e.target.disabled=false;}
 };
 
 document.getElementById('bonusControlsToggle').onchange=async e=>{

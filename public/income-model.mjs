@@ -179,6 +179,18 @@ export function paycheckBillsBalance({legacy,planner,linked,accounts=[],plan={},
  return {...result,projectedBalance:forecast.endBalance};
 }
 
+// Keep the ledger and its totals inclusive of every event on the selected day.
+export function forecastThrough(f,date){
+ const end=date<f.end?date:f.end,rows=f.rows.filter(r=>r.date<=end);
+ let income=0,outgoing=0,low=f.opening;
+ for(const r of rows){
+  income+=r.incoming??(r.type==='income'?r.amount:0);
+  outgoing+=r.outgoing??(r.type==='income'?r.allocations:r.amount);
+  if(r.balance!==null&&low!==null)low=Math.min(low,r.balance);
+ }
+ return {...f,rows,end,income,outgoing,low,endBalance:rows.length?rows.at(-1).balance:f.opening};
+}
+
 // Store day-end changes, not one point per calendar day, for long forecasts.
 export function forecastTimeline(f,start){
  if(f.opening===null)return [];

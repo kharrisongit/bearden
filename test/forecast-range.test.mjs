@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {occurrences} from '../public/engine.mjs';
-import {billEvents,scenarioForecast,forecastTimeline,forecastBalanceOn} from '../public/income-model.mjs';
+import {billEvents,scenarioForecast,forecastTimeline,forecastBalanceOn,forecastThrough,cashForecast} from '../public/income-model.mjs';
 test('a full year includes all paydays and recurring bills, not just the first month',()=>{
  const plan={state:{startDate:'2026-11-06',takeHome:1000,budgetItems:[]},schedule:[]},bills=billEvents({}, {manual:[{id:'rent',name:'Rent',amount:50000,date:'2026-11-10',repeat:'monthly',source:'manual'}]}, {},'2026-11-06','2027-11-06');
  const result=scenarioForecast([{include:true,balance:10000}],plan,bills,'2026-11-06',{length:365});
@@ -17,4 +17,23 @@ test('long-range timeline aggregates same-day changes and scrubs days without tr
  const f={opening:10000,end:'2031-01-01',rows:[{date:'2026-11-01',delta:-15000},{date:'2026-11-01',delta:2000},{date:'2027-01-01',delta:20000}]};
  const points=forecastTimeline(f,'2026-10-25');assert.equal(points.length,4);assert.equal(forecastBalanceOn(points,'2026-10-31'),10000);assert.equal(forecastBalanceOn(points,'2026-11-01'),-3000);assert.equal(forecastBalanceOn(points,'2026-12-31'),-3000);assert.equal(forecastBalanceOn(points,'2031-01-01'),17000);
  assert.deepEqual(forecastTimeline({...f,opening:null},'2026-10-25'),[]);assert.equal(forecastBalanceOn([],'2026-10-25'),null);
+});
+
+test('selected day includes all same-day entries and limits income, allocations and low balance',()=>{
+ const start='2026-11-01',f=cashForecast([{include:true,balance:10000}],
+  [{type:'income',date:'2026-11-06',amount:100000,allocations:20000},{type:'income',date:'2026-11-20',amount:100000,allocations:20000}],
+  [{type:'bill',date:'2026-11-06',amount:15000},{type:'bill',date:'2026-11-10',amount:200000}],start);
+ const before=forecastThrough(f,'2026-11-05');assert.equal(before.rows.length,0);assert.equal(before.endBalance,10000);assert.equal(before.income,0);assert.equal(before.low,10000);
+ const selected=forecastThrough(f,'2026-11-06');assert.equal(selected.rows.length,2);assert.equal(selected.income,100000);assert.equal(selected.outgoing,35000);assert.equal(selected.endBalance,75000);assert.equal(selected.low,-5000);
+ assert.equal(selected.endBalance,forecastBalanceOn(forecastTimeline(f,start),selected.end));
+ assert.deepEqual(forecastThrough(f,'2026-11-09').rows,selected.rows);
+ assert.deepEqual(forecastThrough(f,f.end),f);assert.equal(f.rows.length,4);
+});
+test('selected shared-account day preserves received deposits and unknown balances',()=>{
+ const f={opening:null,end:'2026-12-01',rows:[
+  {type:'contribution',date:'2026-11-01',amount:75000,incoming:0,outgoing:0,delta:0,balance:null,received:true},
+  {type:'transfer',date:'2026-11-06',amount:75000,incoming:75000,outgoing:0,delta:75000,balance:null},
+  {type:'bill',date:'2026-11-07',amount:25000,incoming:0,outgoing:25000,delta:-25000,balance:null}
+ ]};
+ const selected=forecastThrough(f,'2026-11-06');assert.equal(selected.rows.length,2);assert.equal(selected.income,75000);assert.equal(selected.outgoing,0);assert.equal(selected.endBalance,null);assert.equal(selected.low,null);
 });

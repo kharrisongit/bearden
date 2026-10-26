@@ -14,7 +14,7 @@
  --amount-bg:#e2edf5;--amount-ink:#254f6d;--amount-label:#456179;--amount-border:#b1c7d7;
  --due-bg:#f4e4bd;--due-ink:#744b16;--due-border:#d8bd83;
  --paid-fill:#276342;--on-paid:#f4fff6;--paid-hover:#1d4e33;--paid-border:#276342;
- --status:#f4fff6;--status-soft:#1e5637;--status-line:#1e5637;
+ --status:#205237;--status-soft:#c8e6c9;--status-line:#9bc7a4;
  --danger-fill:#a3353e;--on-danger:#fffdf5;
  --chart-bill:#946036;--chart-debt:#a3353e;--chart-pay:#28735c;--chart-spouse:#3d6d8a;
  --shadow:0 5px 18px #163b350a;
@@ -32,7 +32,7 @@
  --amount-bg:#243f54;--amount-ink:#c3e1f4;--amount-label:#b5cbdc;--amount-border:#4e7086;
  --due-bg:#493b22;--due-ink:#f3d39a;--due-border:#907545;
  --paid-fill:#2e6b49;--on-paid:#f4fff6;--paid-hover:#24593c;--paid-border:#6a9a7c;
- --status:#f4fff6;--status-soft:#245f3e;--status-line:#4a825e;
+ --status:#183d28;--status-soft:#9bcbab;--status-line:#9bcbab;
  --chart-bill:#e6c88e;--chart-debt:#ffb5ad;--chart-pay:#a2d8bd;--chart-spouse:#a5cae3;
  --shadow:0 5px 18px #050f1a30;
  color-scheme:dark;
@@ -223,3 +223,92 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
  :root .account-total-card,:root .hero,:root .bank-card{border:1px solid CanvasText}
  :root button[aria-selected=true],:root button[aria-pressed=true]{outline:2px solid Highlight}
 }
+
+/* Give each kind of money its own readable color, alongside labels and signs. */
+:root,:root:not([data-theme=dark]){
+ --cash-in:#24633d;--cash-in-bg:#e5efe3;
+ --cash-out:#9b4030;--cash-out-bg:#fae5dc;
+}
+:root[data-theme=dark]{
+ --cash-in:#a8dfb6;--cash-in-bg:#253f36;
+ --cash-out:#ffb8a6;--cash-out-bg:#472e2b;
+}
+:root .cash-incoming{color:var(--cash-in)}
+:root .cash-outgoing{color:var(--cash-out)}
+:root .cash-neutral{color:var(--muted)}
+:root .forecast-main{color:var(--amount-ink)}
+:root .forecast-stats>div{display:flex;flex-direction:column;gap:8px;padding:10px}
+:root .forecast-stats small{color:inherit;line-height:1.3;min-height:2.6em;margin:0}
+:root .forecast-stats strong{margin-top:auto;font-variant-numeric:tabular-nums}
+:root .forecast-stats>.forecast-incoming{background:var(--cash-in-bg);color:var(--cash-in)}
+:root .forecast-stats>.forecast-outgoing{background:var(--cash-out-bg);color:var(--cash-out)}
+:root .forecast-stats>.forecast-lowest{background:var(--due-bg);color:var(--due-ink)}
+:root .forecast-stats>.is-negative,:root .forecast-main.is-negative{color:var(--warn)}
+:root .forecast-stats>.is-negative{background:var(--warn-soft)}
+.forecast-ledger-heading{font-size:.72rem;font-weight:700;margin:22px 0 10px}
+:root .forecast-ledger-row>strong{font-size:.84rem;font-variant-numeric:tabular-nums}
+:root .forecast-running-balance{align-items:baseline;padding:7px 10px;background:var(--amount-bg);border-radius:6px}
+:root .forecast-running-balance span{color:var(--amount-label)}
+:root .forecast-running-balance strong{color:var(--amount-ink);font-variant-numeric:tabular-nums}
+:root .forecast-ledger-row.is-negative .forecast-running-balance{background:var(--warn-soft)}
+:root .forecast-ledger-row.is-negative .forecast-running-balance span,
+:root .forecast-ledger-row.is-negative .forecast-running-balance strong{color:var(--warn)}
+:root .paycheck-income .amount-input-wrap,:root .paycheck-income .amount-input{color:var(--cash-in)}
+:root .paycheck-account-bill>span:last-child{color:var(--cash-out)}
+:root .paycheck-debt-amounts .balance-before{color:var(--muted)}
+:root .paycheck-debt-amounts .interest{color:var(--due-ink)}
+:root .paycheck-debt-amounts .pay-input{color:var(--cash-out);background:var(--cash-out-bg)}
+:root .paycheck-debt-amounts .bal{color:var(--amount-ink)}
+:root .check-summary-row.prominent-row>span:last-child{color:var(--amount-ink)}
+
+/* Nested shared bills need their own gutters and room for names and dates. */
+:root .paycheck-shared-details{padding:0;margin:12px 0 18px}
+:root .paycheck-shared-details>summary{padding:16px;gap:12px;line-height:1.4;color:var(--ink)}
+.paycheck-shared-content{padding:0 16px 16px;min-width:0}
+.paycheck-shared-content>p{font-size:.72rem;line-height:1.6;margin:14px 0}
+:root .paycheck-shared-balances{gap:12px;margin:0 0 14px}
+:root .paycheck-shared-balances>div{min-width:0;padding:14px;background:var(--amount-bg);border-color:var(--amount-border)}
+:root .paycheck-shared-balances>div span,:root .paycheck-shared-balances>div small{color:var(--amount-label)}
+:root .paycheck-shared-balances>div strong{color:var(--amount-ink);font-size:1.05rem;overflow-wrap:anywhere}
+:root .paycheck-shared-balances>div:nth-child(2){background:var(--cash-in-bg);border-color:var(--line)}
+:root .paycheck-shared-balances>div:nth-child(2) :is(span,strong,small){color:var(--cash-in)}
+:root .paycheck-shared-balances>div.is-negative{background:var(--warn-soft);border-color:var(--warn)}
+:root .paycheck-shared-balances>div.is-negative :is(span,strong,small){color:var(--warn)}
+:root .paycheck-shared-balances>p{margin:0;line-height:1.6}
+:root .paycheck-shared-details .check-summary-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 14px;align-items:start;padding:12px 0;margin:0;border-top:1px solid var(--line)}
+.paycheck-shared-details .check-summary-row>span:first-child{min-width:0;overflow-wrap:anywhere;color:var(--ink)}
+.paycheck-shared-details .check-summary-row small{display:block;font-size:.66rem;color:var(--muted);margin-top:4px;line-height:1.4}
+.paycheck-shared-details .check-summary-row>span:last-child{font-variant-numeric:tabular-nums}
+@media(max-width:420px){
+ :root .paycheck-shared-balances{grid-template-columns:minmax(0,1fr)}
+ :root .paycheck-shared-details>summary{font-size:.8rem}
+}
+
+:root #connectionDialog #themeToggleBtn{display:grid;place-items:center;box-sizing:border-box;width:40px;height:40px;min-height:40px;padding:0;line-height:1;border-radius:50%}
+#themeToggleBtn svg{display:block;width:21px;height:21px}
+:root .paycheck-shared-details .check-summary-row>.cash-incoming{color:var(--cash-in)}
+:root .paycheck-shared-details .check-summary-row>.cash-outgoing{color:var(--cash-out)}
+
+/* Income shares the tracker cards' heading, spacing, and dark-panel palette. */
+:root .income-card.bank-card{padding:20px}
+:root .bank-card>.card-heading{margin-bottom:20px}
+:root .bank-card>.card-heading .hero-title{font-family:inherit;font-size:1.15rem;font-weight:800;line-height:1.3;letter-spacing:-.01em;color:var(--on-dark);margin:0}
+:root .bank-card .income-controls-header{display:flex;align-items:center;gap:14px}
+:root .bank-card .income-controls-header .income-widget-actions{margin:0 0 0 auto;gap:6px}
+:root .bank-card .income-controls-header .income-widget-actions>button{min-height:32px;font-size:.65rem;padding:5px 8px}
+:root .bank-card .income-controls-header .bank-refresh{width:32px;padding:5px}
+:root .bank-card .income-controls-header .bank-refresh svg{width:16px;height:16px}
+:root .bank-card .income-eyebrow{display:block;font-size:.75rem;font-weight:700;letter-spacing:.07em;color:var(--on-dark-muted)}
+:root .bank-card .income-total{font-size:2.05rem;font-weight:800;line-height:1.2;letter-spacing:-.02em;margin:4px 0 6px;color:var(--on-dark)}
+:root .bank-card .income-account-name{font-size:.7rem;line-height:1.5;color:var(--on-dark-muted);margin:0 0 18px;overflow-wrap:anywhere}
+:root .bank-card .income-next-payday{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;padding:14px 16px;border:1px solid var(--on-dark-line);border-radius:8px;background:var(--on-dark-hover);color:var(--on-dark)}
+:root .bank-card .income-next-payday>span{font-size:.75rem;font-weight:600}
+:root .bank-card .income-next-payday>strong{font-size:1rem;color:var(--on-dark-accent)}
+:root .bank-card .income-payday-empty{color:var(--on-dark-muted);font-size:.75rem;line-height:1.5}
+:root .bank-card #incomeBankUpdated,:root .bank-card #debtBankUpdated{font-size:.65rem;margin:14px 0 0}
+:root .bank-card .bank-refresh-status:empty,:root .bank-card #accountSaveStatus:empty{display:none}
+@media(max-width:600px){
+ :root .bank-card .income-controls-header .income-widget-actions{flex-basis:100%;margin:0;justify-content:flex-start}
+}
+/* Switch paired text/background colors together so controls stay readable. */
+.income-card button:not(.bill-icon-button):not(.bank-refresh):not(.spending-category){transition:transform .12s ease}
