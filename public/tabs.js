@@ -33,7 +33,7 @@
  const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
  const dateLabel=d=>new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
  let editingBill=null,spendingCategory=null,billsSpendingCategory=null,billsSpendingView=null,forecastViews={},householdBills=[],forecastStart='',forecastLength=30,forecastRowLimit=100;
- const chartColors=['#b0712b','#536c80','#78814b','#b95840','#bf994c','#778d9a','#8a694d'];
+ const chartColors=['#5ca9a0','#c69a61','#8aa9bd','#b96c63','#8caa87','#d4be92','#648d92'];
  const billCategories={electric:'Electric',rent:'Rent',utility:'Utility','car-payment':'Car payment',insurance:'Insurance','phone-internet':'Phone & internet',subscription:'Subscription','credit-card':'Credit card',loan:'Loan payment',other:'Other bill'};
  const pencil='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg>';
  let review={rows:[],bills:[],spending:{categories:[],total:0}};

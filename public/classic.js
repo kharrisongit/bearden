@@ -41,7 +41,7 @@ function money(n){
   return sign + '$' + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
-const PIE_COLORS = ['#b0712b','#536c80','#78814b','#b95840','#bf994c','#778d9a','#8a694d','#b6b288'];
+const PIE_COLORS = ['#5ca9a0','#c69a61','#8aa9bd','#b96c63','#8caa87','#d4be92','#648d92','#a2c1b7'];
 
 // Builds a CSS conic-gradient pie chart with a legend. segments is
 // [{label, value, target}]; colors are assigned automatically. If
@@ -1620,8 +1620,8 @@ function updateDebtHeroProgress(){
     const segments=summary?summary.accounts.map(a=>({label:a.name,value:a.amount/100})):lastCardsForSpending.map((c,i)=>({label:c.name,value:Math.max(0,currentBalances[i])}));
     const pieHTML = summary?.totals.length>1?'':buildPieChartHTML(segments, 180, null);
     breakdownEl.innerHTML = pieHTML
-      ? `<div style="font-size:0.72rem;color:#c9d2d8;text-align:center;margin-bottom:8px;">Remaining balance by account</div><div class="debt-breakdown-pie">${pieHTML}</div>`
-      : `<p style="font-size:0.8rem;color:#c9d2d8;text-align:center;margin:0;">No balance breakdown available.</p>`;
+      ? `<div style="font-size:0.72rem;color:var(--on-dark-muted);text-align:center;margin-bottom:8px;">Remaining balance by account</div><div class="debt-breakdown-pie">${pieHTML}</div>`
+      : `<p style="font-size:0.8rem;color:var(--on-dark-muted);text-align:center;margin:0;">No balance breakdown available.</p>`;
   }
 }
 
@@ -1835,7 +1835,7 @@ function spawnConfetti(){
   const container = document.getElementById('celebrationConfetti');
   if (!container) return;
   container.innerHTML = '';
-  const colors = ['#b0712b','#536c80','#78814b','#b95840','#bf994c','#778d9a','#8a694d'];
+  const colors = ['#5ca9a0','#c69a61','#8aa9bd','#b96c63','#8caa87','#d4be92','#648d92'];
   for (let i = 0; i < 80; i++) {
     const piece = document.createElement('div');
     piece.className = 'confetti-piece';
