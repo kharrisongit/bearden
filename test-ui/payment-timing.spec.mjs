@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';import {readFileSync} from 'node:fs';import {blank} from '../public/engine.mjs';import {parseAccountEmail} from '../email-parser.mjs';
-async function fixture(page,{messages=[],debtKind='credit-card',accounts=[],incomePlanner={},connectionOverrides={},debtOverrides={}}={}){
- let tracker={state:{version:1,values:{'app-state':JSON.stringify({cards:[{id:1,name:'Visa',debtKind,balance:10000,apr:0,min:46.15,monthlyMinimum:100,dueDate:'2026-11-30',...debtOverrides}],cardIdCounter:1,budgetItems:[],budgetSetupVersion:2,startDate:'2026-11-06',takeHome:'1000',payoffMethod:'minimum',savingsGoals:[{id:1,name:'Emergency',goal:1000,start:100,contribution:0}],savingsGoalIdCounter:1}),'income-planner':JSON.stringify(incomePlanner),onboarding:JSON.stringify({completed:true})}},revision:0};
+async function fixture(page,{messages=[],debtKind='credit-card',accounts=[],incomePlanner={},connectionOverrides={},debtOverrides={},goalContribution=0}={}){
+ let tracker={state:{version:1,values:{'app-state':JSON.stringify({cards:[{id:1,name:'Visa',debtKind,balance:10000,apr:0,min:46.15,monthlyMinimum:100,dueDate:'2026-11-30',...debtOverrides}],cardIdCounter:1,budgetItems:[],budgetSetupVersion:2,startDate:'2026-11-06',takeHome:'1000',payoffMethod:'minimum',savingsGoals:[{id:1,name:'Emergency',goal:1000,start:100,contribution:goalContribution}],savingsGoalIdCounter:1}),'income-planner':JSON.stringify(incomePlanner),onboarding:JSON.stringify({completed:true})}},revision:0};
  let releaseSync,startedSync;const started=new Promise(r=>startedSync=r),gate=new Promise(r=>releaseSync=r);let bankRefreshes=0;
  const emailCalls=[];const connections={items:[{id:'bank',name:'Bank'}],simplefin:{connected:true,status:'Connected'},emailConnected:true,mailAccounts:[{id:'mail',email:'person@hotmail.com',provider:'microsoft'}],sun:{enabled:true,connected:true,status:'Connected'},transactions:[],candidates:[],creditCards:[],gmailMessages:messages,recurringBills:[],...connectionOverrides};
  await page.route('https://bearden.test/**',async route=>{
@@ -34,6 +34,40 @@ test('Minimums explains an unfinished forecast and restores valid totals when th
  await expect(page.locator('#debtForecastNote')).toBeHidden();await expect(page.locator('#heroDayCounter')).toBeVisible();await expect(page.locator('#heroPaycheckCounter')).toBeVisible();
  await page.locator('#pmBtnMinimum').click();await expect(page.locator('#heroInterest')).toHaveText('Unavailable');
  expect(errors).toEqual([]);
+});
+test('a paid Credit One cycle keeps $0 due while its future estimate can be edited and survives reload',async({page})=>{
+ test.setTimeout(90000);
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});
+ await page.clock.setFixedTime(new Date('2026-10-26T12:00:00Z'));
+ const issuer={id:'credit-a',accountId:'a',itemId:'bank',name:'Credit One Visa',currency:'USD',balance:14203,minimum:0,dueDate:null,updated:'2026-10-26T10:00:00Z',aprs:[{type:'purchase_apr',rate:29}]};
+ const f=await fixture(page,{goalContribution:50,debtOverrides:{name:'Credit One',balance:142.03,apr:29,min:16.15,monthlyMinimum:35,dueDate:''},connectionOverrides:{creditCards:[issuer]},incomePlanner:{creditCards:{'credit-a':{tracking:true,trackerCardId:'1',fallbackDate:'2026-11-23',fallbackAmount:3500}}}});
+ await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().syncedDebtTerms[1]?.forecastMonthlyMinimum)).toBe(35);
+ await expect(page.locator('#heroDate')).not.toContainText('30 years');await expect(page.locator('#debtForecastNote')).toContainText('estimated monthly minimum');
+ await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();
+ const edit=page.locator('[data-edit-credit="credit-a"]');await edit.click();
+ const amount=page.locator('#creditEditorForm [name="amount"]');await expect(amount).toBeEnabled();await expect(amount).toHaveValue('35');
+ await expect(page.locator('#creditCycleNote')).toContainText('current cycle');await expect(page.locator('#creditEditorForm [name="date"]')).toHaveValue('2026-11-23');
+ await amount.fill('40');await page.locator('#creditEditorForm [type="submit"]').click();await expect(page.locator('#creditEditor')).not.toBeVisible();
+ await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().syncedDebtTerms[1]?.forecastMonthlyMinimum)).toBe(40);
+ expect(await page.evaluate(()=>window.getDebtPlan().syncedDebtTerms[1].monthlyMinimum)).toBe(0);
+ expect(JSON.parse(f.tracker.state.values['income-planner']).debtFutureMinimums[1]).toBe(4000);
+ await expect(edit.locator('xpath=ancestor::article').locator('.minimum-due')).toContainText('$0.00');
+ await page.reload();await page.evaluate(()=>window.classicReady);await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().syncedDebtTerms[1]?.forecastMonthlyMinimum)).toBe(40);
+ // A later statement replaces the estimate, with no manual adjustment needed.
+ issuer.minimum=4500;issuer.dueDate='2026-11-23';await page.reload();await page.evaluate(()=>window.classicReady);
+ await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().syncedDebtTerms[1]?.monthlyMinimum)).toBe(45);expect(errors).toEqual([]);
+});
+test('an unknown future minimum uses a clear prompt and the debt editor can supply it without changing current due',async({page})=>{
+ test.setTimeout(90000);await page.clock.setFixedTime(new Date('2026-10-26T12:00:00Z'));
+ await fixture(page,{goalContribution:50,debtOverrides:{name:'Credit One',balance:142.03,apr:29,min:0,monthlyMinimum:0},accounts:[{id:'plaid-a',itemId:'bank',source:'plaid',type:'credit',currency:'USD',balance:14203,balanceUpdated:'2026-10-26T10:00:00Z'}],connectionOverrides:{creditCards:[{id:'credit-a',accountId:'a',itemId:'bank',currency:'USD',name:'Credit One Visa',balance:14203,minimum:0,dueDate:'2026-11-23',updated:'2026-10-26T10:00:00Z'}]},incomePlanner:{debtAccountLinks:{1:'plaid-a'}}});
+ await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().syncedDebtTerms[1]?.currentCycleMinimum),{timeout:30000}).toBe(true);
+ await expect(page.locator('#heroDate')).toHaveText('Future minimum needed');await expect(page.locator('#debtForecastNote')).toContainText('Add a future monthly payment estimate');
+ await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();await page.locator('[data-edit-debt="1"]').first().click();
+ const future=page.locator('#debtEditorForm [name="futureMinimum"]');await expect(future).toBeVisible();await expect(future).toBeEditable();await future.fill('35');
+ await page.locator('#debtEditorForm [type="submit"]').click();await expect(page.locator('#debtEditor')).not.toBeVisible();
+ await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().syncedDebtTerms[1]?.forecastMonthlyMinimum)).toBe(35);
+ expect(await page.evaluate(()=>window.getDebtPlan().schedule[0].payments[0])).toBe(0);
+ await page.locator('#nav-debt').click();await expect(page.locator('#heroDate')).not.toContainText('needed');await expect(page.locator('#heroDate')).not.toContainText('30 years');
 });
 test('timing settings persist, debt due dates edit, and an extra payment can be added to an empty check',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));const f=await fixture(page);

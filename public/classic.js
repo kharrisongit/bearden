@@ -408,6 +408,7 @@ function gatherAppState(){
       apr: c.apr,
       min: c.min,
       monthlyMinimum: c.monthlyMinimum,
+      lastPositiveMonthlyMinimum: c.lastPositiveMonthlyMinimum,
       dueDate: c.dueDate || '',
       debtKind: c.debtKind || 'other',
       payoffHistory: c.payoffHistory || [],
@@ -2078,11 +2079,18 @@ function buildSavingsGoalHeroHTML(g, canDelete, isEditing, isWithdrawing){
 // A capped simulation is not a lifetime-interest estimate. Explain which
 // unpaid debts have no payment or fail to reduce principal in upcoming checks.
 function debtForecastNotice(cards,schedule,debtFreeDate,checked={},today=new Date()){
-  if(debtFreeDate!==null)return '';
+  const midnight=new Date(today);midnight.setHours(0,0,0,0);
+  const future=schedule.filter(row=>!checked[row.paycheck]&&row.date>=midnight);
+  const estimates=cards.flatMap((card,i)=>{
+    const row=future.find(row=>row.balancesBefore[i]>0&&row.debtTiming?.[i]?.estimatedMinimum);
+    return row?[card.name+' ($'+row.debtTiming[i].forecastMonthlyMinimum.toFixed(2)+'/month)']:[];
+  });
+  if(debtFreeDate!==null)return estimates.length?'Future payments use an estimated monthly minimum for '+estimates.join(', ')+'. The current cycle’s $0 due stays unchanged; new statements update the forecast.':'';
   const last=schedule.at(-1);
   if(!last||last.total<=0.01)return '';
-  const midnight=new Date(today);midnight.setHours(0,0,0,0);
-  const upcoming=schedule.filter(row=>!checked[row.paycheck]&&row.date>=midnight).slice(0,26);
+  const missing=cards.filter((card,i)=>last.balancesAfter[i]>0.005&&future.some(row=>row.debtTiming?.[i]?.missingFutureMinimum)).map(c=>c.name);
+  if(missing.length)return 'Nothing is due for the current cycle on '+missing.join(', ')+', but a balance remains. Add a future monthly payment estimate in Accounts, or wait for the next statement. A due date alone cannot supply that amount; the payoff date is unavailable until it is known.';
+  const upcoming=future.slice(0,26);
   const unpaid=[],notReducing=[];
   if(upcoming.length===26)cards.forEach((card,i)=>{
     if(!(last.balancesAfter[i]>0.005))return;
@@ -2106,7 +2114,8 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
   const neverPaysOff = debtFreeDate === null;
 
   if (neverPaysOff) {
-    document.getElementById('heroDate').textContent = cards.some(c=>c.balance>0)&&Number(document.getElementById('takeHome').value)>0?'No payoff within 30 years':'Set up income, budget, and debt to begin';
+    const missingFutureMinimum=schedule.some(row=>row.debtTiming?.some((t,i)=>t.missingFutureMinimum&&row.balancesBefore[i]>0));
+    document.getElementById('heroDate').textContent = missingFutureMinimum?'Future minimum needed':cards.some(c=>c.balance>0)&&Number(document.getElementById('takeHome').value)>0?'No payoff within 30 years':'Set up income, budget, and debt to begin';
     document.getElementById('heroDate').style.color = '#e8a15c';
     document.getElementById('heroDate').style.fontSize = '1.15rem';
     document.getElementById('heroDayCounter').textContent = '';
@@ -2220,7 +2229,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
         <div class="paycheck-debt-amounts">
           <div><small>Before</small><span class="balance-before">${money(row.balancesBefore[i])}</span></div>
           <div><small>Interest</small><span class="interest">${money(row.interestByAccount[i])}</span></div>
-          <label><small>Payment</small><input type="number" class="${payInputClass}" aria-label="Payment for ${bdEscape(c.name)}" ${row.sliceMode?`readonly title="${payoffControlsEnabled?'Undo Slice or Squash':'Enable Slice / Squash in Settings, then undo the choice'} to edit this paycheck’s payments"`:''} value="${row.payments[i].toFixed(2)}" step="0.01" data-bd-change="updateAccountPayment(${c.id}, ${row.paycheck}, this.value, ${row.naturalPayments[i]})"></label>
+          <label><small>${row.debtTiming?.[i]?.estimatedMinimum?'Est. payment':'Payment'}</small><input type="number" class="${payInputClass}" aria-label="Payment for ${bdEscape(c.name)}" ${row.sliceMode?`readonly title="${payoffControlsEnabled?'Undo Slice or Squash':'Enable Slice / Squash in Settings, then undo the choice'} to edit this paycheck’s payments"`:''} value="${row.payments[i].toFixed(2)}" step="0.01" data-bd-change="updateAccountPayment(${c.id}, ${row.paycheck}, this.value, ${row.naturalPayments[i]})"></label>
           <div><small>After</small><span class="bal">${money(row.balancesAfter[i])}</span></div>
         </div>
       </div>`;
@@ -6847,8 +6856,9 @@ window.saveDebtAccount=async function(data){
  if(data.id!==null&&data.id!==undefined&&!card)throw Error('That debt no longer exists.');
  window.captureDebtHistory();
  const payment=window.BearDenDebtPayments.monthlyPaymentSettings(card,monthly);
+ const lastPositiveMonthlyMinimum=monthly>0?monthly:card&&window.BearDenDebtPayments.monthlyMinimum(card)>0?window.BearDenDebtPayments.monthlyMinimum(card):card?.lastPositiveMonthlyMinimum;
  if(!card){cardIdCounter=Math.max(cardIdCounter,...cardsData.map(c=>Number(c.id)||0))+1;card={id:cardIdCounter};cardsData.push(card);}
- Object.assign(card,{name,balance,apr,dueDate,...payment,debtKind:['credit-card','car-loan','loan','other'].includes(data.debtKind)?data.debtKind:'other'});
+ Object.assign(card,{name,balance,apr,dueDate,...payment,lastPositiveMonthlyMinimum,debtKind:['credit-card','car-loan','loan','other'].includes(data.debtKind)?data.debtKind:'other'});
  const syncInputs=()=>cardsData.forEach(c=>{for(const [prefix,key]of [['bal','balance'],['apr','apr'],['monthlyMin','monthlyMinimum']]){const input=document.getElementById(prefix+'_'+c.id);if(input)input.value=prefix==='monthlyMin'?window.BearDenDebtPayments.monthlyMinimum(c):c[key];}});
  try{syncInputs();calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));setStorageStatus('Saved');return card.id;}
  catch(e){cardsData=oldCards;cardIdCounter=oldCounter;syncInputs();calculate();clearTimeout(saveDebounceTimer);throw e;}

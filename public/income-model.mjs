@@ -1,12 +1,12 @@
-export {resolveDebtConnections,resolveDebtDetails} from './connection-model.mjs?v=connections-audit1';
+export {resolveDebtConnections,resolveDebtDetails} from './connection-model.mjs?v=paid-cycle1';
 import {transactionAccountId} from './transaction-links.mjs?v=connections-audit1';
-import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=connections-audit1';
-export {monthlyMinimum} from './debt-payments.mjs?v=connections-audit1';
+import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=paid-cycle1';
+export {monthlyMinimum} from './debt-payments.mjs?v=paid-cycle1';
 import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-portal1';
 import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=connections-audit1';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
 export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs?v=connections-audit1';
-export {creditBills,creditCapacity} from './credit-model.mjs?v=available-credit1';
+export {creditBills,creditCapacity} from './credit-model.mjs?v=paid-cycle1';
 export {transactionAccountId};
 export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment} from './transaction-links.mjs?v=connections-audit1';
 import {day,occurrences} from './engine.mjs';
@@ -257,3 +257,4 @@ export function personalChecking(accounts,household={}){
 export function personalCheckingTransactions(transactions,account){
  return ['plaid','simplefin'].includes(account?.source)?transactions.filter(t=>transactionAccountId(t)===account.id):[];
 }
+

@@ -1,4 +1,4 @@
-import {monthlyMinimum,validDueDate} from './debt-payments.mjs?v=connections-audit1';
+import {monthlyMinimum,validDueDate} from './debt-payments.mjs?v=paid-cycle1';
 const cents=n=>Number.isSafeInteger(n)&&n>=0?n:null;
 const rate=n=>typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=100?n:null;
 const timestamp=value=>Number.isFinite(Date.parse(value))?Date.parse(value):0;
@@ -8,11 +8,11 @@ export function purchaseAPR(card){
  return rates.length===1?rates[0]:null;
 }
 // Only explicitly linked accounts are candidates. Similar names never join debts.
-export function resolveDebtDetails({card,primary=null,backup=null,issuers=[],statement=null,items=[],manualLimit=null,automatic=true,now=Date.now()}={}){
+export function resolveDebtDetails({card,primary=null,backup=null,issuers=[],statement=null,items=[],manualLimit=null,futureMinimum=null,automatic=true,now=Date.now()}={}){
  const notes=[],banks=[primary,backup].filter(Boolean),primaryId=primary?.id,manual={
   balance:Math.round((Number(card.balance)||0)*100),monthlyMinimum:Math.round(monthlyMinimum(card)*100),apr:rate(Number(card.apr))??0,dueDate:validDueDate(card.dueDate)?card.dueDate:null,creditLimit:cents(manualLimit)
  };
- const candidates={balance:[],monthlyMinimum:[],apr:[],dueDate:[],creditLimit:[]};
+ const candidates={balance:[],monthlyMinimum:[],apr:[],dueDate:[],creditLimit:[]},pastMinimums=[];
  const push=(key,value,source,updated,stale,rank)=>{if(value!==null&&value!==undefined)candidates[key].push({...field(value,source,updated,stale),rank,time:timestamp(updated)});};
  for(const [i,bank]of banks.entries()){
   if(bank.currency!=='USD')continue;
@@ -29,6 +29,7 @@ export function resolveDebtDetails({card,primary=null,backup=null,issuers=[],sta
  const linkedIds=new Set(banks.map(a=>a.id));
  for(const issuer of issuers){
   if(issuer.currency!=='USD'||!linkedIds.has('plaid-'+issuer.accountId))continue;
+  if(cents(issuer.lastPositiveMinimum?.amount)>0)pastMinimums.push(field(issuer.lastPositiveMinimum.amount,'Previous statement minimum',issuer.lastPositiveMinimum.updated));
   const item=items.find(i=>i.id===issuer.itemId),updated=issuer.updated||null;
   const stale=!!issuer.stale||!!item?.liabilitiesError||!timestamp(updated)||now-timestamp(updated)>48*3600000;
   const rank=stale?4:'plaid-'+issuer.accountId===primaryId?0:1;
@@ -55,7 +56,9 @@ export function resolveDebtDetails({card,primary=null,backup=null,issuers=[],sta
   resolved[key]=(automatic||key==='balance'||key==='creditLimit')&&list.length?list[0]:field(manual[key],'Entered manually');
   if(resolved[key].stale)notes.push(key==='balance'?'Using the last reported balance; refresh its connection.':'Some payment details use older saved information.');
  }
- return {...resolved,notes:[...new Set(notes)]};
+ const positive=[...candidates.monthlyMinimum.filter(c=>c.value>0),...pastMinimums].sort((a,b)=>timestamp(b.updated)-timestamp(a.updated));
+ const forecastMinimum=resolved.monthlyMinimum.value>0?resolved.monthlyMinimum:cents(futureMinimum)>0?field(futureMinimum,'Saved future estimate'):positive[0]||field(manual.monthlyMinimum>0?manual.monthlyMinimum:card.lastPositiveMonthlyMinimum>0?Math.round(card.lastPositiveMonthlyMinimum*100):null,'Saved payment plan');
+ return {...resolved,forecastMinimum,currentCycleMinimum:automatic&&resolved.monthlyMinimum.source!=='Entered manually',notes:[...new Set(notes)]};
 }
 export function resolveDebtConnections(planner,accounts,issuers,cards,statements={},items=[],now=Date.now()){
  return Object.fromEntries(cards.map(card=>{
@@ -63,6 +66,9 @@ export function resolveDebtConnections(planner,accounts,issuers,cards,statements
   const primaryId=planner.debtAccountLinks?.[card.id]||(mapped?'plaid-'+mapped.accountId:null);
   const issuer=issuers.find(c=>'plaid-'+c.accountId===primaryId)||mapped;
   const primary=accounts.find(a=>a.id===primaryId)|| (issuer?{id:primaryId,source:'plaid',itemId:issuer.itemId,currency:issuer.currency,balance:issuer.balance,balanceUpdated:issuer.fieldUpdated?.balance||issuer.updated,balanceUnavailable:issuer.stale}:null);
-  return [card.id,resolveDebtDetails({card,primary,backup:accounts.find(a=>a.id===planner.debtBackupLinks?.[card.id]),issuers,statement:statements[card.id],items,manualLimit:planner.debtCreditLimits?.[card.id],automatic:planner.debtAutoDetails?.[card.id]!==false,now})];
+  const preference=issuer?planner.creditCards?.[issuer.id]:null;
+  const saved={...card,dueDate:preference?.fallbackDate||card.dueDate||''};
+  return [card.id,resolveDebtDetails({card:saved,primary,backup:accounts.find(a=>a.id===planner.debtBackupLinks?.[card.id]),issuers,statement:statements[card.id],items,manualLimit:planner.debtCreditLimits?.[card.id],futureMinimum:planner.debtFutureMinimums?.[card.id]??preference?.fallbackAmount,automatic:planner.debtAutoDetails?.[card.id]!==false,now})];
  }));
 }
+

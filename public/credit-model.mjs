@@ -6,7 +6,8 @@ export function normalizeCreditCards(response,item,previous=[],now=new Date().to
  return (response.accounts||[]).filter(a=>a.type==='credit').map(a=>{
   const d=details.get(a.account_id),id='credit-'+a.account_id,old=previous.find(c=>c.id===id),balance=amount(a.balances?.current);
   const history=(old?.history||[]).filter(p=>p.date!==now.slice(0,10)).slice(-89);if(balance!==null)history.push({date:now.slice(0,10),balance});
-  return {id,accountId:a.account_id,itemId:item.id,institution:item.name,name:a.name,mask:a.mask||'',currency:a.balances?.iso_currency_code||null,balance,limit:amount(a.balances?.limit),available:amount(a.balances?.available),minimum:amount(d?.minimum_payment_amount),dueDate:date(d?.next_payment_due_date),statementBalance:amount(d?.last_statement_balance),statementDate:date(d?.last_statement_issue_date),lastPayment:amount(d?.last_payment_amount),lastPaymentDate:date(d?.last_payment_date),overdue:d?.is_overdue??null,aprs:(d?.aprs||[]).filter(p=>typeof p.apr_percentage==='number'&&Number.isFinite(p.apr_percentage)).map(p=>({type:String(p.apr_type||'other'),rate:p.apr_percentage})),detailsAvailable:!!d,updated:now,history};
+  const minimum=amount(d?.minimum_payment_amount),lastPositiveMinimum=minimum>0?{amount:minimum,updated:now}:old?.minimum>0?{amount:old.minimum,updated:old.fieldUpdated?.minimum||old.updated}:old?.lastPositiveMinimum||null;
+  return {id,accountId:a.account_id,itemId:item.id,institution:item.name,name:a.name,mask:a.mask||'',currency:a.balances?.iso_currency_code||null,balance,limit:amount(a.balances?.limit),available:amount(a.balances?.available),minimum,lastPositiveMinimum,dueDate:date(d?.next_payment_due_date),statementBalance:amount(d?.last_statement_balance),statementDate:date(d?.last_statement_issue_date),lastPayment:amount(d?.last_payment_amount),lastPaymentDate:date(d?.last_payment_date),overdue:d?.is_overdue??null,aprs:(d?.aprs||[]).filter(p=>typeof p.apr_percentage==='number'&&Number.isFinite(p.apr_percentage)).map(p=>({type:String(p.apr_type||'other'),rate:p.apr_percentage})),detailsAvailable:!!d,updated:now,history};
  });
 }
 export function creditCapacity({card=null,account=null,enteredLimit=null,balance=null}={}){
@@ -34,3 +35,4 @@ export function creditBills(cards,preferences={}){
   return [{id:card.id,cardId:card.id,name:p.name||card.name,amount,date,repeat:'once',source:'plaid-credit',billKind:'credit-card',covered:!!p.covered,confirmed:card.minimum!==null&&!!card.dueDate,replaces:p.replaces||null}];
  });
 }
+

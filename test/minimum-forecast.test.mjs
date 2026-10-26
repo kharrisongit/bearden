@@ -47,3 +47,17 @@ test('synced minimum terms and extra-payment methods can resolve the warning',()
     assert.ok(p.date);assert.equal(p.notice,'');
   }
 });
+
+test('a paid current cycle resumes future minimums without changing checked payments',()=>{
+  const card={id:1,name:'Credit One',balance:142.03,apr:29,min:16.15,monthlyMinimum:35,dueDate:'2026-11-23'};
+  const terms={1:{date:'2026-10-26',monthlyMinimum:0,currentCycleMinimum:true,currentCycleThrough:'2026-11-23',dueDate:'2026-11-23',forecastMonthlyMinimum:35}};
+  for(const timing of [{mode:'every-paycheck'},{mode:'due-date',leadDays:3}]){
+    const p=plan({cards:[card],terms,timing});assert.ok(p.date);assert.equal(p.schedule[0].payments[0],0);assert.equal(p.schedule[1].payments[0],0);
+    assert.match(p.notice,/estimated monthly minimum.*Credit One.*35.00/);assert.ok(p.interest<50);
+  }
+  const p=plan({cards:[card],terms,checked:{1:true},history:{1:{1:20}}});assert.equal(p.schedule[0].payments[0],20);
+});
+test('missing future minimum after a paid cycle asks for an estimate instead of claiming decades of nonpayment',()=>{
+  const p=plan({terms:{1:{date:'2026-10-26',monthlyMinimum:0,currentCycleMinimum:true,currentCycleThrough:'2026-10-26',forecastMonthlyMinimum:null}}});
+  assert.equal(p.date,null);assert.match(p.notice,/Add a future monthly payment estimate/);assert.doesNotMatch(p.notice,/30-year|No payments scheduled/);
+});
