@@ -17,8 +17,8 @@
     --paper:#12161d;
     --card:#1c222c;
     --line:#333c49;
-    --accent:#4aa88f;
-    --accent-soft:#1c3630;
+    --accent:#a8704a;
+    --accent-soft:#36261c;
     --warn:#e07a5a;
     --warn-soft:#3a2620;
     --muted:#9aa4b2;
@@ -52,21 +52,21 @@
   }
   [data-theme="dark"] .savings-hero .hero-pie-hole-sm{background:#242838;}
   [data-theme="dark"] .milestone-banner-debt{
-    background:linear-gradient(135deg, #2f6f5e, #48a184);
+    background:linear-gradient(135deg, #6f492f, #a16c48);
   }
   [data-theme="dark"] .milestone-both{
-    background:linear-gradient(135deg, #2f6f5e, #c8a15a);
+    background:linear-gradient(135deg, #6f492f, #c8a15a);
   }
   [data-theme="dark"] .milestone-banner-account{
-    background:linear-gradient(135deg, #3a8f76, #5cb89b);
+    background:linear-gradient(135deg, #8f5c3a, #b8815c);
   }
   [data-theme="dark"] .paycheck.milestone-debt{
-    border-color:#2f6f5e;
+    border-color:#6f492f;
     box-shadow:0 4px 18px rgba(47,111,94,0.25);
   }
-  [data-theme="dark"] .paycheck.milestone-account{border-left-color:#3a8f76;}
+  [data-theme="dark"] .paycheck.milestone-account{border-left-color:#8f5c3a;}
   [data-theme="dark"] .paycheck.milestone-debt.milestone-savings{
-    border-image:linear-gradient(135deg, #2f6f5e, #c8a15a) 1;
+    border-image:linear-gradient(135deg, #6f492f, #c8a15a) 1;
   }
   *{box-sizing:border-box;}
   body{
@@ -837,7 +837,7 @@
     box-shadow:0 6px 14px rgba(201,111,74,0.32), inset 0 1px 0 rgba(255,255,255,0.3);
   }
   [data-theme="dark"] .games-toggle-btn{
-    background:linear-gradient(135deg, #4aa88f, #5b3a8a 65%, #7a5ac2);
+    background:linear-gradient(135deg, #a8704a, #5b3a8a 65%, #7a5ac2);
     box-shadow:0 10px 24px rgba(74,168,143,0.32), inset 0 1px 0 rgba(255,255,255,0.15);
   }
   .howto-toggle-small{
@@ -1071,7 +1071,7 @@
   .account-terms-mini-sm .account-terms-mini-row span:last-child{font-size:0.74rem;}
   .account-detail-title-box{
     text-align:center;
-    background:linear-gradient(135deg, #2f6f5e, #4a9683);
+    background:linear-gradient(135deg, #6f492f, #96684a);
     border-radius:18px;
     padding:22px 16px;
     box-shadow:0 8px 22px rgba(47,111,94,0.32);
@@ -1161,7 +1161,7 @@
   .hero.bear-runner-hero{
     background:
       radial-gradient(circle at 14% 8%, rgba(255,255,255,0.2), transparent 45%),
-      linear-gradient(135deg, #1f6b5c 0%, #2f9e86 50%, #5fc9ae 100%);
+      linear-gradient(135deg, #663e24 0%, #985d35 50%, #c78a61 100%);
     margin-bottom:20px;
   }
   [data-theme="dark"] .hero.bear-runner-hero{
@@ -1317,7 +1317,7 @@
   .hero.bear-quest-hero{
     background:
       radial-gradient(circle at 86% 8%, rgba(255,255,255,0.2), transparent 45%),
-      linear-gradient(135deg, #234d20 0%, #4c7031 50%, #8fae5a 100%);
+      linear-gradient(135deg, #4d3220 0%, #704a31 50%, #ae7c5a 100%);
     margin-bottom:20px;
   }
   [data-theme="dark"] .hero.bear-quest-hero{
@@ -1487,7 +1487,7 @@
   .hero.bear-catch-hero{
     background:
       radial-gradient(circle at 86% 8%, rgba(255,255,255,0.2), transparent 45%),
-      linear-gradient(135deg, #1f5c7a 0%, #3d8fae 50%, #7fc4d9 100%);
+      linear-gradient(135deg, #1f5c7a 0%, #3d8fae 50%, #d4a484 100%);
     margin-bottom:20px;
   }
   [data-theme="dark"] .hero.bear-catch-hero{
@@ -1567,7 +1567,7 @@
   .battle-hpfill{
     height:100%;
     width:100%;
-    background:linear-gradient(90deg, #4aa88f, #7fd9bd);
+    background:linear-gradient(90deg, #a8704a, #d4a484);
     transition:width 0.4s ease;
   }
   .battle-hpfill.enemy{background:linear-gradient(90deg, #c8222c, #e8626a);}
@@ -2870,25 +2870,25 @@
      whatever base/dark-mode rule it's overriding, appearing later in the
      file so it wins the cascade in every combination. */
   [data-holiday="christmas"]{
-    --paper:#f2f8f1;
+    --paper:#f8f4f1;
     --card:#ffffff;
-    --line:#c9e3c8;
-    --accent:#1e7d4a;
-    --accent-soft:#dcf1de;
+    --line:#e3d3c8;
+    --accent:#734628;
+    --accent-soft:#f1e4dc;
     --warn:#c8222c;
     --warn-soft:#fbdde0;
   }
   [data-theme="dark"][data-holiday="christmas"]{
-    --paper:#0d1a11;
-    --card:#152a1c;
-    --line:#2b4a35;
-    --accent:#42b57a;
-    --accent-soft:#1d3a27;
+    --paper:#1a120d;
+    --card:#2a1d15;
+    --line:#4a372b;
+    --accent:#b57042;
+    --accent-soft:#3a291d;
     --warn:#e2626a;
     --warn-soft:#3a1c1e;
   }
   [data-holiday="christmas"] .app-title-box{
-    background:linear-gradient(135deg, #1e7d4a, #c8222c);
+    background:linear-gradient(135deg, #734628, #c8222c);
     box-shadow:0 8px 22px rgba(30,125,74,0.34);
   }
   [data-holiday="christmas"] .hero.debt-hero{
@@ -2899,7 +2899,7 @@
   [data-holiday="christmas"] .hero.savings-hero{
     background:
       radial-gradient(circle at 14% 8%, rgba(255,255,255,0.26), transparent 45%),
-      linear-gradient(135deg, #0e4a2c 0%, #1e7d4a 48%, #47b47c 100%);
+      linear-gradient(135deg, #412817 0%, #734628 48%, #b47347 100%);
   }
   [data-holiday="christmas"] .hero.bear-runner-hero{
     background:
@@ -2909,36 +2909,36 @@
   [data-holiday="christmas"] .hero.bear-crush-hero{
     background:
       radial-gradient(circle at 86% 8%, rgba(255,255,255,0.22), transparent 45%),
-      linear-gradient(135deg, #8a141d 0%, #c8222c 45%, #1e7d4a 100%);
+      linear-gradient(135deg, #8a141d 0%, #c8222c 45%, #734628 100%);
   }
   [data-holiday="christmas"] .hero.notes-hero{
     background:
       radial-gradient(circle at 14% 8%, rgba(255,255,255,0.2), transparent 45%),
-      linear-gradient(135deg, #8a141d 0%, #1e7d4a 60%, #47b47c 100%);
+      linear-gradient(135deg, #8a141d 0%, #734628 60%, #b47347 100%);
   }
   [data-holiday="christmas"] .hero.bear-quest-hero{
     background:
       radial-gradient(circle at 86% 8%, rgba(255,255,255,0.2), transparent 45%),
-      linear-gradient(135deg, #0e4a2c 0%, #1e7d4a 48%, #c8222c 100%);
+      linear-gradient(135deg, #412817 0%, #734628 48%, #c8222c 100%);
   }
   [data-holiday="christmas"] .hero.bear-catch-hero{
     background:
       radial-gradient(circle at 14% 8%, rgba(255,255,255,0.2), transparent 45%),
-      linear-gradient(135deg, #0e4a6e 0%, #1e7d4a 55%, #47b47c 100%);
+      linear-gradient(135deg, #0e4a6e 0%, #734628 55%, #b47347 100%);
   }
   [data-holiday="christmas"] .paycheck{
-    background:linear-gradient(135deg, #fdfdf8, #e4f3e6);
-    border-color:#a9d6b3;
+    background:linear-gradient(135deg, #fdfdf8, #f3eae4);
+    border-color:#d6bba9;
   }
   [data-theme="dark"][data-holiday="christmas"] .paycheck{
-    background:linear-gradient(135deg, #16311f, #1e4a2d);
-    border-color:#316a41;
+    background:linear-gradient(135deg, #312116, #4a301e);
+    border-color:#6a4831;
   }
   [data-holiday="christmas"] .notebook-page-wrap{
-    background:linear-gradient(135deg, #fdfdf8, #e4f3e6);
+    background:linear-gradient(135deg, #fdfdf8, #f3eae4);
   }
   [data-theme="dark"][data-holiday="christmas"] .notebook-page-wrap{
-    background:linear-gradient(135deg, #16311f, #1e4a2d);
+    background:linear-gradient(135deg, #312116, #4a301e);
   }
   [data-holiday="halloween"]{
     --paper:#fbf2e2;

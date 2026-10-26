@@ -1614,7 +1614,7 @@ function updateDebtHeroProgress(){
     if (startTotal > 0.005 && (!summary || summary.totals.length<=1)) {
       const paidOffAmount = Math.max(0, startTotal - remaining);
       const pct = Math.min(100, (paidOffAmount / startTotal) * 100);
-      pie.style.background = `conic-gradient(#7fd9bd 0% ${pct.toFixed(2)}%, rgba(255,255,255,0.18) ${pct.toFixed(2)}% 100%)`;
+      pie.style.background = `conic-gradient(#f0b77c 0% ${pct.toFixed(2)}%, rgba(255,255,255,0.18) ${pct.toFixed(2)}% 100%)`;
       pctLabel.textContent = pct.toFixed(0) + '%';
       pieWrap.style.display = 'flex';
     } else {
@@ -1844,7 +1844,7 @@ function spawnConfetti(){
   const container = document.getElementById('celebrationConfetti');
   if (!container) return;
   container.innerHTML = '';
-  const colors = ['#2f6f5e','#c8a15a','#5b3a8a','#b3492f','#4a9683','#e8c179','#7fd9bd'];
+  const colors = ['#b85226','#c39437','#75628c','#a45e70','#677b9a','#8c7965','#f0b77c'];
   for (let i = 0; i < 80; i++) {
     const piece = document.createElement('div');
     piece.className = 'confetti-piece';
