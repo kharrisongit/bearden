@@ -128,9 +128,6 @@ body{background:radial-gradient(ellipse at 0 0,#aad3bc16,transparent 38%),var(--
 [data-theme=dark] .schedule-reset-btn{background:#a73236;color:#fff;border-color:#d16c70}
 
 /* Bill actions sit beside Edit; linked loan balances occupy the footer. */
-.bill-card-header{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap-reverse;gap:4px;padding-right:9px}
-.bill-card-header .bill-tile-main{order:0;flex:1 1 170px;min-width:0;padding-right:8px}
-.bill-card-header>.debt-account-tools{order:1;padding-top:9px}
 .income-card .bill-card-header .account-edit{position:static}
 .bill-bank-paid{font-size:.65rem;color:var(--accent);padding:7px 5px}
 .bill-loan-balance{margin-left:auto;text-align:right;line-height:1.5}
@@ -140,10 +137,6 @@ body{background:radial-gradient(ellipse at 0 0,#aad3bc16,transparent 38%),var(--
 
 /* Leave room for each tracker's bear and its speech bubble above the card. */
 #tab-debt .debt-peek-wrap,#savingsHeroContainer .savings-peek-wrap{margin-top:68px;isolation:isolate}
-/* Pin bill actions to the corner; reserve their row so titles cannot push them down. */
-.bill-card-header{display:block;position:relative;padding:48px 0 0}
-.bill-card-header .bill-tile-main{padding:8px 15px 15px}
-.bill-card-header>.debt-account-tools{position:absolute;top:9px;right:9px;padding:0;margin:0}
 .income-card .bill-card-header .bill-paid-button{border:1px solid var(--line);border-radius:9px;background:var(--accent-soft);color:var(--accent);padding:7px 10px;min-height:36px;font-size:.68rem;font-weight:700}
 .income-card .bill-card-header .bill-paid-button:hover{background:var(--accent);border-color:var(--accent);color:#fff}
 .debt-account-footer>.debt-due-date{flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--accent-soft);color:var(--accent);font-size:1.12rem;font-weight:800;line-height:1.4;letter-spacing:-.015em}
@@ -154,3 +147,12 @@ body{background:radial-gradient(ellipse at 0 0,#aad3bc16,transparent 38%),var(--
 .paycheck-shared-balances strong{display:block;font-size:1.18rem;letter-spacing:-.02em;margin:5px 0;color:var(--accent);overflow-wrap:anywhere}
 .paycheck-shared-balances .is-negative strong{color:var(--warn)}
 .paycheck-shared-balances>p{grid-column:1/-1;margin:0;font-size:.68rem;line-height:1.5}
+
+/* Compact bill headings follow the credit-card layout without an empty action row. */
+.bill-card-header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:10px;padding:14px 12px 12px 15px}
+.bill-card-header .bill-tile-main{grid-column:1;grid-row:1;display:block;min-width:0;padding:0}
+.bill-card-header .bill-tile-info h4{font-size:.92rem;line-height:1.35;margin:0 0 7px}
+.bill-card-header>.debt-account-tools{grid-column:2;grid-row:1;position:static;margin:0;padding:0;align-items:center;gap:4px}
+.income-card .bill-card-header .bill-paid-button{padding:7px 8px;white-space:nowrap}
+.bill-due-date{margin:0 15px 14px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--accent-soft);color:var(--accent);font-size:1.12rem;font-weight:800;line-height:1.4;letter-spacing:-.015em}
+.bill-due-date.is-overdue{background:var(--warn-soft);color:var(--warn)}
