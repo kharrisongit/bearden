@@ -27,10 +27,40 @@ window.BearDen=(()=>{
   $('#classicBankStatus').textContent=c.items?.length?`${c.items.length} bank connection(s). To sign in again, use Reconnect existing bank below. ${config.syncDescription||''}`:'Connect a bank to see its balances here.';
   $('#classicBalances').innerHTML=(s?.accounts||[]).filter(a=>a.source==='plaid').map(a=>`<div class="connection-row"><strong>${esc(a.name)}</strong>${a.balanceUnavailable?'Balance not supplied':money(a.balance)}<small>${esc(a.currency||'USD')}${a.balanceRetrieved?' · Retrieved '+esc(new Date(a.balanceRetrieved).toLocaleString()):''}</small>${['loan','credit'].includes(a.type)&&a.balance===0?'<small>Plaid reports zero; verify with your bank. This is a balance, not a payment due.'+(a.lastPositiveBalance>0?' Last positive balance received: '+money(a.lastPositiveBalance)+'.':'')+'</small>':''}<details><summary>Balance details</summary><small>Connection: ${esc(c.items?.find(i=>i.id===a.itemId)?.name||'Bank')}${c.items?.find(i=>i.id===a.itemId)?.balanceError?'<br>Last balance refresh failed: '+esc(c.items.find(i=>i.id===a.itemId).balanceError):''}<br>Account type: ${esc(a.type||'Not supplied')} / ${esc(a.subtype||'Not supplied')}<br>Current balance reported by Plaid: ${a.reportedCurrent===undefined?'No balance response saved for this account':a.reportedCurrent===null?'Not supplied':money(Math.round(a.reportedCurrent*100))}<br>Available balance reported by Plaid: ${a.reportedAvailable===undefined?'No balance response saved for this account':a.reportedAvailable===null?'Not supplied':money(Math.round(a.reportedAvailable*100))}</small></details></div>`).join('');
   $('#classicBanks').innerHTML=(c.items||[]).map((i,index)=>`<div class="connection-row"><strong>${esc(i.name)}</strong><button data-bank-reconnect="${esc(i.id)}">Reconnect existing bank</button><button data-credit-update="${esc(i.id)}">${i.liabilities?'Manage extra card permissions':'Request due dates & minimums'}</button><small>Balances already sync. Extra card details may require additional Plaid permission; linking an existing account in Accounts does not.</small><button data-bank-disconnect="${esc(i.id)}">Disconnect</button>${i.balanceError?'<small role="status">Balance refresh failed: '+esc(i.balanceError)+'</small>':i.balanceWarning?'<small role="status">'+esc(i.balanceWarning)+'</small>':''}${i.liabilitiesStatus?'<small>'+esc(i.liabilitiesStatus)+'</small>':''}${c.items.slice(0,index).find(other=>other.name===i.name)?'<button data-bank-combine="'+esc(i.id)+'" data-bank-keep="'+esc(c.items.slice(0,index).find(other=>other.name===i.name).id)+'">Combine duplicate '+esc(i.name)+' connections</button>':''}</div>`).join('');
+  renderSimplefin(c,s);
   $('#classicGmail').textContent='Add Gmail account';$('#classicDisconnectGmail').hidden=true;$('#checkGmailAccounts').hidden=!c.gmail;
   $('#classicEmailStatus').textContent=c.gmail?'Connected. Bills and payment notices update in the background.':'Connect Gmail to find bills and payment notices.';
   $('#gmailAccountList').innerHTML=(c.gmailAccounts||[]).map(a=>'<div class="connection-row"><strong>'+esc(a.email||'Gmail account')+'</strong><small>'+esc(a.status||'Connected')+(a.updated?' · '+esc(new Date(a.updated).toLocaleString()):'')+'</small><button type="button" data-gmail-disconnect="'+esc(a.id)+'">Disconnect</button></div>').join('');
  }
+ function renderSimplefin(c,s){
+  const connected=!!c.simplefin,accounts=(s?.accounts||[]).filter(a=>a.source==='simplefin');
+  $('#simplefinActions').hidden=!connected;$('#simplefinSetup').hidden=connected;$('#simplefinConnect').textContent=connected?'Replace SimpleFIN token':'Connect SimpleFIN';
+  $('#simplefinStatus').textContent=c.simplefin?(c.simplefin.status+(c.simplefin.updated?' Last checked '+new Date(c.simplefin.updated).toLocaleString()+'.':'')):'Not connected.';
+  $('#simplefinAccounts').innerHTML=accounts.map(a=>{
+   const kind=a.type==='depository'?a.subtype:a.type,debt=['credit','loan'].includes(a.type),raw=a.rawBalance,known=Number.isSafeInteger(raw);
+   const types=[['unknown','Choose account type'],['credit','Credit card'],['loan','Loan'],['checking','Checking'],['savings','Savings']];
+   return '<form class="connection-row" data-simplefin-account="'+esc(a.id)+'"><strong>'+esc(a.name)+'</strong><small>'+esc(a.institution)+' · SimpleFIN</small><p>'+(a.providerUnavailable?'Balance unavailable; keeping the last known amount.':'Reported balance: '+(known?money(raw):'Not supplied')+' '+esc(a.currency))+(a.balanceUpdated?' · As of '+esc(new Date(a.balanceUpdated).toLocaleString()):'')+'</p><label>Account type<select name="kind">'+types.map(([value,name])=>'<option value="'+value+'" '+(kind===value?'selected':'')+'>'+name+'</option>').join('')+'</select></label><label data-simplefin-sign '+(debt?'':'hidden')+'>Confirm what the balance means<select name="debtSign"><option value="">Choose the amount you owe</option>'+[['negative',raw<0],['positive',raw>=0]].map(([value,isOwed])=>'<option value="'+value+'" '+(a.debtSign===value?'selected':'')+'>'+(known?(isOwed?money(Math.abs(raw))+' owed':money(Math.abs(raw))+' credit / no amount owed'):(value==='negative'?'Negative means amount owed':'Positive means amount owed'))+'</option>').join('')+'</select></label><button type="submit">Save account type</button><small data-simplefin-account-status>'+(kind==='unknown'?'Choose a type before using this balance.':debt?'Then open Accounts, edit your debt, and choose this linked account.':'Available under Choose accounts.')+'</small></form>';
+  }).join('');
+ }
+ $('#simplefinConnectForm').onsubmit=async event=>{
+  event.preventDefault();if(!requireLogin())return;const button=$('#simplefinConnect'),token=$('#simplefinToken').value.trim();if(!token)return;
+  const replace=!!legacy?.connections?.simplefin;if(replace&&!confirm('Replace the saved SimpleFIN access token? Existing debt links will be kept.'))return;
+  button.disabled=true;$('#simplefinToken').value='';$('#simplefinStatus').textContent='Connecting SimpleFIN and loading balances…';
+  try{await queue;const result=await api('/api/simplefin/connect',{token,replace});await refresh();$('#simplefinSetup').open=false;$('#simplefinStatus').textContent=result.status;}
+  catch(e){$('#simplefinStatus').textContent=e.message+' If the token was consumed, create a new token in SimpleFIN.';}
+  finally{button.disabled=false;}
+ };
+ $('#simplefinReplace').onclick=()=>{$('#simplefinSetup').hidden=false;$('#simplefinSetup').open=true;$('#simplefinToken').focus();};
+ $('#simplefinRefresh').onclick=async()=>{const b=$('#simplefinRefresh');b.disabled=true;$('#simplefinStatus').textContent='Checking SimpleFIN…';try{await queue;const r=await api('/api/simplefin/refresh',{});await refresh();$('#simplefinStatus').textContent=r.status;}catch(e){$('#simplefinStatus').textContent=e.message;}finally{b.disabled=false;}};
+ $('#simplefinDisconnect').onclick=async()=>{
+  if(!confirm('Disconnect SimpleFIN from BearDen? Your debts and entered payment details will stay. You can also revoke BearDen in SimpleFIN’s Apps section.'))return;
+  const b=$('#simplefinDisconnect');b.disabled=true;try{await queue;const r=await api('/api/simplefin/disconnect',{});await refresh();$('#simplefinStatus').textContent=r.status;}catch(e){$('#simplefinStatus').textContent=e.message;}finally{b.disabled=false;}
+ };
+ $('#simplefinAccounts').addEventListener('change',e=>{const form=e.target.closest('[data-simplefin-account]');if(form&&e.target.name==='kind')form.querySelector('[data-simplefin-sign]').hidden=!['credit','loan'].includes(e.target.value);});
+ $('#simplefinAccounts').addEventListener('submit',async e=>{
+  e.preventDefault();const form=e.target.closest('[data-simplefin-account]');if(!form)return;const b=form.querySelector('button'),status=form.querySelector('[data-simplefin-account-status]');b.disabled=true;
+  try{await queue;await api('/api/simplefin/account',{id:form.dataset.simplefinAccount,kind:form.elements.kind.value,debtSign:form.elements.debtSign.value});await refresh();$('#simplefinStatus').textContent='Account type saved. To update an existing debt, open Accounts, edit that debt, and select its linked account.';}catch(error){status.textContent=error.message;}finally{b.disabled=false;}
+ });
  async function connectBank(resume=false,options={}){
   if(!requireLogin())return;if(!config.plaidConfigured)throw Error('Bank connections are unavailable right now.');
   if(resume){if(sessionStorage.getItem('bearden-link-account')!==config.accountId){sessionStorage.removeItem('bearden-link-token');sessionStorage.removeItem('bearden-link-context');sessionStorage.removeItem('bearden-link-account');throw Error('Your BearDen account changed. Start Connect bank again from this account.');}options=JSON.parse(sessionStorage.getItem('bearden-link-context')||'{}');}
@@ -72,6 +102,7 @@ window.BearDen=(()=>{
     try{await queue;const result=await api('/api/bank/refresh',{itemId:item.id});results.push(item.name+': '+(result.status||'No refresh status returned.'));}catch(error){results.push(item.name+': Refresh failed — '+error.message);}
     await refresh();
    }
+   if(legacy?.connections?.simplefin){report('Refreshing SimpleFIN…');try{const r=await api('/api/simplefin/refresh',{});results.push('SimpleFIN: '+r.status);}catch(e){results.push('SimpleFIN: '+e.message);}await refresh();}
    return results.length?results:['No bank connections to refresh.'];
   }finally{refreshingBank=false;buttons.forEach(b=>{b.disabled=false;b.removeAttribute('aria-busy');});}
  }

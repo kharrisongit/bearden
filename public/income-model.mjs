@@ -153,7 +153,7 @@ export function forecastBalanceOn(points,date){
 export function linkedBillLoan(bill,planner,accounts=[]){
  const id=planner.loanLinks?.[bill.id];
  if(!id||bill.billKind!=='car-payment')return null;
- const account=accounts.find(a=>a.id===id&&a.source==='plaid'&&a.type==='loan');
+ const account=accounts.find(a=>a.id===id&&['plaid','simplefin'].includes(a.source)&&a.type==='loan');
  return account?{id,name:account.name,balance:account.balance,balanceUnavailable:!!account.balanceUnavailable,currency:account.currency||'USD'}:{id,unavailable:true};
 }
 

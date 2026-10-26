@@ -37,3 +37,13 @@ Run `npm test` with Node 24 or newer. Tests cover card fields, payment classific
 **Automatic cloud saving:** Signed-in data is saved to the encrypted server records and restored by the same Google identity on another device. The Settings status distinguishes server saving from signed-out device-only storage. Export controls have been removed; importing an older file remains available. Current-state saving is not a separate versioned backup archive.
 
 **Forecast dates:** Income has 30-day, 90-day, six-month, and one-year shortcuts plus a custom end date. All forecast scopes and debt modes use that range, with running balances, the first negative date/amount, and the lowest balance/date. Long schedules display 100 entries at a time while totals include the whole period. The chart stores balance-change dates and preserves extrema when sampling a long range. Recurrences are not truncated at 2,400 events. If an unpaid debt extends beyond the payoff engine’s detailed schedule, the range note explicitly flags that later debt payments are not included.
+
+## SimpleFIN balances
+
+Settings → SimpleFIN accepts a one-time SimpleFIN Bridge setup token after the user signs in. Connect financial institutions in SimpleFIN, then create an Apps connection named BearDen and paste its setup token into BearDen. No new Cloudflare secrets or database migration are required. The access URL is encrypted in the existing per-user vault and never returned to the browser.
+
+This connector imports balances only, approximately daily, and supports manual refreshes with a five-minute cooldown and a 20-request daily cap. It does not import SimpleFIN transactions or payment due dates/minimums. Plaid and Gmail continue to provide their existing data. Assign each imported account a type; for debts, confirm whether the reported amount represents money owed or a credit. Edit an existing debt in Accounts to select its linked SimpleFIN account. Imported balances start hidden from cash summaries, so adding the same bank through two providers does not automatically double-count cash.
+
+Missing or failed balances preserve the last known amount and are flagged unavailable. Existing disputed-zero protections remain in place: a reported zero does not automatically mark a debt paid off. Disconnect removes BearDen’s access URL and imported balances, while keeping manually entered debts and payment details. The user can additionally revoke the Apps connection in SimpleFIN.
+
+Tests cover HTTPS host restrictions, redirect rejection, credential redaction, encryption, account isolation, sign handling, unavailable balances, reconnects, rate limits, and frontend token handling.

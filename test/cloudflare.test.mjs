@@ -242,3 +242,24 @@ test('targeted refresh visits the requested connection and saves provider detail
 test('Gmail-only continuation never refreshes an unrelated bank connection',async()=>{
  const f=fixture(async()=>{throw Error('No providers should be called');});f.set('connections',{items:[{id:'bank',token:'bank',name:'ELGA'}],transactions:[],candidates:[],gmail:null});const r=await(await f.app.handle(f.req('/api/sync',{gmailOnly:true}))).json();assert.match(r.status,/No Gmail/);assert.equal(f.get('connections').items[0].balancesUpdated,undefined);f.db.close();
 });
+
+test('SimpleFIN setup is private, encrypted, immediately loads balances, and reconnects without duplicating accounts',async()=>{
+ const setup=Buffer.from('https://beta-bridge.simplefin.org/simplefin/claim/sample').toString('base64'),access='https://sf-private-user:sf-private-secret@beta-bridge.simplefin.org/simplefin';
+ const f=fixture(async(url,options)=>{assert.equal(options.redirect,'manual');if(url.includes('/claim/'))return new Response(access);assert.ok(!url.includes('sf-private'));assert.match(options.headers.Authorization,/^Basic /);return Response.json({connections:[{conn_id:'i',name:'Indigo'}],accounts:[{id:'card',conn_id:'i',name:'Indigo',currency:'USD',balance:'-123.45','balance-date':Math.floor(Date.now()/1000)}]});});
+ assert.equal((await f.app.handle(new Request(f.env.APP_URL+'/api/simplefin/connect',{method:'POST',body:JSON.stringify({token:setup})}))).status,401);
+ assert.equal((await f.app.handle(f.req('/api/simplefin/connect',{token:setup},'https://evil.example'))).status,403);
+ const connected=await f.app.handle(f.req('/api/simplefin/connect',{token:setup}));assert.equal(connected.status,200);assert.equal(f.get('connections').simplefin.accessUrl,access);
+ assert.ok(!f.db.prepare('SELECT value FROM vault WHERE id=?').get('connections').value.includes('sf-private'));
+ let publicState=await(await f.app.handle(f.req('/api/state'))).text();assert.ok(!publicState.includes('sf-private'));let data=JSON.parse(publicState);assert.equal(data.state.accounts.length,1);const id=data.state.accounts[0].id;assert.equal(data.connections.simplefin.connected,true);
+ assert.equal((await f.app.handle(f.req('/api/simplefin/account',{id,kind:'credit',debtSign:'negative'}))).status,200);assert.equal(f.get('plan').state.accounts[0].balance,12345);
+ assert.equal((await f.app.handle(f.req('/api/simplefin/connect',{token:setup}))).status,409);
+ assert.equal((await f.app.handle(f.req('/api/simplefin/connect',{token:setup,replace:true}))).status,200);assert.equal(f.get('plan').state.accounts.length,1);assert.equal(f.get('plan').state.accounts[0].type,'credit');
+ const member=privateSession(f);assert.equal((await(await f.app.handle(member.req('/api/state'))).json()).connections.simplefin,null);await assert.rejects(()=>f.app.handle(member.req('/api/simplefin/refresh',{})),/Connect SimpleFIN/);
+ await f.app.handle(member.req('/api/simplefin/disconnect',{}));assert.equal(f.get('connections').simplefin.accessUrl,access);
+ await f.app.handle(f.req('/api/simplefin/disconnect',{}));assert.equal(f.get('connections').simplefin,undefined);assert.equal(f.get('plan').state.accounts.length,0);f.db.close();
+});
+test('SimpleFIN failed initial fetch keeps its consumed token and scheduled refresh recovers',async()=>{
+ let ready=false,calls=0;const access='https://u:p@beta-bridge.simplefin.org/simplefin',f=fixture(async url=>{if(url.includes('/claim/'))return new Response(access);calls++;return ready?Response.json({accounts:[]}):new Response('private upstream error',{status:503});});
+ const setup=Buffer.from('https://beta-bridge.simplefin.org/simplefin/claim/sample').toString('base64');await f.app.handle(f.req('/api/simplefin/connect',{token:setup}));let c=f.get('connections');assert.equal(c.simplefin.accessUrl,access);assert.match(c.simplefin.status,/503/);
+ ready=true;c.simplefin.nextSync=0;c.simplefin.lastAttempt=Date.now()-300001;f.set('connections',c);await f.app.sync();assert.equal(calls,2);assert.match(f.get('connections').simplefin.status,/Add financial institutions/);f.db.close();
+});

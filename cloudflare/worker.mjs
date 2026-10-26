@@ -1,3 +1,4 @@
+import {claimSimplefin,publicSimplefin,syncSimplefin,configureSimplefinAccount} from '../simplefin.mjs';
 import {plaidAccountEntry,bankAccounts,combineBankConnections} from '../providers.mjs';
 import {userScope,googleIdentity,sessionMismatch} from '../user-scope.mjs';
 import {mailboxes,connectMailbox,publicMail,forgetMailbox,scanMailbox,refreshSelectedEmail} from '../mailboxes.mjs';
@@ -40,7 +41,8 @@ export function runtime(env,fetcher=fetch){
  async function request(url,options={}){const r=await fetcher(url,{...options,signal:AbortSignal.timeout(15000)});let d;try{d=await r.json();}catch{throw Error('Provider response unreadable');}if(!r.ok){const error=Error(d.error_code||d.error?.status||'Provider request failed ('+r.status+')');error.code=d.error_code;throw error;}return d;}
  async function plaid(path,data){if(!env.PLAID_CLIENT_ID||!env.PLAID_SECRET)throw Error('Plaid is not configured');const mode=env.PLAID_ENV||'sandbox';if(!['sandbox','production'].includes(mode))throw Error('Invalid Plaid environment');return request(`https://${mode}.plaid.com${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:env.PLAID_CLIENT_ID,secret:env.PLAID_SECRET,...data})});}
  const googleToken=data=>request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,...data})});
- function publicConnections(c){return {items:c.items.map(publicItem),creditCards:publicCredit(c),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates.filter(x=>!x.dismissed),...publicMail(c,users.current().email),bankUpdated:c.bankUpdated,status:c.status};}
+ function publicConnections(c){return {simplefin:publicSimplefin(c),items:c.items.map(publicItem),creditCards:publicCredit(c),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates.filter(x=>!x.dismissed),...publicMail(c,users.current().email),bankUpdated:c.bankUpdated,status:c.status};}
+ async function syncSimplefinBalances(c){return syncSimplefin(c,async()=>(await plan()).state.accounts,accounts=>updatePlan(s=>{s.accounts=accounts;}),fetcher);}
  async function syncBalances(c,item,live=false){
    item.balanceAttempt=Date.now();
    try{const accounts=await bankAccounts(plaid,item,live);
@@ -64,6 +66,7 @@ export function runtime(env,fetcher=fetch){
   return account.status;
  }
  async function sync(force=false,bankOnly=false,targetId=null,gmailOnly=false){return locked(async()=>{const c=await connections(),now=Date.now(),bank=!gmailOnly&&c.items.filter(i=>(!targetId||i.id===targetId)&&(force||i.pending||!i.nextSync||i.nextSync<=now)).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0],gmail=!bankOnly&&mailboxes(c,users.current().email).filter(a=>force||a.backlog?.length||a.page||!a.nextSync||a.nextSync<=now).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0];
+   if(!gmailOnly&&!targetId&&c.simplefin&&(force||!c.simplefin.nextSync||c.simplefin.nextSync<=now)&&(!bank||c.lastTask==='bank')){c.lastTask='simplefin';c.status=await syncSimplefinBalances(c);await write('connections',c);return {status:c.status};}
    if(targetId&&!bank)throw Error('Bank connection not found. Reload your connections.');
    if(!bank&&!gmail)return {status:gmailOnly?'No Gmail accounts connected.':c.status};if(bank)bank.lastSyncAttempt=now;try{if(force&&bank)await syncBalances(c,bank,true);if(gmail&&(!bank||c.lastTask==='bank')){c.lastTask='gmail';c.status=await syncGmail(c,gmail);}else{c.lastTask='bank';c.status=await syncBank(c,bank,force);}}catch(e){c.status='Sync needs attention: '+e.message;if(c.lastTask==='gmail'&&gmail){gmail.nextSync=now+sixHours;gmail.status=c.status;}}
    if(bank?.balanceWarning)c.status+=' '+bank.balanceWarning;
@@ -101,6 +104,21 @@ export function runtime(env,fetcher=fetch){
    if(path==='/api/sync')return json(await sync(true,false,null,b.gmailOnly===true));
    if(path==='/api/plaid/link'){const c=await connections(),item=c.items.find(i=>i.id===b.itemId);const d=await plaid('/link/token/create',{user:{client_user_id:hash(users.current().scope||owner)},client_name:'BearDen',...creditLinkOptions(b,item),country_codes:['US'],language:'en',...(env.PLAID_REDIRECT_URI?{redirect_uri:env.PLAID_REDIRECT_URI}:{})});return json({link_token:d.link_token});}
    return locked(async()=>{
+    if(path==='/api/simplefin/connect'){
+     const c=await connections();if(c.simplefin&&!b.replace)return json({error:'SimpleFIN is already connected. Use Replace token to reconnect it.'},409);
+     const accessUrl=await claimSimplefin(b.token,fetcher);c.simplefin={accessUrl,status:'SimpleFIN connected. Loading balances.'};
+     await write('connections',c);c.status=await syncSimplefinBalances(c);await write('connections',c);return json({ok:true,status:c.status});
+    }
+    if(path==='/api/simplefin/refresh'){
+     const c=await connections();c.status=await syncSimplefinBalances(c);await write('connections',c);return json({status:c.status});
+    }
+    if(path==='/api/simplefin/account'){
+     await updatePlan(s=>configureSimplefinAccount(s.accounts,b));return json({ok:true});
+    }
+    if(path==='/api/simplefin/disconnect'){
+     const c=await connections();delete c.simplefin;await write('connections',c);await updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.source!=='simplefin');});
+     return json({ok:true,status:'SimpleFIN disconnected from BearDen. You can also revoke BearDen in SimpleFIN’s Apps section.'});
+    }
     if(path==='/api/classic'){const state=validateClassic(b.state),current=await read('classic',{revision:0});if(current.revision!==b.revision)return json({error:'The tracker changed in another tab. Reload before editing again.'},409);await write('classic',{state,revision:current.revision+1});if(!await read('income-shortcut',null)){const preset=incomeFromTracker(state)||incomeFromPlan((await plan()).state);if(preset)await write('income-shortcut',preset);}return json({revision:current.revision+1});}
     if(path==='/api/state'){const state=validate(b.state);if(state.emailSenders.length>20||state.emailSenders.some(s=>!/^[-\w.+]+@[\w.-]+\.[a-z]{2,}$/i.test(s)))throw Error('Use up to 20 full sender email addresses');const current=await plan();if(current.revision!==b.revision)return json({error:'Plan changed during sync or in another tab. Reload before editing again.'},409);await write('plan',{state,revision:current.revision+1});const c=await connections(),accepted=new Set(state.bills.map(b=>b.sourceId).filter(Boolean));if(c.candidates.some(x=>accepted.has(x.id))){c.candidates=c.candidates.filter(x=>!accepted.has(x.id));await write('connections',c);}return json({revision:current.revision+1});}
     if(path==='/api/plaid/exchange'){if(typeof b.public_token!=='string')throw Error('Missing public token');const c=await connections();if(c.items.length>=10)throw Error('This personal setup supports up to 10 bank connections');const d=await plaid('/item/public_token/exchange',{public_token:b.public_token});let item=c.items.find(i=>i.id===d.item_id);if(!item){item={id:d.item_id,token:d.access_token,name:String(b.name||'Bank').slice(0,150),cursor:'',liabilities:b.kind==='credit'};c.items.push(item);}

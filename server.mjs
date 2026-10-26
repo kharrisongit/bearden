@@ -1,3 +1,4 @@
+import {claimSimplefin,publicSimplefin,syncSimplefin,configureSimplefinAccount} from './simplefin.mjs';
 import {plaidAccountEntry,bankAccounts,combineBankConnections} from './providers.mjs';
 import {userScope,googleIdentity,sessionMismatch} from './user-scope.mjs';
 import {mailboxes,connectMailbox,publicMail,forgetMailbox,scanMailbox,refreshSelectedEmail} from './mailboxes.mjs';
@@ -29,7 +30,7 @@ const read=(id,fallback)=>rawRead(users.key(id),fallback),write=(id,data)=>rawWr
 function getPlan(){return read('plan',{state:blank(),revision:0});}
 function updatePlan(fn){const p=getPlan();fn(p.state);p.revision++;write('plan',p);return p;}
 function connections(){return read('connections',{items:[],transactions:[],candidates:[],seen:[],gmail:null,status:'No connections yet.'});}
-function publicConnections(c){return {items:c.items.map(publicItem),creditCards:publicCredit(c),...publicMail(c,users.current().email),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates,bankUpdated:c.bankUpdated,status:c.status};}
+function publicConnections(c){return {simplefin:publicSimplefin(c),items:c.items.map(publicItem),creditCards:publicCredit(c),...publicMail(c,users.current().email),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates,bankUpdated:c.bankUpdated,status:c.status};}
 function cookies(req){return Object.fromEntries((req.headers.cookie||'').split(';').map(x=>x.trim().split('=')).filter(x=>x.length===2));}
 function sessionIdentity(req){const s=cookies(req).bearden;if(!s)return null;const id=hash(s),r=db.prepare('SELECT expires FROM sessions WHERE hash=?').get(id);return r&&r.expires>Date.now()?rawRead('auth-session:'+id,s.startsWith('v2.')?null:users.legacy):null;}
 function authenticated(req){return !!sessionIdentity(req);}
@@ -39,12 +40,14 @@ function redirect(res,path,headers={}){res.writeHead(302,{Location:path,...heade
 async function body(req){let n=0,parts=[];for await(const p of req){n+=p.length;if(n>1000000)throw Error('Request too large');parts.push(p);}return JSON.parse(Buffer.concat(parts).toString()||'{}');}
 async function googleToken(params){return request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:process.env.GOOGLE_CLIENT_ID,client_secret:process.env.GOOGLE_CLIENT_SECRET,...params})});}
 const syncs=new Map();const runningSync=()=>syncs.get(users.current().accountId);
+async function syncSimplefinBalances(c){return syncSimplefin(c,()=>getPlan().state.accounts,accounts=>updatePlan(s=>{s.accounts=accounts;}));}
 async function doSync(bankOnly=false,targetId=null,gmailOnly=false){
  let c=connections(),errors=[],now=new Date().toISOString();
  if(targetId&&!c.items.some(i=>i.id===targetId))throw Error('Bank connection not found. Reload your connections.');
  for(const item of (gmailOnly?[]:c.items.filter(i=>!targetId||i.id===targetId))){item.balanceAttempt=Date.now();await syncCredit(c,item,plaid);if(item.liabilitiesError)errors.push(item.liabilitiesStatus);try{const synced=await transactionSync(item),accounts=await bankAccounts(plaid,item,bankOnly);c.transactions=applyTransactions(c.transactions,synced.changes,item.id);item.cursor=synced.cursor;
   updatePlan(s=>{const activeIds=new Set(accounts.accounts.map(a=>'plaid-'+a.account_id));s.accounts=s.accounts.filter(a=>a.itemId!==item.id||activeIds.has(a.id));for(const a of accounts.accounts){const id='plaid-'+a.account_id,old=s.accounts.find(x=>x.id===id),entry=plaidAccountEntry(a,item,old);if(old)Object.assign(old,entry);else s.accounts.push(entry);}});c.bankUpdated=now;item.balancesUpdated=Date.now();delete item.balanceError;if(item.balanceWarning)errors.push(item.balanceWarning);
  }catch(e){item.balanceError=e.code||e.message;errors.push(`${item.name}: ${e.message}`);}}
+ if(!gmailOnly&&!targetId&&c.simplefin&&(!c.simplefin.nextSync||c.simplefin.nextSync<=Date.now())){const status=await syncSimplefinBalances(c);if(!c.simplefin.updated||c.simplefin.updated<now||status.includes('attention'))errors.push(status);}
  if(!bankOnly)for(const account of mailboxes(c,users.current().email)){try{await syncMailbox(c,account);}catch(e){account.status='Gmail needs attention: '+e.message;errors.push(account.email+': '+account.status);}}
  c.status=errors.length?'Sync needs attention — '+errors.join(' · '):'Last sync: '+now;c.lastAttempt=now;write('connections',c);return c;
 }
@@ -80,6 +83,20 @@ async function handle(req,res){
    if(req.method==='GET'&&path==='/api/classic')return json(res,200,read('classic',{state:{version:1,values:{}},revision:0}));
    if(req.method==='GET'&&path==='/api/state')return json(res,200,{...getPlan(),connections:publicConnections(connections())});
    if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});const b=await body(req);
+   if(path.startsWith('/api/simplefin/')){
+    while(runningSync())await runningSync();const identity=users.current().accountId;
+    const task=(async()=>{const c=connections();
+     if(path==='/api/simplefin/connect'){
+      if(c.simplefin&&!b.replace)throw Error('SimpleFIN is already connected. Use Replace token to reconnect it.');
+      c.simplefin={accessUrl:await claimSimplefin(b.token),status:'SimpleFIN connected. Loading balances.'};write('connections',c);
+      c.status=await syncSimplefinBalances(c);write('connections',c);return {ok:true,status:c.status};
+     }
+     if(path==='/api/simplefin/refresh'){c.status=await syncSimplefinBalances(c);write('connections',c);return {status:c.status};}
+     if(path==='/api/simplefin/account'){updatePlan(s=>configureSimplefinAccount(s.accounts,b));return {ok:true};}
+     if(path==='/api/simplefin/disconnect'){delete c.simplefin;write('connections',c);updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.source!=='simplefin');});return {ok:true,status:'SimpleFIN disconnected from BearDen. You can also revoke BearDen in SimpleFIN’s Apps section.'};}
+     throw Error('Unknown SimpleFIN action.');
+    })();syncs.set(identity,task);try{return json(res,200,await task);}finally{syncs.delete(identity);}
+   }
    if(path==='/api/classic'){const state=validateClassic(b.state),current=read('classic',{revision:0});if(current.revision!==b.revision)return json(res,409,{error:'The tracker changed in another tab. Reload before editing again.'});write('classic',{state,revision:current.revision+1});if(!read('income-shortcut',null)){const preset=incomeFromTracker(state)||incomeFromPlan(getPlan().state);if(preset)write('income-shortcut',preset);}return json(res,200,{revision:current.revision+1});}
    if(path==='/api/state'){const s=validate(b.state),p=getPlan();if(p.revision!==b.revision)return json(res,409,{error:'This plan changed during sync or in another tab. Reload before editing again.'});if(s.emailSenders.some(x=>!/^[-\w.+]+@[\w.-]+\.[a-z]{2,}$/i.test(x)))throw Error('Use full sender email addresses');write('plan',{state:s,revision:p.revision+1});return json(res,200,{revision:p.revision+1});}
    if(path==='/api/logout'){db.prepare('DELETE FROM sessions WHERE hash=?').run(hash(cookies(req).bearden));res.setHeader('Set-Cookie',cookie('bearden','',0));return json(res,200,{ok:true});}
@@ -112,6 +129,6 @@ async function handle(req,res){
 const server=http.createServer((req,res)=>users.run(sessionIdentity(req),()=>handle(req,res)));
 server.listen(port,()=>console.log('BearDen listening on port '+port+' ('+(googleConfigured?'secure connections configured':'manual mode')+')'));
 // An always-on single server is required. Sync continues with no browser open.
-const timer=setInterval(()=>{if(!googleConfigured)return;const profiles=db.prepare("SELECT value FROM vault WHERE id LIKE 'user-index:%'").all().map(r=>decrypt(r.value));if(!profiles.some(p=>!p.scope))profiles.push(users.legacy);for(const profile of profiles)users.run(profile,()=>{const c=connections();if(c.lastAttempt&&Date.now()-Date.parse(c.lastAttempt)<6*3600000)return;if(mailboxes(c,users.current().email).length||c.items.length)sync().catch(()=>console.error('Background sync failed; check provider setup.'));});},60000);timer.unref();
+const timer=setInterval(()=>{if(!googleConfigured)return;const profiles=db.prepare("SELECT value FROM vault WHERE id LIKE 'user-index:%'").all().map(r=>decrypt(r.value));if(!profiles.some(p=>!p.scope))profiles.push(users.legacy);for(const profile of profiles)users.run(profile,()=>{const c=connections();if(c.lastAttempt&&Date.now()-Date.parse(c.lastAttempt)<6*3600000)return;if(mailboxes(c,users.current().email).length||c.items.length||c.simplefin)sync().catch(()=>console.error('Background sync failed; check provider setup.'));});},60000);timer.unref();
 process.on('SIGTERM',()=>{clearInterval(timer);server.close(()=>{db.close();process.exit(0);});});
 
