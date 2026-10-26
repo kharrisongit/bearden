@@ -736,6 +736,7 @@ function calculate(isInitialLoad){
     };
   });
 
+  const syncedApplied=new Set();
   const schedule = [];
   let totalInterest = 0;
   let paycheck = 0;
@@ -764,6 +765,10 @@ function calculate(isInitialLoad){
     });
 
     const dateKey=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+    // Rebase only future, unchecked rows; historical checkoffs retain their original math.
+    let rebased=false;
+    cards.forEach((card,i)=>{const snapshot=window.syncedDebtBalances?.[card.id];if(snapshot&&!syncedApplied.has(card.id)&&dateKey>=snapshot.date&&!checkedPaychecks[paycheck]){balances[i]=snapshot.balance/100;paidOffAt[i]=null;syncedApplied.add(card.id);rebased=true;}});
+    if(rebased){prevTotal=balances.reduce((a,b)=>a+b,0);debtFreeDate=null;debtFreePaycheck=null;}
     const accountBillsThisCheck=window.accountBillsForPaycheck?.(dateKey,paycheck)||[];
     expensesThisCheck+=accountBillsThisCheck.reduce((sum,bill)=>sum+bill.amount/100,0);
 
@@ -6655,7 +6660,7 @@ function addConnectedBill(bill,date){
 }
 
 // Read-only snapshot for the Income overview; the original payoff engine remains authoritative.
-window.getDebtPlan=()=>({state:gatherAppState(),schedule:lastSchedule.map(r=>({...r,date:r.date.getFullYear()+'-'+String(r.date.getMonth()+1).padStart(2,'0')+'-'+String(r.date.getDate()).padStart(2,'0')}))});
+window.getDebtPlan=()=>({state:gatherAppState(),syncedDebtBalances:window.syncedDebtBalances||{},schedule:lastSchedule.map(r=>({...r,date:r.date.getFullYear()+'-'+String(r.date.getMonth()+1).padStart(2,'0')+'-'+String(r.date.getDate()).padStart(2,'0')}))});
 
 // Account creation uses the same payoff state as the original tracker.
 window.saveDebtAccount=async function(data){
@@ -6700,4 +6705,10 @@ document.getElementById('bonusControlsToggle').onchange=async e=>{
  try{calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('featureSettingsStatus').textContent='Bonus preference saved.';}
  catch(error){bonusControlsEnabled=before;e.target.checked=before;calculate();clearTimeout(saveDebounceTimer);document.getElementById('featureSettingsStatus').textContent=error.message;}
  finally{e.target.disabled=false;}
+};
+
+window.setSyncedDebtBalances=snapshots=>{
+ const signature=JSON.stringify(snapshots);
+ if(signature===JSON.stringify(window.syncedDebtBalances||{}))return false;
+ window.syncedDebtBalances=snapshots;calculate();return true;
 };

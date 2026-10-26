@@ -1,6 +1,7 @@
 import {normalizeCreditCards,cardPayments} from './public/credit-model.mjs';
 export function creditLinkOptions(body,item){
  if(body.itemId&&!item)throw Error('Bank connection not found');
+ if(item&&body.kind==='bank')return {access_token:item.token,update:{account_selection_enabled:true}};
  if(item)return {access_token:item.token,additional_consented_products:['liabilities','transactions'],update:{account_selection_enabled:true}};
  return body.kind==='credit'?{products:['liabilities','transactions'],transactions:{days_requested:180},account_filters:{credit:{account_subtypes:['credit card','paypal']}}}:{products:['transactions'],transactions:{days_requested:180}};
 }

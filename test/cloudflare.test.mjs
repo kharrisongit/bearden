@@ -62,9 +62,9 @@ test('all scripts and styles used by the original tracker are publicly served wi
 });
 
 test('widget bank refresh updates balances without scanning Gmail or leaving bank history stale',async()=>{
- const calls=[];const f=fixture(async url=>{calls.push(url);if(url.endsWith('/accounts/get'))return Response.json({accounts:[]});if(url.endsWith('/transactions/sync'))return Response.json({added:[],modified:[],removed:[],next_cursor:'new',has_more:false});throw Error('Gmail must not run');});
+ const calls=[];const f=fixture(async url=>{calls.push(url);if(url.endsWith('/accounts/balance/get'))return Response.json({accounts:[]});if(url.endsWith('/transactions/sync'))return Response.json({added:[],modified:[],removed:[],next_cursor:'new',has_more:false});throw Error('Gmail must not run');});
  f.set('connections',{items:[{id:'bank',name:'ELGA',token:'secret'}],transactions:[],candidates:[],gmail:{refreshToken:'mail'},lastTask:'bank'});
- const r=await f.app.handle(f.req('/api/bank/refresh',{}));assert.equal(r.status,200);assert.equal(calls.length,2);assert.equal(f.get('connections').items[0].cursor,'new');f.db.close();
+ const r=await f.app.handle(f.req('/api/bank/refresh',{}));assert.equal(r.status,200);assert.equal(calls.length,2);assert.ok(calls[0].endsWith('/accounts/balance/get'));assert.equal(f.get('connections').items[0].cursor,'new');f.db.close();
 });
 
 test('credit accounts show current amount owed, never available credit as cash',async()=>{
@@ -222,4 +222,13 @@ test('saving shared-bills preferences through Cloudflare retains existing accoun
  const f=fixture(),values={'app-state':JSON.stringify({cards:[{id:1,name:'Visa',balance:500}],budgetItems:[],takeHome:2000}),'income-planner':JSON.stringify({manual:[{id:'power',name:'Electric',amount:35300,date:'2026-10-29'}],bankRules:{merchant:{id:'car',choice:'bill'}}})};f.set('classic',{state:{version:1,values},revision:4});
  const planner=JSON.parse(values['income-planner']);planner.household={enabled:true,personalAccountId:'plaid-own',billsAccountId:'plaid-shared',personalAmount:72500,spouseAmount:72500,spouseStartDate:'2026-11-06',spouseRepeat:'biweekly'};planner.billFunding={power:'shared'};
  const next={...values,'income-planner':JSON.stringify(planner)},r=await f.app.handle(f.req('/api/classic',{state:{version:1,values:next},revision:4}));assert.equal(r.status,200);const restored=await(await f.app.handle(f.req('/api/classic'))).json();assert.equal(restored.state.values['app-state'],values['app-state']);assert.deepEqual(JSON.parse(restored.state.values['income-planner']),planner);assert.equal(restored.revision,5);f.db.close();
+});
+test('combine duplicate connection protects revisions and preserves linked debt state',async()=>{
+ const f=fixture();f.set('connections',{items:[{id:'old',name:'ELGA'},{id:'new',name:'ELGA'}],transactions:[],creditCards:[],candidates:[]});
+ const state=blank();state.accounts=['old','new'].map(id=>({id:'plaid-'+id,itemId:id,name:'Loan',type:'loan',subtype:'auto',currency:'USD',balance:10000,source:'plaid',include:false}));f.set('plan',{state,revision:0});
+ f.set('classic',{revision:2,state:{version:1,values:{'app-state':'{"cards":[{"id":1,"balance":100}]}','income-planner':'{"debtAccountLinks":{"1":"plaid-new"}}'}}});
+ assert.equal((await f.app.handle(f.req('/api/plaid/combine',{removeId:'new',keepId:'old',revision:1}))).status,409);
+ assert.equal(f.get('connections').items.length,2);
+ assert.equal((await f.app.handle(f.req('/api/plaid/combine',{removeId:'new',keepId:'old',revision:2}))).status,200);
+ assert.equal(f.get('connections').items.length,1);assert.equal(f.get('plan').state.accounts.length,1);assert.equal(JSON.parse(f.get('classic').state.values['income-planner']).debtAccountLinks[1],'plaid-old');assert.equal(f.get('classic').revision,3);assert.equal(f.get('bank-combine-backup').connections.items.length,2);f.db.close();
 });

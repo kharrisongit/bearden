@@ -1,3 +1,4 @@
+import {plaidAccountEntry,bankAccounts,combineBankConnections} from '../providers.mjs';
 import {userScope,googleIdentity,sessionMismatch} from '../user-scope.mjs';
 import {mailboxes,connectMailbox,publicMail,forgetMailbox,scanMailbox,refreshSelectedEmail} from '../mailboxes.mjs';
 import {incomeFromTracker,incomeFromPlan} from '../income-preset.mjs';
@@ -40,9 +41,9 @@ export function runtime(env,fetcher=fetch){
  async function plaid(path,data){if(!env.PLAID_CLIENT_ID||!env.PLAID_SECRET)throw Error('Plaid is not configured');const mode=env.PLAID_ENV||'sandbox';if(!['sandbox','production'].includes(mode))throw Error('Invalid Plaid environment');return request(`https://${mode}.plaid.com${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:env.PLAID_CLIENT_ID,secret:env.PLAID_SECRET,...data})});}
  const googleToken=data=>request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,...data})});
  function publicConnections(c){return {items:c.items.map(publicItem),creditCards:publicCredit(c),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates.filter(x=>!x.dismissed),...publicMail(c,users.current().email),bankUpdated:c.bankUpdated,status:c.status};}
- async function syncBalances(c,item){
-   const accounts=await plaid('/accounts/get',{access_token:item.token});
-   await updatePlan(s=>{const active=new Set(accounts.accounts.map(a=>'plaid-'+a.account_id));s.accounts=s.accounts.filter(a=>a.itemId!==item.id||active.has(a.id));for(const a of accounts.accounts){const balance=['credit','loan'].includes(a.type)?a.balances.current:(a.balances.available??a.balances.current);if(balance===null)continue;const id='plaid-'+a.account_id,old=s.accounts.find(x=>x.id===id),eligible=a.type==='depository'&&a.subtype==='checking'&&a.balances.iso_currency_code==='USD',entry={id,itemId:item.id,name:a.name+(a.mask?' •'+a.mask:''),balance:cents(balance),include:eligible?(old?.include??true):false,source:'plaid',type:a.type,subtype:a.subtype,currency:a.balances.iso_currency_code};if(old)Object.assign(old,entry);else s.accounts.push(entry);}});
+ async function syncBalances(c,item,live=false){
+   const accounts=await bankAccounts(plaid,item,live);
+   await updatePlan(s=>{const active=new Set(accounts.accounts.map(a=>'plaid-'+a.account_id));s.accounts=s.accounts.filter(a=>a.itemId!==item.id||active.has(a.id));for(const a of accounts.accounts){const id='plaid-'+a.account_id,old=s.accounts.find(x=>x.id===id),entry=plaidAccountEntry(a,item,old);if(old)Object.assign(old,entry);else s.accounts.push(entry);}});
   item.balancesUpdated=Date.now();c.bankUpdated=new Date().toISOString();
  }
  async function syncBank(c,item,force=false){
@@ -61,7 +62,8 @@ export function runtime(env,fetcher=fetch){
   return account.status;
  }
  async function sync(force=false,bankOnly=false){return locked(async()=>{const c=await connections(),now=Date.now(),bank=c.items.filter(i=>force||i.pending||!i.nextSync||i.nextSync<=now).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0],gmail=!bankOnly&&mailboxes(c,users.current().email).filter(a=>force||a.backlog?.length||a.page||!a.nextSync||a.nextSync<=now).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0];
-   if(!bank&&!gmail)return {status:c.status};try{if(force&&bank)await syncBalances(c,bank);if(gmail&&(!bank||c.lastTask==='bank')){c.lastTask='gmail';c.status=await syncGmail(c,gmail);}else{c.lastTask='bank';c.status=await syncBank(c,bank,force);}}catch(e){c.status='Sync needs attention: '+e.message;if(c.lastTask==='gmail'&&gmail){gmail.nextSync=now+sixHours;gmail.status=c.status;}}
+   if(!bank&&!gmail)return {status:c.status};try{if(force&&bank)await syncBalances(c,bank,true);if(gmail&&(!bank||c.lastTask==='bank')){c.lastTask='gmail';c.status=await syncGmail(c,gmail);}else{c.lastTask='bank';c.status=await syncBank(c,bank,force);}}catch(e){c.status='Sync needs attention: '+e.message;if(c.lastTask==='gmail'&&gmail){gmail.nextSync=now+sixHours;gmail.status=c.status;}}
+   if(bank?.balanceWarning)c.status+=' '+bank.balanceWarning;
    c.lastAttempt=new Date().toISOString();c.candidates=c.candidates.filter(x=>!x.dismissed);await write('connections',c);return {status:c.status};});}
  async function handleScoped(req){
   const u=new URL(req.url),path=u.pathname;
@@ -107,10 +109,18 @@ export function runtime(env,fetcher=fetch){
 
     if(path==='/api/plaid/updated'||path==='/api/cards/refresh'){
      const c=await connections(),item=c.items.find(i=>i.id===b.itemId);if(!item)return json({error:'Bank connection not found'},404);
-     if(path==='/api/plaid/updated'){item.liabilities=true;await write('connections',c);}
+     if(path==='/api/plaid/updated'&&b.kind!=='bank'){item.liabilities=true;await write('connections',c);}
      try{await syncBalances(c,item);}catch(e){c.status='Balance refresh needs attention: '+e.message;}
      try{c.status=await syncBank(c,item,true);}catch(e){c.status=(item.liabilitiesStatus||'')+' Transaction sync needs attention: '+e.message;}
      await write('connections',c);return json({status:c.status});
+    }
+    if(path==='/api/plaid/combine'){
+     const before={connections:await connections(),plan:await plan(),classic:await read('classic',null)};
+     if(b.revision!==(before.classic?.revision??0))return json({error:'Your saved data changed. Reload before combining connections.'},409);
+     const merged=combineBankConnections(before.connections,before.plan,before.classic,b.removeId,b.keepId);
+     await write('bank-combine-backup',before);
+     try{await write('plan',merged.plan);if(merged.classic)await write('classic',merged.classic);await write('connections',merged.connections);}catch(e){await write('plan',before.plan);if(before.classic)await write('classic',before.classic);await write('connections',before.connections);throw e;}
+     return json({ok:true});
     }
     if(path==='/api/plaid/disconnect'){const c=await connections(),item=c.items.find(i=>i.id===b.id);if(!item)return json({error:'Bank not found'},404);await plaid('/item/remove',{access_token:item.token});c.items=c.items.filter(i=>i.id!==b.id);c.transactions=c.transactions.filter(t=>t.itemId!==b.id);c.creditCards=(c.creditCards||[]).filter(card=>card.itemId!==b.id);await write('connections',c);await updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.itemId!==b.id);});return json({ok:true});}
     if(path==='/api/gmail/message'){

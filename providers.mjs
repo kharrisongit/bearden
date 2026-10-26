@@ -52,3 +52,36 @@ export function classifyBillEmail({id,from,subject='',snippet='',text='',receive
  if(reason)return {action:'review',candidate:{...candidate,reason}};
  return {action:'add',candidate,bill:{id:'gmail-'+id,name,amount:parsed.amount,date:parsed.date,repeat:'once',source:'gmail',sourceId:id,sourceKey,sender}};
 }
+
+// Missing provider values are not zero balances. Preserve the last known value.
+export function plaidAccountEntry(a,item,old,now=new Date().toISOString()){
+ const debt=['credit','loan'].includes(a.type),raw=debt?a.balances?.current:(a.balances?.available??a.balances?.current);
+ const known=typeof raw==='number'&&Number.isFinite(raw)&&Number.isSafeInteger(Math.round(raw*100));
+ const eligible=a.type==='depository'&&a.subtype==='checking'&&a.balances?.iso_currency_code==='USD';
+ return {id:'plaid-'+a.account_id,itemId:item.id,name:a.name+(a.mask?' •'+a.mask:''),balance:known?Math.round(raw*100):(old?.balance??0),balanceUnavailable:!known,balanceUpdated:known?now:(old?.balanceUpdated||null),reportedCurrent:typeof a.balances?.current==='number'?a.balances.current:null,include:eligible?(old?.include??true):false,source:'plaid',type:a.type,subtype:a.subtype,currency:a.balances?.iso_currency_code};
+}
+export async function bankAccounts(call,item,live=false){
+ if(live){try{const result=await call('/accounts/balance/get',{access_token:item.token});delete item.balanceWarning;return result;}catch(e){item.balanceWarning='Live balance refresh unavailable ('+(e.code||e.message)+'); showing cached bank data.';}}
+ return call('/accounts/get',{access_token:item.token});
+}
+
+// Called only after the user confirms these are two connections to the same login.
+export function combineBankConnections(connections,plan,classic,removeId,keepId){
+ const c=structuredClone(connections),p=structuredClone(plan),k=structuredClone(classic);
+ const remove=c.items.find(i=>i.id===removeId),keep=c.items.find(i=>i.id===keepId);
+ if(!remove||!keep||removeId===keepId||remove.name!==keep.name)throw Error('Choose two connections to the same bank.');
+ const from=p.state.accounts.filter(a=>a.itemId===removeId),to=p.state.accounts.filter(a=>a.itemId===keepId);
+ const identity=a=>JSON.stringify([a.name,a.type,a.subtype,a.currency]);
+ const map=new Map([[removeId,keepId]]),used=new Set();
+ if(!from.length||from.length!==to.length)throw Error('Account lists differ. Refresh both connections before combining.');
+ for(const a of from){const matches=to.filter(b=>identity(a)===identity(b));if(matches.length!==1||used.has(matches[0].id))throw Error('Accounts cannot be matched safely. Keep both connections until their account lists match.');const b=matches[0];used.add(b.id);map.set(a.id,b.id);map.set(a.id.slice(6),b.id.slice(6));map.set('credit-'+a.id.slice(6),'credit-'+b.id.slice(6));map.set('credit:credit-'+a.id.slice(6),'credit:credit-'+b.id.slice(6));}
+ function translate(s){if(map.has(s))return map.get(s);if(s.startsWith('[')){try{const v=JSON.parse(s);if(Array.isArray(v))return JSON.stringify(v.map(x=>typeof x==='string'?translate(x):x));}catch{}}for(const [a,b] of map)if(a.startsWith('credit-')&&s.startsWith(a+':'))return b+s.slice(a.length);return s;}
+ function remap(v){if(typeof v==='string')return translate(v);if(Array.isArray(v))return v.map(remap);if(v&&typeof v==='object'){const out={};for(const [key,value] of Object.entries(v)){const dest=translate(key),next=remap(value);if(out[dest]?.id&&next?.id&&out[dest].id!==next.id)throw Error('Both connections track different bills for the same merchant. Resolve those bill links before combining.');if(out[dest]&&typeof out[dest]==='object'&&!Array.isArray(out[dest])&&next&&typeof next==='object'&&!Array.isArray(next))out[dest]={...next,...out[dest]};else if(!(dest in out))out[dest]=next;}return out;}return v;}
+ // Retain the redundant connection and its data privately for recovery, but stop syncing it.
+ c.archivedDuplicates=[...(c.archivedDuplicates||[]),{item:remove,accounts:from,transactions:c.transactions.filter(t=>t.itemId===removeId),creditCards:(c.creditCards||[]).filter(a=>a.itemId===removeId)}];
+ c.items=c.items.filter(i=>i.id!==removeId);c.transactions=c.transactions.filter(t=>t.itemId!==removeId);c.creditCards=(c.creditCards||[]).filter(a=>a.itemId!==removeId);p.state.accounts=p.state.accounts.filter(a=>a.itemId!==removeId);p.revision++;
+ // Keep the retained connection's transaction history: do not double-count identical payments.
+ if(k?.state?.values){for(const key of ['income-planner','linked-bills'])if(k.state.values[key])k.state.values[key]=JSON.stringify(remap(JSON.parse(k.state.values[key])));k.revision++;}
+ c.status='Duplicate connection combined. Bill and debt links moved to the retained connection.';
+ return {connections:c,plan:p,classic:k};
+}

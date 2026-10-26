@@ -14,7 +14,8 @@ export function trackerDebtStatus(plan,id){
  const payments=checked.filter(r=>cents(r.payments?.[index])>0);
  const paid=checked.reduce((sum,r)=>sum+cents(r.payments?.[index]),0);
  const interest=checked.reduce((sum,r)=>sum+cents(r.interestByAccount?.[index]),0);
- const balance=Math.max(0,cents(card.balance)+interest-paid);
+ const synced=plan.syncedDebtBalances?.[card.id];
+ const balance=synced? synced.balance : Math.max(0,cents(card.balance)+interest-paid);
  return {index,balance,paid,paidOff:balance<=1,lastPayment:payments.at(-1)||null};
 }
 export function paycheckPaidCreditBills(plan,cardBills=[],cards=[],preferences={}){
@@ -153,5 +154,15 @@ export function linkedBillLoan(bill,planner,accounts=[]){
  const id=planner.loanLinks?.[bill.id];
  if(!id||bill.billKind!=='car-payment')return null;
  const account=accounts.find(a=>a.id===id&&a.source==='plaid'&&a.type==='loan');
- return account?{id,name:account.name,balance:account.balance,currency:account.currency||'USD'}:{id,unavailable:true};
+ return account?{id,name:account.name,balance:account.balance,balanceUnavailable:!!account.balanceUnavailable,currency:account.currency||'USD'}:{id,unavailable:true};
+}
+
+export function syncedDebtBalances(planner,accounts,today){
+ const result={};
+ for(const [id,accountId] of Object.entries(planner.debtAccountLinks||{})){
+  const a=accounts.find(a=>a.id===accountId&&['credit','loan'].includes(a.type));
+  // A disputed zero must not wipe an existing debt or stop its scheduled payments.
+  if(a&&!a.balanceUnavailable&&a.currency==='USD'&&Number.isSafeInteger(a.balance)&&a.balance>0)result[id]={balance:a.balance,date:today};
+ }
+ return result;
 }
