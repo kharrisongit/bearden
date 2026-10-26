@@ -66,7 +66,7 @@ export function billsAccountSpending(transactions,account,today,rules={},links={
   if(!linked&&!tracked&&(/TRANSFER/.test(t.category||'')||/\btransfer\b/i.test(t.name||'')))continue;
   const kind=classifyBankTransaction(t),billKind=rule?.billKind||kind.billKind;
   const label=linked?.targetName||(tracked?rule.name:null)||({rent:'Rent',electric:'Electric',utility:'Utilities',insurance:'Insurance','car-payment':'Car payments'})[billKind]||(/LOAN_PAYMENTS/.test(t.category||'')?'Debt payments':/BANK_FEES/.test(t.category||'')?'Fees':kind.label||'Other spending');
-  const key=normalize(label),amount=Math.round(t.amount*100),group=groups.get(key)||{key,label,amount:0,count:0};group.amount+=amount;group.count++;groups.set(key,group);rows.push({...t,spendingLabel:label});
+  const key=normalize(label),amount=Math.round(t.amount*100),group=groups.get(key)||{key,label,amount:0,count:0};group.amount+=amount;group.count++;groups.set(key,group);rows.push({...t,spendingLabel:label,spendingCategoryKey:key});
  }
  const categories=[...groups.values()].sort((a,b)=>b.amount-a.amount);return {categories,total:categories.reduce((n,g)=>n+g.amount,0),rows:rows.sort((a,b)=>b.date.localeCompare(a.date))};
 }

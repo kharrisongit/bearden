@@ -2,7 +2,7 @@ export {monthlyMinimum} from './debt-payments.mjs?v=monthly-dues1';
 import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-portal1';
 import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=shared-bill-list3';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
-export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs';
+export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs?v=spending-drilldown1';
 export {creditBills} from './credit-model.mjs';
 export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment} from './transaction-links.mjs?v=affirm-history1';
 import {day,occurrences} from './engine.mjs';
@@ -42,6 +42,30 @@ export function trackerDebtBills(plan,cardBills=[],preferences={}, {includePaid=
  }));
 }
 export const isDebtPayment=b=>b.billKind!=='car-payment'&&(['tracker-debt','plaid-credit'].includes(b.source)||['credit-card','loan'].includes(b.billKind));
+// Calendar markers retain received paydays and paid bills; forecasts exclude them.
+export function calendarEvents(plan,household,payments,start,end){
+ const days=new Map(),state=plan.state||{};
+ const entry=date=>{
+  if(!days.has(date))days.set(date,{date,billPayments:[],debtPayments:[],myPayday:false,spousePayday:false,payoffs:[]});
+  return days.get(date);
+ };
+ for(const payment of payments)if(payment.date>=start&&payment.date<=end){
+  entry(payment.date)[isDebtPayment(payment)?'debtPayments':'billPayments'].push(payment);
+ }
+ if(state.startDate)for(const date of occurrences(state.startDate,'biweekly',start,end))entry(date).myPayday=true;
+ if(householdEnabled(household)&&household.spouseStartDate)for(const date of occurrences(household.spouseStartDate,household.spouseRepeat||'biweekly',start,end))entry(date).spousePayday=true;
+ const previous=(state.cards||[]).map(c=>cents(c.balance));
+ for(const row of plan.schedule||[])for(const [index,card] of (state.cards||[]).entries()){
+  const balance=row.balancesAfter?.[index];
+  if(!Number.isFinite(balance))continue;
+  const remaining=cents(balance);
+  if(previous[index]>1&&remaining<=1&&cents(row.payments?.[index])>0&&row.date>=start&&row.date<=end){
+   entry(row.date).payoffs.push({id:String(card.id),name:card.name,completed:!!state.checkedPaychecks?.[row.paycheck]&&!!trackerDebtStatus(plan,card.id)?.paidOff});
+  }
+  previous[index]=remaining;
+ }
+ return [...days.values()].sort((a,b)=>a.date.localeCompare(b.date));
+}
 export function accountPaymentRows(events,selected=null){
  const seen=new Set(),rows=[];
  for(const event of events){
