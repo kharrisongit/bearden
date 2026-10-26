@@ -28,6 +28,6 @@
  $('#setupBack').onclick=()=>action(async()=>{await saveStep();step=Math.max(0,step-1);await persist();render();});
  $('#setupLater').onclick=()=>action(async()=>{await saveStep();await persist();close();});
  $('#openGuidedSetup').onclick=()=>open(progress.completed?0:progress.step||0).catch(e=>$('#connectionMessage').textContent=e.message);
- window.addEventListener('bearden-saved',()=>{const b=window.BearDen;if(b?.config?.authenticated&&b.lastSaved)$('#cloudSaveStatus').textContent='Saved to your private BearDen account at '+new Date(b.lastSaved).toLocaleTimeString()+'. Changes save automatically.';});
+ window.addEventListener('bearden-saved',()=>{const b=window.BearDen;if(b?.config?.authenticated&&b.lastSaved)$('#cloudSaveStatus').textContent='Backed up to your private BearDen account in the cloud at '+new Date(b.lastSaved).toLocaleTimeString()+'. Changes save automatically.';});
  Promise.resolve(window.classicReady).then(async()=>{await window.BearDen.ready;const value=await window.BearDen.storage.get('onboarding');try{progress=value?JSON.parse(value.value):{};}catch{progress={};}document.body.classList.remove('setup-loading');if(!progress.completed&&(progress.started||window.BearDen.isNew))await open(progress.step||0);}).catch(e=>{document.body.classList.remove('setup-loading');$('#connectionMessage').textContent=e.message;window.selectBearTab('settings');});
 })();
