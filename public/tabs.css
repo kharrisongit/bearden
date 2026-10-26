@@ -126,3 +126,14 @@ body{background:radial-gradient(ellipse at 0 0,#aad3bc16,transparent 38%),var(--
 .bottom-tabs svg{display:block;flex:none;width:23px;height:23px;overflow:visible}
 .schedule-reset-btn{background:#a73236;color:#fff;border-color:#8e2529;box-shadow:0 2px 6px #a7323626}
 [data-theme=dark] .schedule-reset-btn{background:#a73236;color:#fff;border-color:#d16c70}
+
+/* Bill actions sit beside Edit; linked loan balances occupy the footer. */
+.bill-card-header{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap-reverse;gap:4px;padding-right:9px}
+.bill-card-header .bill-tile-main{order:0;flex:1 1 170px;min-width:0;padding-right:8px}
+.bill-card-header>.debt-account-tools{order:1;padding-top:9px}
+.income-card .bill-card-header .account-edit{position:static}
+.bill-bank-paid{font-size:.65rem;color:var(--accent);padding:7px 5px}
+.bill-loan-balance{margin-left:auto;text-align:right;line-height:1.5}
+.bill-loan-balance span{display:block;color:var(--muted);font-size:.6rem}
+.bill-loan-balance strong{display:block;color:var(--ink);font-size:.85rem}
+.bill-loan-note{max-width:70%;margin:0 0 0 auto;color:var(--muted);font-size:.65rem;line-height:1.5;text-align:right}
