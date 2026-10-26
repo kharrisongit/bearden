@@ -42,7 +42,7 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark']) {
       const box = el.getBoundingClientRect();
       return getComputedStyle(el).borderTopStyle === 'none' && getComputedStyle(el.querySelector('.hero-title')).borderTopStyle === 'solid' && [...el.querySelectorAll('.hero-title,button')].every(child => {
         const r = child.getBoundingClientRect(), title=el.querySelector('.hero-title').getBoundingClientRect();
-        if(child.matches('button')&&child.checkVisibility()&&r.left<title.right&&r.right>title.left&&r.top<title.bottom&&r.bottom>title.top)return false;
+        if(child.matches('button')&&child.checkVisibility()&&r.left<title.right)return false;
         return !child.checkVisibility() || (r.left >= box.left && r.right <= box.right + 1 && r.bottom <= box.bottom + 1);
       });
     });
