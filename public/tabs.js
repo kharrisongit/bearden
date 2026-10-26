@@ -815,7 +815,7 @@
   if(!name||!Number.isSafeInteger(amount)||amount<=0||!date||!billCategories[billKind])return;
   const snapshot=structuredClone(planner),button=form.querySelector('[type=submit]');button.disabled=true;
   try{
-   if(d.get('loanAccount')&&Object.values(planner.debtAccountLinks||{}).includes(String(d.get('loanAccount'))))throw Error('This loan is already linked to a debt. Unlink that debt first.');
+   if(d.get('loanAccount')&&[...Object.values(planner.debtAccountLinks||{}),...Object.values(planner.debtBackupLinks||{})].includes(String(d.get('loanAccount'))))throw Error('This loan is already linked to a debt. Unlink that debt first.');
    const id=editingBill.id||(editingBill.newManual?'manual-':'tracked-')+crypto.randomUUID();
    if(editingBill.newManual){planner.manual.push({id,name,amount,date,repeat,billKind,source:'manual'});}
    else if(editingBill.manual){const b=planner.manual.find(b=>b.id===id);Object.assign(b,{name,amount,date,repeat,billKind});}

@@ -72,3 +72,10 @@ test('partial Plaid liabilities retain earlier fields with original timestamps',
  const r=resolveDebtDetails({card,primary,issuers:c.creditCards,now});assert.equal(r.monthlyMinimum.stale,true);
  await syncCredit(c,item,async()=>({accounts:[],liabilities:{credit:[]}}),true);assert.equal(c.creditCards.length,1);assert.equal(publicCredit(c)[0].stale,true);
 });
+
+test('an older email cannot replace a more recently reported balance or minimum during an outage',()=>{
+ const olderMail={...statement,receivedAt:new Date(now-30*86400000).toISOString()},r=resolveDebtDetails({card,primary:{...primary,balanceUpdated:old},issuers:[issuer],statement:olderMail,now});
+ assert.equal(r.balance.value,90000);assert.equal(r.balance.stale,true);assert.equal(r.monthlyMinimum.value,8000);assert.equal(r.monthlyMinimum.stale,true);
+ const ancientIssuer={...issuer,updated:new Date(now-90*86400000).toISOString()},lessOldMail={...statement,receivedAt:new Date(now-70*86400000).toISOString()};
+ assert.equal(resolveDebtDetails({card,primary,issuers:[ancientIssuer],statement:lessOldMail,now}).monthlyMinimum.value,9500);
+});

@@ -45,7 +45,8 @@ export function resolveDebtDetails({card,primary=null,backup=null,issuers=[],sta
    // A newer statement can replace an older statement, but not a current bank balance.
    const original=key==='monthlyMinimum'?(statement.minimum!=null?'minimum':'amount'):key,at=statement.fieldUpdated?.[original]||updated,old=stale||now-timestamp(at)>62*86400000;
    const newer=key!=='balance'&&candidates[key].every(c=>timestamp(at)>c.time);
-   push(key,value,'Email statement',at,old,old?5:newer?-1:2);
+   const newerProvider=candidates[key].some(c=>c.time>timestamp(at));
+   push(key,value,'Email statement',at,old,newerProvider?5:old?4:newer?-1:2);
   }
  }
  const resolved={};
@@ -61,7 +62,7 @@ export function resolveDebtConnections(planner,accounts,issuers,cards,statements
   const mapped=issuers.find(c=>String(planner.creditCards?.[c.id]?.trackerCardId)===String(card.id));
   const primaryId=planner.debtAccountLinks?.[card.id]||(mapped?'plaid-'+mapped.accountId:null);
   const issuer=issuers.find(c=>'plaid-'+c.accountId===primaryId)||mapped;
-  const primary=accounts.find(a=>a.id===primaryId)|| (issuer?{id:primaryId,source:'plaid',itemId:issuer.itemId,currency:issuer.currency,balance:issuer.balance,balanceUpdated:issuer.updated,balanceUnavailable:issuer.stale}:null);
+  const primary=accounts.find(a=>a.id===primaryId)|| (issuer?{id:primaryId,source:'plaid',itemId:issuer.itemId,currency:issuer.currency,balance:issuer.balance,balanceUpdated:issuer.fieldUpdated?.balance||issuer.updated,balanceUnavailable:issuer.stale}:null);
   return [card.id,resolveDebtDetails({card,primary,backup:accounts.find(a=>a.id===planner.debtBackupLinks?.[card.id]),issuers,statement:statements[card.id],items,manualLimit:planner.debtCreditLimits?.[card.id],automatic:planner.debtAutoDetails?.[card.id]!==false,now})];
  }));
 }
