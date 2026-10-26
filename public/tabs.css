@@ -277,3 +277,38 @@ dialog::backdrop{touch-action:none}
 .income-card .compact-debt-modes>button{min-height:30px;padding:5px 4px;font-size:.58rem;border-radius:7px;line-height:1.3}
 
 #connectionDialog .connection-row{padding:12px;border:1px solid var(--line);border-radius:12px;margin:10px 0}
+
+/* Stronger balance panels, separate from the surrounding card surface. */
+.bill-amount,.debt-key-amounts>div{background:#e2dcca;border:1px solid #b7aa8c;box-shadow:inset 0 1px 0 #ffffff88}
+.debt-key-amounts>.minimum-due{background:#d6e8db;border-color:#9cbaa7}
+.bill-amount>span,.debt-key-amounts span{color:#566057}
+[data-theme=dark] .bill-amount,[data-theme=dark] .debt-key-amounts>div{background:#30443b;border-color:#5d7666;box-shadow:none}
+[data-theme=dark] .debt-key-amounts>.minimum-due{background:#285647;border-color:#55836c}
+[data-theme=dark] .bill-amount>span,[data-theme=dark] .debt-key-amounts span{color:#c9d9ce}
+.tab-header-peek{position:relative;isolation:isolate;margin:54px 0 22px}
+.tab-header-peek>.tab-intro{position:relative;z-index:1;margin:0}
+#tab-debt .debt-peek-wrap,#savingsHeroContainer .savings-peek-wrap{margin-top:0}
+#debtIncomeCard{margin-bottom:20px}
+.bank-card .income-controls-header{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:18px}
+.bank-card .income-controls-header h3{font-size:.8rem;margin:0}
+.bank-card .income-controls-header .income-widget-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:3px;margin:0 0 0 auto}
+.bank-card .income-controls-header .income-widget-actions>button{min-height:26px;padding:4px 6px;font-size:.57rem;line-height:1.3;border:1px solid #ffffff30;border-radius:6px;background:#ffffff0c;color:#e4eee8;flex:none}
+.bank-card .income-controls-header .income-widget-actions>button[aria-expanded=true]{background:#dceadf;color:#175f53}
+.bank-card .income-controls-header .bank-refresh{display:inline-flex;width:auto;gap:3px}
+.bank-card .income-controls-header .bank-refresh svg{width:12px;height:12px}
+.payoff-method-toggle{flex-wrap:wrap;justify-content:flex-end;gap:3px}
+.paycheck-debt-name{display:flex;flex-direction:column;align-items:flex-start;gap:5px;min-width:0;overflow-wrap:anywhere}
+.paycheck .slice-payment{border:1px solid #8cae97;border-radius:6px;background:var(--accent-soft);color:var(--accent);font:inherit;font-size:.61rem;font-weight:700;padding:4px 8px;min-height:27px;cursor:pointer}
+.paycheck .slice-payment[aria-pressed=true]{background:var(--accent);color:var(--card);border-color:var(--accent)}
+.paycheck .slice-payment:disabled{opacity:.4;cursor:default}
+.paycheck .pay-input[readonly]{background:transparent;border-color:transparent}
+.paycheck-slice-note{font-size:.7rem;font-weight:700;background:var(--accent-soft);color:var(--accent);padding:9px 11px;border-radius:8px;margin:10px 0}
+.paycheck-slice-note span{display:block;font-size:.64rem;font-weight:400;margin-top:3px}
+.paycheck-cash-left{margin:12px 0;padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);font-size:.76rem}
+.slice-interest-note{font-size:.7rem;color:#e2eede;line-height:1.5;border-top:1px solid #ffffff25;padding-top:10px;margin:10px 0 0}
+
+.bank-card .income-controls-header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
+.bank-card .income-controls-header .bank-refresh{width:26px;padding:4px;justify-content:center}
+.bank-card .income-controls-header .bank-refresh span{display:none}
+.paycheck .pay-input{width:62px;box-sizing:border-box;appearance:textfield;font-variant-numeric:tabular-nums;padding:2px}
+.paycheck .pay-input::-webkit-inner-spin-button,.paycheck .pay-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}

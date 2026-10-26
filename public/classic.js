@@ -24,8 +24,9 @@ let paycheckOverrides = {};
 let savingsContributionOverrides = {}; // { [goalId]: { [paycheckNum]: amount } }
 let checkedPaychecks = {};
 let bonusInputOpenForPaycheck = null; // which paycheck's inline "add bonus" field is expanded
-let currentPayoffMethod = 'avalanche'; // 'avalanche' or 'snowball' — set via the debt hero toggle
+let currentPayoffMethod = 'avalanche'; // avalanche, snowball, or minimum
 let budgetItemOverrides = {}; // { [itemId]: { [paycheckNum]: amount } } — per-check edits to a budget line item
+let paycheckSlices = {}; // { [paycheck]: { [cardId]: true } }; selections recalculate from that paycheck’s balance
 let accountPaymentOverrides = {}; // { [cardId]: { [paycheckNum]: amount } } — a manually logged actual payment for that account/check, overriding the projected avalanche/snowball payment
 let extraExpenses = {}; // { [paycheckNum]: [{id, label, amount}, ...] } — one-time expenses, don't recur
 let extraExpenseIdCounter = 0;
@@ -102,6 +103,7 @@ function handlePieSliceClick(evt, el){
 function removeCard(id){
   cardsData = cardsData.filter(c => c.id !== id);
   delete accountPaymentOverrides[id];
+  for(const paycheck of Object.keys(paycheckSlices)){delete paycheckSlices[paycheck][id];if(!Object.keys(paycheckSlices[paycheck]).length)delete paycheckSlices[paycheck];}
   Object.keys(extraExpenses).forEach(pc => {
     extraExpenses[pc] = extraExpenses[pc].filter(e => e.autoFromCardId !== id);
     if (extraExpenses[pc].length === 0) delete extraExpenses[pc];
@@ -261,6 +263,17 @@ function updateBudgetItemAmount(itemId, paycheckNum, value){
 // avalanche/snowball engine from quietly handing it to a different
 // account instead. A BIGGER payment doesn't get this treatment — that's
 // just extra money going straight at the debt, nothing to explain away.
+function togglePaycheckSlice(cardId,paycheck){
+ const row=lastSchedule.find(r=>r.paycheck===paycheck),index=lastCardsForSpending.findIndex(c=>String(c.id)===String(cardId));
+ if(!row||index<0)return;
+ const selected=!!paycheckSlices[paycheck]?.[cardId];
+ if(!selected&&!(row.balancesBefore[index]>0.005))return;
+ paycheckSlices[paycheck]={...paycheckSlices[paycheck]};
+ if(selected)delete paycheckSlices[paycheck][cardId];else paycheckSlices[paycheck][cardId]=true;
+ if(!Object.keys(paycheckSlices[paycheck]).length)delete paycheckSlices[paycheck];
+ calculate();
+}
+
 function updateAccountPayment(cardId, paycheckNum, value, naturalPayment){
   const amt = parseFloat(value);
   if (!accountPaymentOverrides[cardId]) accountPaymentOverrides[cardId] = {};
@@ -396,6 +409,7 @@ function gatherAppState(){
     savingsContributionOverrides,
     budgetItemOverrides,
     accountPaymentOverrides,
+    paycheckSlices,
     extraExpenses,
     extraExpenseIdCounter,
     checkedPaychecks,
@@ -456,6 +470,7 @@ async function loadAppState(){
     if (state.savingsContributionOverrides) savingsContributionOverrides = state.savingsContributionOverrides;
     if (state.budgetItemOverrides) budgetItemOverrides = state.budgetItemOverrides;
     if (state.accountPaymentOverrides) accountPaymentOverrides = state.accountPaymentOverrides;
+    if (state.paycheckSlices) paycheckSlices = state.paycheckSlices;
     if (state.extraExpenses) { extraExpenses = state.extraExpenses; extraExpenseIdCounter = state.extraExpenseIdCounter || extraExpenseIdCounter; }
     if (state.checkedPaychecks) checkedPaychecks = state.checkedPaychecks;
 
@@ -686,7 +701,7 @@ async function saveBudget(button){
 // ---- Reset ----
 async function resetAll(){
  await window.classicReady;
- const fresh={cards:[],cardIdCounter:0,budgetItems:starterBudgetItems(),budgetItemIdCounter:3,budgetSetupVersion:2,savingsGoals:[],savingsGoalIdCounter:0,hourlyRate:'',hoursPerCheck:'',takeHome:'',startDate:'',taxSettings:{},bonusControlsEnabled:false,appliedBonuses:{},paycheckOverrides:{},savingsContributionOverrides:{},budgetItemOverrides:{},accountPaymentOverrides:{},extraExpenses:{},extraExpenseIdCounter:0,checkedPaychecks:{},payoffMethod:'avalanche'};
+ const fresh={cards:[],cardIdCounter:0,budgetItems:starterBudgetItems(),budgetItemIdCounter:3,budgetSetupVersion:2,savingsGoals:[],savingsGoalIdCounter:0,hourlyRate:'',hoursPerCheck:'',takeHome:'',startDate:'',taxSettings:{},bonusControlsEnabled:false,appliedBonuses:{},paycheckOverrides:{},savingsContributionOverrides:{},budgetItemOverrides:{},accountPaymentOverrides:{},paycheckSlices:{},extraExpenses:{},extraExpenseIdCounter:0,checkedPaychecks:{},payoffMethod:'avalanche'};
  clearTimeout(saveDebounceTimer);await window.BearDen.resetSetup(fresh);location.reload();
 }
 
@@ -725,6 +740,7 @@ function calculate(isInitialLoad){
     return { id: item.id, label: item.label, amount: el ? (parseFloat(el.value)||0) : item.amount };
   });
 
+  function project(withoutSlices=false){
   const startDateVal = document.getElementById('startDate').value;
   let date = startDateVal ? new Date(startDateVal + 'T00:00:00') : new Date();
 
@@ -793,7 +809,9 @@ function calculate(isInitialLoad){
 
     // One-time unexpected expenses only apply to the specific paycheck they
     // were added to — they don't recur like regular budget items.
-    const extrasThisCheck = extraExpenses[paycheck] || [];
+    const sliced=cards.map((card,i)=>!withoutSlices&&!!paycheckSlices[paycheck]?.[card.id]&&balances[i]>0.005);
+    const sliceMode=sliced.some(Boolean);
+    const extrasThisCheck = (extraExpenses[paycheck] || []).filter(e=>!sliceMode||e.autoFromCardId==null);
     const extrasTotal = extrasThisCheck.reduce((a,e)=>a+e.amount, 0);
 
     let avail = thisCheckTakeHome - expensesThisCheck - extrasTotal + bonusThisCheck;
@@ -833,7 +851,8 @@ function calculate(isInitialLoad){
     // + avalanche/snowball-extra allocation below, and the money it
     // consumes is set aside first so the remaining leftover only gets
     // divided up among accounts that are still on the projected plan.
-    const overridePayment = cards.map((c) => {
+    const overridePayment = cards.map((c,i) => {
+      if(sliceMode)return sliced[i]?Math.min(balances[i]+interest[i],Math.max(minApplied[i],Math.round(balances[i]*50)/100)):null;
       const overrideMap = accountPaymentOverrides[c.id] || {};
       const ov = overrideMap[paycheck];
       return ov !== undefined ? Math.max(0, ov) : null;
@@ -852,7 +871,7 @@ function calculate(isInitialLoad){
     });
 
     const extra = new Array(cards.length).fill(0);
-    for (const i of priorityOrder) {
+    for (const i of sliceMode||payoffMethod==='minimum'?[]:priorityOrder) {
       if (overridePayment[i] !== null) continue; // this account's payment is already fixed by the manual override
       if (balances[i] <= 0) continue;
       const remainingAfterMin = Math.max(0, balances[i] + interest[i] - minApplied[i]);
@@ -879,6 +898,7 @@ function calculate(isInitialLoad){
     // Other accounts' auto-expenses (and any real manual ones) still
     // count against the pool as normal.
     const naturalPayments = cards.map((c, i) => {
+      if(sliceMode||payoffMethod==='minimum')return minApplied[i];
       const ownAutoExpense = extrasThisCheck.find(e => e.autoFromCardId === c.id);
       const ownAutoAmount = ownAutoExpense ? ownAutoExpense.amount : 0;
       let availExclOwn = thisCheckTakeHome - expensesThisCheck - (extrasTotal - ownAutoAmount) + bonusThisCheck;
@@ -923,6 +943,8 @@ function calculate(isInitialLoad){
 
     schedule.push({
       paycheck, date: new Date(date), avail,
+      balancesBefore:balances.slice(),sliced,sliceMode,
+      cashAfterDebt:availAfterSavings-payments.reduce((sum,n)=>sum+n,0),
       takeHomeThisCheck: thisCheckTakeHome,
       isOverridden: paycheckOverrides[paycheck] !== undefined,
       isBonus: bonusThisCheck > 0,
@@ -938,7 +960,7 @@ function calculate(isInitialLoad){
       interestByAccount: interest.slice(),
       payments: payments.slice(),
       naturalPayments,
-      paymentOverridden: overridePayment.map(v => v !== null),
+      paymentOverridden: overridePayment.map(v => !sliceMode&&v !== null),
       balancesAfter: newBalances.slice(),
       total: newTotal,
     });
@@ -959,7 +981,15 @@ function calculate(isInitialLoad){
     reachedDate: g.reachedDate, reachedPaycheck: g.reachedPaycheck, withdrawalHistory: g.withdrawalHistory,
   })) : [];
 
-  renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo, debtFreeDate, debtFreePaycheck, budgetItemsSnapshot);
+  return {schedule,totalInterest,savingsEnabled,goalsInfo,debtFreeDate,debtFreePaycheck};
+  }
+  const {schedule,totalInterest,savingsEnabled,goalsInfo,debtFreeDate,debtFreePaycheck}=project();
+  let sliceComparison=null;
+  if(schedule.some(row=>row.sliceMode)){
+    const baseline=project(true);
+    if(debtFreeDate){const comparedInterest=baseline.debtFreeDate?baseline.totalInterest:baseline.schedule.filter(row=>row.date<=debtFreeDate).reduce((sum,row)=>sum+row.interestThisCheck,0);sliceComparison={difference:comparedInterest-totalInterest,through:baseline.debtFreeDate?null:debtFreeDate};}
+  }
+  renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo, debtFreeDate, debtFreePaycheck, budgetItemsSnapshot, sliceComparison);
   queueSaveAppState(isInitialLoad ? 1500 : 500);
   window.dispatchEvent(new Event('bearden-plan-changed'));
 }
@@ -1324,9 +1354,12 @@ function updatePayoffMethodExplain(){
   const snowballBtn = document.getElementById('pmBtnSnowball');
   if (avalancheBtn) avalancheBtn.classList.toggle('active', currentPayoffMethod === 'avalanche');
   if (snowballBtn) snowballBtn.classList.toggle('active', currentPayoffMethod === 'snowball');
+  const minimumBtn=document.getElementById('pmBtnMinimum');if(minimumBtn)minimumBtn.classList.toggle('active',currentPayoffMethod==='minimum');
+  for(const [method,button]of [['avalanche',avalancheBtn],['snowball',snowballBtn],['minimum',minimumBtn]])button?.setAttribute('aria-pressed',String(currentPayoffMethod===method));
 }
 
 function setPayoffMethod(method){
+  if(!['avalanche','snowball','minimum'].includes(method))return;
   currentPayoffMethod = method;
   updatePayoffMethodExplain();
   calculate();
@@ -1508,6 +1541,8 @@ function updateDebtHeroProgress(){
   const snowballBtn = document.getElementById('pmBtnSnowball');
   if (avalancheBtn) avalancheBtn.classList.toggle('active', currentPayoffMethod === 'avalanche');
   if (snowballBtn) snowballBtn.classList.toggle('active', currentPayoffMethod === 'snowball');
+  const minimumBtn=document.getElementById('pmBtnMinimum');if(minimumBtn)minimumBtn.classList.toggle('active',currentPayoffMethod==='minimum');
+  for(const [method,button]of [['avalanche',avalancheBtn],['snowball',snowballBtn],['minimum',minimumBtn]])button?.setAttribute('aria-pressed',String(currentPayoffMethod===method));
 
   const checkedNums = Object.keys(checkedPaychecks).filter(k => checkedPaychecks[k]).map(Number);
   const row=lastSchedule.find(r=>r.paycheck===Math.max(...checkedNums));
@@ -1884,7 +1919,7 @@ function resetCheckedPaychecks(){
 
 function buildSavingsGoalHeroHTML(g, canDelete, isEditing, isWithdrawing){
   return `
-    <div class="hero-peek-wrap savings-peek-wrap"><div class="hero-bear"><div class="hero-bear-wings"></div><div class="hero-bear-face"></div><div class="hero-bear-paw"></div><div class="hero-bear-hat"></div><div class="hero-bear-fangs"></div><div class="hero-bear-horns"></div><div class="hero-bear-bubble">Grrr</div></div>
+    <div class="hero-peek-wrap savings-peek-wrap">
     <div class="hero savings-hero" id="savingsHero-${g.id}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <div class="hero-title" style="margin-bottom:0;">🐷 Savings Tracker</div>
@@ -1978,13 +2013,13 @@ function buildSavingsGoalHeroHTML(g, canDelete, isEditing, isWithdrawing){
   `;
 }
 
-function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo, debtFreeDate, debtFreePaycheck, budgetItemsSnapshot){
+function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo, debtFreeDate, debtFreePaycheck, budgetItemsSnapshot, sliceComparison=null){
   const startTotal = cards.reduce((a,c)=>a+c.balance,0);
   lastStartTotal = startTotal;
   const neverPaysOff = debtFreeDate === null;
 
   if (neverPaysOff) {
-    document.getElementById('heroDate').textContent = 'Configure your Budget, Income, and Debt above to begin tracking';
+    document.getElementById('heroDate').textContent = cards.some(c=>c.balance>0)&&Number(document.getElementById('takeHome').value)>0?'No payoff date with these payments':'Set up income, budget, and debt to begin';
     document.getElementById('heroDate').style.color = '#e8a15c';
     document.getElementById('heroDate').style.fontSize = '1.15rem';
     document.getElementById('heroDayCounter').textContent = '';
@@ -1997,6 +2032,10 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
     document.getElementById('heroPaycheckCounter').textContent = paychecksCounterText(debtFreePaycheck);
   }
   document.getElementById('heroInterest').textContent = money(totalInterest);
+  const sliceNote=document.getElementById('sliceInterestNote');
+  sliceNote.hidden=!sliceComparison;
+  if(sliceComparison){const difference=Math.round(sliceComparison.difference*100)/100,method={avalanche:'Avalanche',snowball:'Snowball',minimum:'Minimums'}[currentPayoffMethod];sliceNote.textContent=(Math.abs(difference)<.01?'No projected interest change':money(Math.abs(difference))+(difference>0?' less':' more')+' projected interest')+' vs '+method+' without Slice'+(sliceComparison.through?' through '+fmtDate(sliceComparison.through):'')+'.';}
+
 
   lastSchedule = schedule;
   lastSavingsGoalsInfo = goalsInfo;
@@ -2010,7 +2049,6 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
     heroContainer.innerHTML = goalsInfo.map(g =>
         buildSavingsGoalHeroHTML(g, canDelete, savingsGoalEditingId === g.id, savingsWithdrawOpenId === g.id)
       ).join('');
-    setupHeroBear(heroContainer);
     if (justAddedGoalId !== null) {
       const newCardEl = document.getElementById('savingsHero-' + justAddedGoalId);
       if (newCardEl) newCardEl.classList.add('savings-card-entering');
@@ -2079,11 +2117,11 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
       const isPayOverridden = row.paymentOverridden && row.paymentOverridden[i];
       const payInputClass = row.payments[i] > 0.005 ? 'pay-input' : 'pay-input zero';
       lines += `<div class="line">
-        <span class="name">${bdEscape(c.name)}${isPayOverridden ? ' <span class="edited-tag">edited</span>' : ''}${justPaidOff ? '<span class=\"paidoff-badge\">PAID OFF</span>' : ''}</span>
+        <span class="name paycheck-debt-name"><span>${bdEscape(c.name)}${isPayOverridden ? ' <span class="edited-tag">edited</span>' : ''}${justPaidOff ? '<span class="paidoff-badge">PAID OFF</span>' : ''}</span><button type="button" class="slice-payment" aria-pressed="${!!paycheckSlices[row.paycheck]?.[c.id]}" title="Pay half the balance at this paycheck, at least the minimum" data-bd-click="togglePaycheckSlice(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!(row.balancesBefore[i]>.005)&&!paycheckSlices[row.paycheck]?.[c.id]?'disabled':''}>${paycheckSlices[row.paycheck]?.[c.id]?'Undo Slice':'Slice'}</button></span>
         <span class="pay-bal-wrap">
           <span class="interest">${money(row.interestByAccount[i])}</span>
           <span class="col-divider"></span>
-          <input type="number" class="${payInputClass}" value="${row.payments[i].toFixed(2)}" step="0.01" data-bd-change="updateAccountPayment(${c.id}, ${row.paycheck}, this.value, ${row.naturalPayments[i]})">
+          <input type="number" class="${payInputClass}" ${row.sliceMode?'readonly title="Undo Slice to edit this paycheck’s payments"':''} value="${row.payments[i].toFixed(2)}" step="0.01" data-bd-change="updateAccountPayment(${c.id}, ${row.paycheck}, this.value, ${row.naturalPayments[i]})">
           <span class="col-divider"></span>
           <span class="bal">${money(row.balancesAfter[i])}</span>
         </span>
@@ -2234,7 +2272,9 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
         <div class="check-summary-row prominent-row"><span>Left over after savings</span><span>${money(row.availAfterSavings)}</span></div>
         ` : ''}
       </div>
+      ${row.sliceMode?'<div class="paycheck-slice-note">Slice + minimums <span>Other debts stay at their minimum.</span></div>':''}
       ${accountsSection}
+      <div class="line paycheck-cash-left"><span>${row.cashAfterDebt<-.005?'Extra needed for debt payments':'Left after debt payments'}</span><strong class="${row.cashAfterDebt<-.005?'overdue':''}">${money(Math.abs(row.cashAfterDebt))}</strong></div>
       ${bottomSection}
       ${bottomMilestoneBanner}
       <div class="paycheck-bear-scene">
@@ -2304,8 +2344,8 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
   }
 }
 
-// Peeking hero bear: pops up in a random spot along the top of the debt
-// box each cycle, and glares angrily (a sharp shake + "Grrr" bubble) on tap.
+// Peeking header bear: pops up along the top of the active tab banner
+// each cycle, and glares angrily (a sharp shake + "Grrr" bubble) on tap.
 const initializedHeroBears=new WeakSet();
 function setupHeroBear(root=document){
   root.querySelectorAll('.hero-bear').forEach(bear => {
