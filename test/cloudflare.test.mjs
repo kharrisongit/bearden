@@ -265,6 +265,31 @@ test('SimpleFIN failed initial fetch keeps its consumed token and scheduled refr
 });
 
 import {fakeSunBrowser} from './helpers/sun-browser.mjs';
+test('rent automatic credentials are encrypted, scoped, write-only, and removed on disconnect',async()=>{
+ const f=fixture(),browser=fakeSunBrowser();f.env.BROWSER=browser.binding;browser.state.loggedIn=false;const app=runtime(f.env);
+ const credentials={portalUrl:'app.sunwebportal.com',username:'private-resident@example.com',password:'private-test-password'};
+ assert.equal((await app.handle(new Request(f.env.APP_URL+'/api/rent/credentials',{method:'POST'}))).status,401);
+ assert.equal((await app.handle(f.req('/api/rent/credentials',credentials,'https://evil.example'))).status,403);
+ const response=await app.handle(f.req('/api/rent/credentials',credentials));assert.equal(response.status,200);assert.doesNotMatch(await response.text(),/private-resident|private-test-password/);
+ assert.equal(f.get('sun-credentials').password,credentials.password);
+ assert.doesNotMatch(f.db.prepare("SELECT value FROM vault WHERE id='sun-credentials'").get().value,/private-resident|private-test-password/);
+ const publicState=await(await app.handle(f.req('/api/state'))).text();assert.equal(JSON.parse(publicState).connections.sun.automaticLogin,true);assert.doesNotMatch(publicState,/private-resident|private-test-password|sun-access-secret|property-a/);
+ assert.equal((await app.handle(f.req('/api/rent/credentials'))).status,405);
+ const identity=googleIdentity({email:'second@example.com',sub:'second',email_verified:true},f.env.ALLOWED_EMAIL),token='v2.rent-credentials-second',hash=createHash('sha256').update(token).digest('hex');
+ f.db.prepare('INSERT INTO sessions VALUES(?,?)').run(hash,Date.now()+60000);f.set('auth-session:'+hash,identity);
+ const other=new Request(f.env.APP_URL+'/api/rent/credentials/remove',{method:'POST',headers:{Cookie:'bearden='+token,Origin:f.env.APP_URL,'Content-Type':'application/json','X-BearDen-Account':identity.accountId},body:'{}'});
+ assert.equal((await app.handle(other)).status,200);assert.equal(f.get('sun-credentials').password,credentials.password);
+ await app.handle(f.req('/api/rent/disconnect',{}));assert.equal(f.get('sun-credentials'),null);assert.equal(f.get('sun-session'),null);assert.equal(f.get('connections').sun.automaticLogin,false);f.db.close();
+});
+test('rent failed credential replacements preserve working credentials, session and balance',async()=>{
+ const f=fixture(),browser=fakeSunBrowser();f.env.BROWSER=browser.binding;browser.state.loggedIn=false;browser.state.failLogin=true;const app=runtime(f.env);
+ const old={portalUrl:'https://app.sunwebportal.com',username:'old@example.com',password:'previous-secret',agreement:'property-a'},session={session:'existing-session',agreement:'property-a'},sun={connected:true,automaticLogin:true,portalUrl:old.portalUrl,snapshot:{currentBalance:10000}};
+ f.set('sun-credentials',old);f.set('sun-session',session);f.set('connections',{items:[],transactions:[],candidates:[],sun});
+ const result=await app.handle(f.req('/api/rent/credentials',{...old,password:'wrong-secret'}));assert.equal(result.status,400);assert.doesNotMatch(await result.text(),/wrong-secret|previous-secret/);
+ assert.deepEqual(f.get('sun-credentials'),old);assert.deepEqual(f.get('sun-session'),session);assert.deepEqual(f.get('connections').sun,sun);
+ assert.equal((await app.handle(f.req('/api/rent/credentials',{...old,password:'another'}))).status,429);
+ await app.handle(f.req('/api/rent/credentials/remove',{}));assert.equal(f.get('sun-credentials'),null);assert.deepEqual(f.get('sun-session'),session);assert.equal(f.get('connections').sun.automaticLogin,false);f.db.close();
+});
 test('rent browser is authenticated, origin checked, encrypted, and absent from public state',async()=>{
  const f=fixture(),browser=fakeSunBrowser();f.env.BROWSER=browser.binding;const app=runtime(f.env);
  assert.equal((await app.handle(new Request(f.env.APP_URL+'/api/rent/start',{method:'POST'}))).status,401);

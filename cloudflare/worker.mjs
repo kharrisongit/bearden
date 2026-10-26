@@ -1,6 +1,6 @@
 import {rentPortalUrl} from '../rent-portal.mjs';
 import {rememberRentReadings} from '../public/rent-model.mjs';
-import {createSunBrowser,publicSun,sunMessage,syncSun} from '../sun-rent.mjs';
+import {createSunBrowser,publicSun,sunMessage,syncSun,rentCredentials,rentAutoLoginSupported,SunError} from '../sun-rent.mjs';
 import {claimSimplefin,publicSimplefin,syncSimplefin,configureSimplefinAccount} from '../simplefin.mjs';
 import {plaidAccountEntry,bankAccounts,combineBankConnections} from '../providers.mjs';
 import {userScope,googleIdentity,sessionMismatch} from '../user-scope.mjs';
@@ -45,7 +45,12 @@ export function runtime(env,fetcher=fetch){
  async function plaid(path,data){if(!env.PLAID_CLIENT_ID||!env.PLAID_SECRET)throw Error('Plaid is not configured');const mode=env.PLAID_ENV||'sandbox';if(!['sandbox','production'].includes(mode))throw Error('Invalid Plaid environment');return request(`https://${mode}.plaid.com${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:env.PLAID_CLIENT_ID,secret:env.PLAID_SECRET,...data})});}
  const googleToken=data=>request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,...data})});
  function publicConnections(c){return {sun:publicSun(c.sun),simplefin:publicSimplefin(c),items:c.items.map(publicItem),creditCards:publicCredit(c),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates.filter(x=>!x.dismissed),...publicMail(c,users.current().email),bankUpdated:c.bankUpdated,status:c.status};}
- async function syncSunRent(c,force=false){return syncSun(c.sun,await read('sun-session',null),sunBrowser,value=>write('sun-session',value),{force});}
+ async function claimRentLogin(now=Date.now()){
+  const usage=await read('sun-browser-usage',{since:now,count:0,last:0});if(now-usage.since>=86400000){usage.since=now;usage.count=0;}
+  if(usage.count>=6)throw new SunError('quota');if(now-usage.last<20000)throw new SunError('rate');
+  usage.count++;usage.last=now;await write('sun-browser-usage',usage);
+ }
+ async function syncSunRent(c,force=false){return syncSun(c.sun,await read('sun-session',null),{check:s=>sunBrowser.check(s),login:async(...args)=>{await claimRentLogin();return sunBrowser.login(...args);}},value=>write('sun-session',value),{force,credentials:c.sun?.automaticLogin?await read('sun-credentials',null):null});}
  async function syncSimplefinBalances(c){return syncSimplefin(c,async()=>(await plan()).state.accounts,accounts=>updatePlan(s=>{s.accounts=accounts;}),fetcher);}
  async function syncBalances(c,item,live=false){
    item.balanceAttempt=Date.now();
@@ -118,12 +123,25 @@ export function runtime(env,fetcher=fetch){
        if(!b.enabled&&c.sun.pending){await sunBrowser.close(c.sun.pending.sessionId).catch(()=>{});delete c.sun.pending;}
        await write('connections',c);return json({enabled:b.enabled});
       }
+      if(path==='/api/rent/credentials/remove'){
+       await write('sun-credentials',null);if(c.sun)c.sun.automaticLogin=false;await write('connections',c);
+       return json({status:'Saved rent credentials removed. Your current session is kept.'});
+      }
+      if(path==='/api/rent/credentials'){
+       const credentials=rentCredentials(b),saved=await read('sun-session',null);
+       await claimRentLogin(now);
+       const expected=c.sun?.connected&&rentAutoLoginSupported(publicSun(c.sun)?.portalUrl)?saved?.agreement:null;
+       const result=await sunBrowser.login(credentials,expected);
+       // Validate sign-in and property before replacing any working connection.
+       await write('sun-credentials',{...credentials,agreement:result.session.agreement});
+       await write('sun-session',result.session);
+       if(c.sun?.pending)await sunBrowser.close(c.sun.pending.sessionId).catch(()=>{});
+       if(c.sun)rememberRentReadings(c.sun);c.sun={...c.sun,portalUrl:credentials.portalUrl,enabled:true,connected:true,automaticLogin:true,snapshot:result.snapshot,updated:now,lastAttempt:now,nextSync:now+86400000,needsLogin:false,status:'Automatic sign-in enabled. Rent balance saved; checks run about daily.'};delete c.sun.pending;
+       rememberRentReadings(c.sun);await write('connections',c);return json({status:c.sun.status});
+      }
       if(path==='/api/rent/start'){
        const portalUrl=rentPortalUrl(b.portalUrl||publicSun(c.sun)?.portalUrl);
-       const usage=await read('sun-browser-usage',{since:now,count:0,last:0});if(now-usage.since>=86400000){usage.since=now;usage.count=0;}
-       if(usage.count>=6)return json({error:'The rent sign-in attempt limit has been reached. Try again tomorrow.'},429);
-       if(now-usage.last<20000)return json({error:'Wait 20 seconds before starting another rent sign-in.'},429);
-       usage.count++;usage.last=now;await write('sun-browser-usage',usage);
+       await claimRentLogin(now);
        if(c.sun?.pending)await sunBrowser.close(c.sun.pending.sessionId).catch(()=>{});
        const started=await sunBrowser.start(portalUrl);c.sun={...c.sun,enabled:true,pending:started.pending,status:'Sign in to your portal in the private window, open the page showing your balance, then select Save connection.'};
        try{await write('connections',c);}catch(error){await sunBrowser.close(started.pending.sessionId).catch(()=>{});throw error;}
@@ -131,6 +149,8 @@ export function runtime(env,fetcher=fetch){
       }
       if(path==='/api/rent/complete'){
        const result=await sunBrowser.finish(c.sun?.pending);await write('sun-session',result.session);
+       const credentials=await read('sun-credentials',null);
+       if(credentials&&(!rentAutoLoginSupported(c.sun.pending.portalUrl||publicSun(c.sun).portalUrl)||credentials.agreement!==result.session.agreement)){await write('sun-credentials',null);c.sun.automaticLogin=false;}
        const pending=c.sun.pending;rememberRentReadings(c.sun);c.sun={...c.sun,portalUrl:pending.portalUrl||publicSun(c.sun).portalUrl,enabled:true,connected:true,snapshot:result.snapshot,updated:now,lastAttempt:now,nextSync:now+86400000,needsLogin:false,status:'Rent portal connected. Balance saved; checks run about daily.'};delete c.sun.pending;
        rememberRentReadings(c.sun);await write('connections',c);await sunBrowser.close(pending.sessionId).catch(()=>{});return json({status:c.sun.status});
       }
@@ -141,10 +161,10 @@ export function runtime(env,fetcher=fetch){
       }
       if(path==='/api/rent/disconnect'){
        if(c.sun?.pending)await sunBrowser.close(c.sun.pending.sessionId).catch(()=>{});
-       await write('sun-session',null);if(c.sun){rememberRentReadings(c.sun);delete c.sun.pending;c.sun.connected=false;c.sun.status='Rent portal disconnected. Your last rent reading is kept.';}await write('connections',c);return json({status:'Rent portal disconnected. The saved sign-in session has been removed from BearDen.'});
+       await write('sun-session',null);await write('sun-credentials',null);if(c.sun){rememberRentReadings(c.sun);delete c.sun.pending;c.sun.connected=false;c.sun.automaticLogin=false;c.sun.status='Rent portal disconnected. Your last rent reading is kept.';}await write('connections',c);return json({status:'Rent portal disconnected. Saved credentials and the sign-in session have been removed from BearDen.'});
       }
       return json({error:'Not found'},404);
-     }catch(error){return json({error:sunMessage(error)},400);}
+     }catch(error){return json({error:sunMessage(error)},['quota','rate'].includes(error.code)?429:400);}
     }
     if(path==='/api/simplefin/connect'){
      const c=await connections();if(c.simplefin&&!b.replace)return json({error:'SimpleFIN is already connected. Use Replace token to reconnect it.'},409);

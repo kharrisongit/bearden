@@ -45,7 +45,8 @@ window.BearDen=(()=>{
  function renderRent(rent){
   const enabled=rent?.enabled??!!rent?.connected;$('#rentEnabledToggle').checked=enabled;$('#rentSection').hidden=!enabled;
   if(document.activeElement!==$('#rentPortalUrl'))$('#rentPortalUrl').value=rent?.pendingPortalUrl||rent?.portalUrl||'';
-  $('#rentConnect').disabled=!config.rentConfigured;$('#rentConnect').textContent=rent?.connected?'Sign in again':'Connect rent portal';
+  $('#rentConnect').disabled=!config.rentConfigured;$('#rentConnect').textContent='Use private sign-in';
+  $('#rentSaveCredentials').disabled=!config.rentConfigured;$('#rentAutoLoginStatus').hidden=!rent?.automaticLogin;$('#rentAutoLoginStatus').textContent=rent?.needsLogin?'Automatic sign-in needs attention.':'Automatic sign-in enabled.';$('#rentForgetCredentials').hidden=!rent?.automaticLogin;$('#rentCredentialsSummary').textContent=rent?.automaticLogin?'Replace saved credentials':'Enable automatic sign-in';
   $('#rentStatus').textContent=rent?.needsLogin?'Sign in needed':rent?.connected?'Connected':'Not connected';$('#rentStatus').dataset.connected=String(!!rent?.connected&&!rent?.needsLogin);
   $('#rentFeedback').textContent=!config.rentConfigured?'Rent sign-in is available on the hosted Cloudflare version of BearDen.':rent?.status||'Not connected.';
   $('#rentActions').hidden=!rent?.connected;$('#rentLogin').hidden=!rent?.pendingUntil;if(rent?.pendingUntil)setConnectionConfig('configureRent',true);
@@ -68,11 +69,24 @@ window.BearDen=(()=>{
   try{const {openRentBrowser}=await import('./rent-browser.mjs?v=mobile-keyboard1');openRentBrowser({url:rentLoginUrl,expires:legacy?.connections?.sun?.pendingUntil,onSave:async()=>{if(!await rentAction($('#rentComplete'),'complete'))throw Error($('#rentFeedback').textContent);}});}catch(error){$('#rentFeedback').textContent=error.message;}
  };
  $('#rentPortalForm').onsubmit=e=>{e.preventDefault();rentAction($('#rentConnect'),'start');};
+ $('#rentCredentialsForm').onsubmit=async event=>{
+  event.preventDefault();if(!requireLogin())return;const button=$('#rentSaveCredentials'),credentials={portalUrl:$('#rentPortalUrl').value.trim(),username:$('#rentUsername').value.trim(),password:$('#rentPassword').value};
+  if(!credentials.portalUrl){$('#rentFeedback').textContent='Enter your rent portal address first.';$('#rentPortalUrl').focus();return;}
+  button.disabled=true;$('#rentPassword').value='';$('#rentFeedback').textContent='Signing in and checking rent…';
+  try{await queue;const result=await api('/api/rent/credentials',credentials);$('#rentUsername').value='';rentLoginUrl=null;await refresh();$('#rentCredentialsSetup').open=false;$('#rentFeedback').textContent=result.status;}
+  catch(error){$('#rentFeedback').textContent=error.message;}finally{credentials.password='';button.disabled=false;}
+ };
+ $('#rentForgetCredentials').onclick=async event=>{
+  const button=event.currentTarget;button.disabled=true;
+  try{await queue;const result=await api('/api/rent/credentials/remove',{});$('#rentPassword').value='';$('#rentUsername').value='';await refresh();$('#rentFeedback').textContent=result.status;}
+  catch(error){$('#rentFeedback').textContent=error.message;}finally{button.disabled=false;}
+ };
+ window.addEventListener('pagehide',()=>{$('#rentPassword').value='';});
  $('#rentEnabledToggle').onchange=async e=>{const button=e.currentTarget,enabled=button.checked;button.disabled=true;try{await queue;await api('/api/rent/settings',{enabled});await refresh();$('#featureSettingsStatus').textContent=enabled?'Rent enabled.':'Rent hidden; your saved connection is kept.';}catch(error){button.checked=!enabled;$('#featureSettingsStatus').textContent=error.message;}finally{button.disabled=false;}};
  $('#rentComplete').onclick=e=>rentAction(e.currentTarget,'complete');
  $('#rentCancel').onclick=e=>rentAction(e.currentTarget,'cancel');
  $('#rentRefresh').onclick=e=>rentAction(e.currentTarget,'refresh');
- $('#rentDisconnect').onclick=e=>{if(confirm('Remove the saved rent sign-in session from BearDen and stop rent checks? Your entered bills will stay.'))rentAction(e.currentTarget,'disconnect');};
+ $('#rentDisconnect').onclick=e=>{if(confirm('Remove saved rent credentials and the sign-in session, and stop rent checks? Your entered bills will stay.'))rentAction(e.currentTarget,'disconnect');};
  function renderSimplefin(c,s){
   const connected=!!c.simplefin,accounts=(s?.accounts||[]).filter(a=>a.source==='simplefin');
   $('#simplefinStatus').textContent=connected?'Connected':'Not connected';$('#simplefinStatus').dataset.connected=String(connected);
