@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 
 // Exercise the real application using a disposable local-only profile.
 async function openFixture(page, theme) {
-  await page.route('http://bearden.test/**', async route => {
+  await page.route('https://bearden.test/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/config') return route.fulfill({ json: { authenticated: false } });
     if (path.startsWith('/api/')) return route.fulfill({ status: 404, json: {} });
@@ -25,8 +25,8 @@ async function openFixture(page, theme) {
     }
     localStorage.setItem('bearden:classic:theme', theme);
   }, theme);
-  await page.goto('http://bearden.test/');
-  await page.waitForFunction(() => window.classicLoaded);
+  await page.goto('https://bearden.test/');
+  await page.evaluate(() => window.classicReady);
   await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
 }
 
@@ -63,7 +63,7 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark']) {
     expect(await page.evaluate(inspectHeaders)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.reload();
-    await page.waitForFunction(() => window.classicLoaded);
+    await page.evaluate(() => window.classicReady);
     await page.locator('#nav-income').click();
     await page.locator('#incomeToggleBtn').click();
     await expect(page.locator('#tax-retirement')).toHaveValue('200');
