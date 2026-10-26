@@ -51,7 +51,7 @@
  async function save(){if(!ready)throw Error('Accounts have not loaded. Reload before saving changes.');await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();}
  let initializing;
  $('#configureHousehold').disabled=true;$('#sharedBillsToggle').disabled=true;
- function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=ledger-controls1'),import('./email-model.mjs?v=balance-fix1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=fixed-bills1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#sharedBillsToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
+ function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=timing1-ledger-controls1'),import('./email-model.mjs?v=balance-fix1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=fixed-bills1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#sharedBillsToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
  window.addEventListener('load',initialize,{once:true});
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});
@@ -258,7 +258,7 @@
   const manual=(plan.state.cards||[]).flatMap(c=>{
    if(matched.has(String(c.id))&&!planner.debtAccountLinks?.[c.id])return [];
    const status=model.trackerDebtStatus(plan,c.id),next=payments.find(b=>b.source==='tracker-debt'&&b.trackerCardId===String(c.id));
-   const email=emailStatus('debt:'+c.id),statement=email.statement,issuer=linkedCards.find(card=>'plaid-'+card.accountId===planner.debtAccountLinks?.[c.id]),minimum=statement?.minimum??issuer?.minimum,dueDate=statement?.dueDate||issuer?.dueDate;
+   const email=emailStatus('debt:'+c.id),statement=email.statement,issuer=linkedCards.find(card=>'plaid-'+card.accountId===planner.debtAccountLinks?.[c.id]),minimum=statement?.minimum??issuer?.minimum,dueDate=statement?.dueDate||issuer?.dueDate||c.dueDate;
    const bankHistory=model.matchingPayments(bankTransactions(),planner.transactionLinks['debt:'+c.id],iso(new Date()));
    const synced=plan.syncedDebtBalances?.[c.id];
    const displayBalance=synced?synced.balance:status.paidOff?0:statement?.balance??status.balance;totalBalances.push({name:c.name,amount:displayBalance,startingBalance:Math.round(c.balance*100)});
@@ -311,6 +311,7 @@
   editingDebt=debt?.id??null;const form=$('#debtEditorForm');form.reset();
   form.elements.name.value=draft?.name||debt?.name||'';form.elements.debtKind.value=draft?.debtKind||debt?.debtKind||'credit-card';
   for(const [field,key]of [['balance','balance'],['apr','apr']])form.elements[field].value=draft?.[field]??debt?.[key]??'';
+  form.elements.dueDate.value=draft?.dueDate??debt?.dueDate??'';
   form.elements.minimum.value=draft?.minimum??(debt?model.monthlyMinimum(debt):'');
   form.elements.creditLimit.readOnly=false;form.elements.creditLimit.value=draft?.creditLimit??(planner.debtCreditLimits?.[debt?.id]!=null?planner.debtCreditLimits[debt.id]/100:'');
   $('#debtMinimumNote').hidden=!debt||Number.isFinite(debt.monthlyMinimum);
@@ -457,6 +458,7 @@
    const accounts=(legacy.accounts||[]).filter(a=>['plaid','simplefin'].includes(a.source)).map(a=>({...a,displayName:connectedAccountName(a)}));
    const debtCards=window.getDebtPlan().state.cards||[],statements=Object.fromEntries(debtCards.map(c=>[c.id,emailStatus('debt:'+c.id).statement]));
    window.setSyncedDebtBalances(model.accountDebtBalances(planner,accounts,(connections.creditCards||[]).map(emailCredit),debtCards,iso(new Date()),statements));
+   window.setSyncedDebtTerms(Object.fromEntries(debtCards.map(c=>{const issuer=(connections.creditCards||[]).map(emailCredit).find(card=>'plaid-'+card.accountId===planner.debtAccountLinks?.[c.id]||String(planner.creditCards[card.id]?.trackerCardId)===String(c.id));return [c.id,{dueDate:statements[c.id]?.dueDate||issuer?.dueDate||c.dueDate||''}];})));
    const plan=window.getDebtPlan(),personalAccount=model.personalChecking(accounts,planner.household),personalTransactions=model.personalCheckingTransactions(connections.transactions||[],personalAccount);
    const personalChoices=accounts.filter(a=>a.type==='depository'&&(a.subtype==='checking'||/checking/i.test(a.name))&&a.id!==planner.household.billsAccountId&&(accountShown(a.id)||a.id===personalAccount?.id));
    $('#personalSpendingAccount').innerHTML='<option value="">Choose personal checking</option>'+personalChoices.map(a=>'<option value="'+esc(a.id)+'">'+esc(connectedAccountName(a))+'</option>').join('');$('#personalSpendingAccount').value=personalAccount?.id||'';
@@ -496,6 +498,7 @@
    // status stays in the forecast, where cash leaves on the actual due date.
    const h=planner.household;
    const paycheckInputs=structuredClone({legacy:{bills:billPlan.bills.filter(b=>b.source!=='tracker-debt'),paid:billPlan.paid||[]},planner:{manual:paymentsPlanner.manual,covered:planner.covered,electricBillId:planner.electricBillId,emailLinks:planner.emailLinks,paid:paymentsPlanner.paid,household:h,billFunding:planner.billFunding,transactionLinks:planner.transactionLinks},linked,today:currentDay,accounts:accounts.filter(a=>a.id===h.billsAccountId),plan:{state:{startDate:plan.state.startDate,checkedPaychecks:plan.state.checkedPaychecks||{}}},transactions:(connections.transactions||[]).filter(t=>[h.personalAccountId,h.billsAccountId].includes('plaid-'+t.account_id))});
+   householdBills=model.householdBillChoices([...billPlan.bills,...paymentsPlanner.manual]);
    if(window.setPaycheckBills(JSON.stringify(paycheckInputs),(date,n)=>model.paycheckBillItems(paycheckInputs,date,n),date=>model.paycheckBillsBalance(paycheckInputs,date)))return;
    householdBills=model.householdBillChoices([...billPlan.bills,...paymentsPlanner.manual]);
    const householdActive=model.householdEnabled(planner.household);

@@ -1,4 +1,5 @@
-export {monthlyMinimum} from './debt-payments.mjs?v=monthly-dues1';
+import {scheduledPayment} from './debt-payments.mjs?v=debt-timing1';
+export {monthlyMinimum} from './debt-payments.mjs?v=debt-timing1';
 import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-portal1';
 import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=shared-bill-list3';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
@@ -92,7 +93,7 @@ export function paydayEvents(plan,start,end,{billsOnly=false,debtMode='full'}={}
   if(debtMode==='none')debtAllocations=0;
   if(debtMode==='minimum')debtAllocations=(s.cards||[]).reduce((sum,card,index)=>{
    const interest=Math.round(remaining[index]*Math.max(0,Number(card.apr)||0)/100/26);
-   const owed=remaining[index]+interest,payment=Math.min(owed,Math.max(0,cents(card.min)));
+   const owed=remaining[index]+interest,payment=Math.min(owed,Math.max(0,cents(scheduledPayment({...card,dueDate:plan.syncedDebtTerms?.[card.id]?.dueDate||card.dueDate},date,s.startDate,s.debtPaymentSettings).minimum)));
    remaining[index]=owed-payment;return sum+payment;
   },0);
   const allocations=[...(budget||[]),...(extras||[])].filter(b=>!billsOnly||!isPersonal(b)).reduce((a,b)=>a+cents(b.amount),0)+debtAllocations+(row&&!billsOnly?(row.savingsByGoal||[]).reduce((a,b)=>a+cents(b.contribution),0):0);

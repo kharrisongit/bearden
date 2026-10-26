@@ -12,7 +12,13 @@ window.BearDen=(()=>{
  bridge.refreshAccountLists=()=>renderConnections();
  function setConnectionConfig(id,open){const button=$('#'+id);$('#'+button.getAttribute('aria-controls')).hidden=!open;button.setAttribute('aria-expanded',String(open));}
  for(const id of ['configurePlaid','configureSimplefin','configureRent'])$('#'+id).onclick=()=>setConnectionConfig(id,$('#'+id).getAttribute('aria-expanded')!=='true');
- function message(t){$('#connectionMessage').textContent=t;}
+ let syncNoticeDismissed=false,syncNoticeActive=false;
+ const notice=$('#connectionMessage'),dismissNotice=$('#dismissConnectionMessage');
+ const updateNotice=()=>{dismissNotice.hidden=!notice.textContent;};
+ new MutationObserver(updateNotice).observe(notice,{childList:true,characterData:true,subtree:true});
+ dismissNotice.onclick=()=>{if(syncNoticeActive)syncNoticeDismissed=true;notice.textContent='';updateNotice();};
+ function message(t){notice.textContent=t;updateNotice();}
+ function syncMessage(t){if(!syncNoticeDismissed)message(t);}
  async function api(path,body){const r=await fetch(path,{method:body===undefined?'GET':'POST',headers:{...(body===undefined?{}:{'Content-Type':'application/json'}),...(config.accountId?{'X-BearDen-Account':config.accountId}:{})},body:body===undefined?undefined:JSON.stringify(body)});let d;try{d=await r.json();}catch{throw Error('Could not read the server response.');}if(!r.ok){const error=Error(d.error||'Request failed');error.status=r.status;throw error;}return d;}
  function persist(){
   const snapshot=structuredClone(values);
@@ -161,7 +167,7 @@ window.BearDen=(()=>{
    }
    if(includeSimplefin&&legacy?.connections?.simplefin){report('Refreshing SimpleFIN…');try{const r=await api('/api/simplefin/refresh',{});results.push('SimpleFIN: '+r.status);}catch(e){results.push('SimpleFIN: '+e.message);}await refresh();}
    return results.length?results:['No bank connections to refresh.'];
-  }finally{refreshingBank=false;buttons.forEach(b=>{b.disabled=false;b.removeAttribute('aria-busy');});}
+  }finally{refreshingBank=false;buttons.forEach(b=>{if(b.id==='classicSync'&&syncNoticeActive)return;b.disabled=false;b.removeAttribute('aria-busy');});}
  }
  $('#refreshAllDebts').onclick=async()=>{
   const button=$('#refreshAllDebts'),report=text=>$('#creditStatus').textContent=text;
@@ -175,10 +181,13 @@ window.BearDen=(()=>{
  };
  $('#refreshPlaid').onclick=run(async()=>{const report=text=>$('#plaidConfigStatus').textContent=text;const results=await refreshEveryBank(report,{includeSimplefin:false});if(results)report(results.join(' · '));});
  $('#classicSync').onclick=run(async()=>{
-  const results=await refreshEveryBank(message);if(!results)return;
-  if(legacy?.connections?.emailConnected||legacy?.connections?.gmail){message('Checking email…');try{const result=await api('/api/sync',{gmailOnly:true});results.push(result.status||'Email checked.');}catch(error){results.push('Email: '+error.message);}await refresh();}
-  if(legacy?.connections?.sun?.connected&&legacy.connections.sun.enabled!==false){message('Checking rent…');try{const result=await api('/api/rent/refresh',{});results.push(result.status||'Rent checked.');}catch(error){results.push('Rent: '+error.message);}await refresh();}
-  message(results.join(' · '));
+  syncNoticeDismissed=false;syncNoticeActive=true;syncMessage('Syncing connections…');
+  try{
+  const results=await refreshEveryBank(syncMessage);if(!results)return;
+  if(legacy?.connections?.emailConnected||legacy?.connections?.gmail){syncMessage('Checking email…');try{const result=await api('/api/sync',{gmailOnly:true});results.push(result.status||'Email checked.');}catch(error){results.push('Email: '+error.message);}await refresh();}
+  if(legacy?.connections?.sun?.connected&&legacy.connections.sun.enabled!==false){syncMessage('Checking rent…');try{const result=await api('/api/rent/refresh',{});results.push(result.status||'Rent checked.');}catch(error){results.push('Rent: '+error.message);}await refresh();}
+  syncMessage(results.join(' · '));
+  }catch(error){syncMessage(error.message);}finally{syncNoticeActive=false;$('#classicSync').removeAttribute('aria-busy');}
  });
  document.querySelectorAll('[data-refresh-bank]').forEach(button=>button.onclick=async()=>{
   const statuses=document.querySelectorAll('.bank-refresh-status'),report=text=>statuses.forEach(s=>s.textContent=text);
@@ -197,7 +206,7 @@ window.BearDen=(()=>{
   if(b.dataset.reviewAccept){const id=b.dataset.reviewAccept,c=legacy.connections.candidates.find(c=>c.id===id),row=b.closest('.connection-review'),raw=row.querySelector('[data-review-amount]').value,amount=Math.round(Number(raw)*100),date=row.querySelector('[data-review-date]').value;if(raw===''||!Number.isSafeInteger(amount)||amount<0||!date)throw Error('Enter the bill amount and due date.');await refresh();const state=structuredClone(legacy.state);if(!state.bills.some(x=>x.sourceId===id))state.bills.push({id:crypto.randomUUID(),name:c.name||c.sender,amount,date,repeat:'once',source:'gmail',sourceId:id,sourceKey:c.sourceKey});await api('/api/state',{state,revision:legacy.revision});await refresh();}
   if(b.dataset.useBill){const bill=legacy.state.bills.find(x=>x.id===b.dataset.useBill),d=b.closest('.connection-row').querySelector('[data-bill-date]').value;const n=window.addConnectedBill(bill,d);const linked=JSON.parse(values['linked-bills']||'{}');linked[bill.id]=n;await bridge.storage.set('linked-bills',JSON.stringify(linked));await window.performSaveAppState();renderConnections();message('Bill added to paycheck '+n+'.');}
  }catch(err){message(err.message);}finally{b.disabled=false;}});
- bridge.ready=(async()=>{try{const response=await fetch('/api/config');if(response.status===404)config={};else{if(!response.ok)throw Error('Sign-in status could not be checked. Reload to try again.');config=await response.json();}if(config.authenticated){const [tracker,plan]=await Promise.all([api('/api/classic'),api('/api/state')]);values=tracker.state.values;revision=tracker.revision;legacy=plan;if(!values['app-state']&&(plan.state.debts.length||plan.state.income.length||plan.state.goals.length)){const {migrateLegacy}=await import('./classic-migrate.mjs?v=monthly-dues1');values['app-state']=JSON.stringify(migrateLegacy(plan.state,new Date().toLocaleDateString('en-CA')));await persist();message('Your existing debt, income, budget, and savings were copied into the original tracker. Monthly amounts are converted to this tracker’s two-week schedule. Review dates and per-check edits before using the copied plan.');}}else for(const key of keys){const value=localStorage.getItem('bearden:classic:'+key);if(value!==null)values[key]=value;}bridge.isNew=!values['app-state']||!(()=>{try{const s=JSON.parse(values['app-state']);return s.cards?.length||s.budgetItems?.length||Number(s.takeHome)>0||s.startDate;}catch{return true;}})();renderConnections();}catch(e){blocked=true;message(e.message);window.selectBearTab('settings');}})();
+ bridge.ready=(async()=>{try{const response=await fetch('/api/config');if(response.status===404)config={};else{if(!response.ok)throw Error('Sign-in status could not be checked. Reload to try again.');config=await response.json();}if(config.authenticated){const [tracker,plan]=await Promise.all([api('/api/classic'),api('/api/state')]);values=tracker.state.values;revision=tracker.revision;legacy=plan;if(!values['app-state']&&(plan.state.debts.length||plan.state.income.length||plan.state.goals.length)){const {migrateLegacy}=await import('./classic-migrate.mjs?v=debt-timing1');values['app-state']=JSON.stringify(migrateLegacy(plan.state,new Date().toLocaleDateString('en-CA')));await persist();message('Your existing debt, income, budget, and savings were copied into the original tracker. Monthly amounts are converted to this tracker’s two-week schedule. Review dates and per-check edits before using the copied plan.');}}else for(const key of keys){const value=localStorage.getItem('bearden:classic:'+key);if(value!==null)values[key]=value;}bridge.isNew=!values['app-state']||!(()=>{try{const s=JSON.parse(values['app-state']);return s.cards?.length||s.budgetItems?.length||Number(s.takeHome)>0||s.startDate;}catch{return true;}})();renderConnections();}catch(e){blocked=true;message(e.message);window.selectBearTab('settings');}})();
  bridge.ready.then(()=>{if(new URLSearchParams(location.search).has('oauth_state_id'))connectBank(true).catch(e=>message(e.message));if(new URLSearchParams(location.search).has('connected')){history.replaceState(null,'','/');window.selectBearTab('settings');}});
  return bridge;
 })();
