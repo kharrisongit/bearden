@@ -61,3 +61,26 @@ test('shared bill choices exclude old budget categories and the Fixed Bills cont
  assert.deepEqual(householdBillChoices(inputs).map(b=>b.id),accounts.map(b=>b.id));assert.deepEqual(inputs,snapshot);
  for(const b of oldBudget)assert.equal(sharedBill(b,{household:h,billFunding:{[b.id]:'shared'}}),false);
 });
+
+test('paycheck balance uses only the bills account and carries earlier bills and contributions into future periods',async()=>{
+ const {paycheckBillsBalance}=await import('../public/income-model.mjs');
+ const data={legacy:{bills:[]},planner,linked:{},accounts,plan,today:'2026-11-06'};
+ const first=paycheckBillsBalance(data,'2026-11-06');
+ assert.equal(first.currentBalance,20000);assert.equal(first.projectedBalance,105000);assert.equal(first.end,'2026-11-19');
+ const next=paycheckBillsBalance(data,'2026-11-20');
+ assert.equal(next.currentBalance,20000);assert.equal(next.projectedBalance,250000);assert.equal(next.end,'2026-12-03');
+ const updated=paycheckBillsBalance({...data,accounts:accounts.map(a=>a.id===h.billsAccountId?{...a,balance:30000}:a)},'2026-11-06');
+ assert.equal(updated.projectedBalance,115000);
+});
+
+test('paycheck balance skips paid bills and received transfers, preserves shortfalls, and leaves missing or past balances unknown',async()=>{
+ const {paycheckBillsBalance}=await import('../public/income-model.mjs');
+ const data={legacy:{bills:[]},planner:{...planner,paid:['power:2026-11-12'],household:{...h,received:{'spouse:2026-11-06':true}}},linked:{},accounts,plan:{...plan,state:{...plan.state,checkedPaychecks:{1:true}}},today:'2026-11-06'};
+ const result=paycheckBillsBalance(data,'2026-11-06');
+ assert.equal(result.currentBalance,20000);assert.equal(result.projectedBalance,-20000);
+ const absent=paycheckBillsBalance({...data,accounts:accounts.filter(a=>a.id!==h.billsAccountId)},'2026-11-06');
+ assert.equal(absent.currentBalance,null);assert.equal(absent.projectedBalance,null);
+ const unavailable=paycheckBillsBalance({...data,accounts:accounts.map(a=>({...a,balanceUnavailable:true}))},'2026-11-06');
+ assert.equal(unavailable.currentBalance,null);assert.equal(unavailable.projectedBalance,null);
+ const past=paycheckBillsBalance(data,'2026-10-09');assert.equal(past.historical,true);assert.equal(past.projectedBalance,null);
+});

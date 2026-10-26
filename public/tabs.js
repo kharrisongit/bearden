@@ -42,7 +42,7 @@
  async function save(){if(!ready)throw Error('Accounts have not loaded. Reload before saving changes.');await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();}
  let initializing;
  $('#configureHousehold').disabled=true;$('#sharedBillsToggle').disabled=true;
- function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel]=await Promise.all([import('./income-model.mjs?v=monthly-dues1'),import('./email-model.mjs?v=balance-fix1'),import('./rent-model.mjs?v=rent-portal1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#sharedBillsToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
+ function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel]=await Promise.all([import('./income-model.mjs?v=paycheck-balances1'),import('./email-model.mjs?v=balance-fix1'),import('./rent-model.mjs?v=rent-portal1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#sharedBillsToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
  window.addEventListener('load',initialize,{once:true});
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});
@@ -370,8 +370,9 @@
    for(const bill of billPlan.bills)bill.paidByBank=bankPaid.has(bill.id+':'+bill.date);
    // Reserve bills before the payoff engine distributes money to debts. Payment
    // status stays in the forecast, where cash leaves on the actual due date.
-   const paycheckInputs=structuredClone({legacy:{bills:billPlan.bills.filter(b=>b.source!=='tracker-debt')},planner:{manual:paymentsPlanner.manual,covered:planner.covered,electricBillId:planner.electricBillId,emailLinks:planner.emailLinks,paid:paymentsPlanner.paid,household:planner.household,billFunding:planner.billFunding,transactionLinks:planner.transactionLinks},linked,today:currentDay});
-   if(window.setPaycheckBills(JSON.stringify(paycheckInputs),(date,n)=>model.paycheckBillItems(paycheckInputs,date,n)))return;
+   const h=planner.household;
+   const paycheckInputs=structuredClone({legacy:{bills:billPlan.bills.filter(b=>b.source!=='tracker-debt'),paid:billPlan.paid||[]},planner:{manual:paymentsPlanner.manual,covered:planner.covered,electricBillId:planner.electricBillId,emailLinks:planner.emailLinks,paid:paymentsPlanner.paid,household:h,billFunding:planner.billFunding,transactionLinks:planner.transactionLinks},linked,today:currentDay,accounts:accounts.filter(a=>a.id===h.billsAccountId),plan:{state:{startDate:plan.state.startDate,checkedPaychecks:plan.state.checkedPaychecks||{}}},transactions:(connections.transactions||[]).filter(t=>[h.personalAccountId,h.billsAccountId].includes('plaid-'+t.account_id))});
+   if(window.setPaycheckBills(JSON.stringify(paycheckInputs),(date,n)=>model.paycheckBillItems(paycheckInputs,date,n),date=>model.paycheckBillsBalance(paycheckInputs,date)))return;
    householdBills=model.householdBillChoices([...billPlan.bills,...paymentsPlanner.manual]);
    const householdActive=model.householdEnabled(planner.household);
    $('#configureHousehold').textContent=householdActive?'Edit':'Set up';$('#sharedBillsToggle').checked=householdActive;

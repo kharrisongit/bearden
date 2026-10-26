@@ -141,6 +141,20 @@ export function paycheckBillItems({legacy,planner,linked},date,paycheck){
  return personal;
 }
 
+// A paycheck's expanded Fixed Bills section uses the same shared-account
+// ledger as the Accounts forecast, through the day before the next payday.
+export function paycheckBillsBalance({legacy,planner,linked,accounts=[],plan={},today,transactions=[]},date){
+ const h=planner.household,end=day(date,13);
+ const account=accounts.find(a=>a.id===h?.billsAccountId&&(a.currency||'USD')==='USD'&&!['credit','loan'].includes(a.type));
+ const currentBalance=account&&!account.balanceUnavailable&&Number.isSafeInteger(account.balance)?account.balance:null;
+ const result={accountName:account?.name||'Bills account',currentBalance,projectedBalance:null,end,historical:!!today&&end<today};
+ if(!today||result.historical||currentBalance===null||!householdEnabled(h))return result;
+ const length=Math.round((Date.parse(end+'T12:00:00Z')-Date.parse(today+'T12:00:00Z'))/86400000);
+ const bills=billEvents(legacy,planner,linked,today,end);
+ const forecast=householdForecast([account],plan,[],bills,today,{household:h,scope:'shared',length,transactions});
+ return {...result,projectedBalance:forecast.endBalance};
+}
+
 // Store day-end changes, not one point per calendar day, for long forecasts.
 export function forecastTimeline(f,start){
  if(f.opening===null)return [];

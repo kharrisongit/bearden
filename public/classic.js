@@ -2127,7 +2127,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
       </div>
     `).join('');
 
-    const accountBillLines=(row.accountBillsThisCheck||[]).map(bill=>`<div class="check-summary-row paycheck-account-bill"><span>− ${bdEscape(bill.name)}<small>${bill.transfer?'Transfer to shared bills account':'Due '+fmtDate(new Date(bill.date+'T00:00:00'))}</small></span><span>${money(bill.amount/100)}</span></div>${bill.transfer?`<details class="paycheck-shared-details"><summary>Shared bills & contributions</summary><p>Your Fixed Bills amount above is your only deduction for these shared bills.</p>${(bill.sharedBills||[]).map(b=>`<div class="check-summary-row"><span>${bdEscape(b.name)} · ${fmtDate(new Date(b.date+'T00:00:00'))}</span><span>${money(b.amount/100)}</span></div>`).join('')}${(bill.spouseContributions||[]).map(c=>`<div class="check-summary-row"><span>Spouse contribution · ${fmtDate(new Date(c.date+'T00:00:00'))}</span><span>+${money(c.amount/100)}</span></div>`).join('')}</details>`:''}`).join('');
+    const accountBillLines=(row.accountBillsThisCheck||[]).map(bill=>`<div class="check-summary-row paycheck-account-bill"><span>− ${bdEscape(bill.name)}<small>${bill.transfer?'Transfer to shared bills account':'Due '+fmtDate(new Date(bill.date+'T00:00:00'))}</small></span><span>${money(bill.amount/100)}</span></div>${bill.transfer?`<details class="paycheck-shared-details" data-paycheck-date="${bdEscape(bill.date)}"><summary>Shared bills & contributions</summary><div class="paycheck-shared-balances" aria-live="polite"></div><p>Your Fixed Bills amount above is your only deduction for these shared bills.</p>${(bill.sharedBills||[]).map(b=>`<div class="check-summary-row"><span>${bdEscape(b.name)} · ${fmtDate(new Date(b.date+'T00:00:00'))}</span><span>${money(b.amount/100)}</span></div>`).join('')}${(bill.spouseContributions||[]).map(c=>`<div class="check-summary-row"><span>Spouse contribution · ${fmtDate(new Date(c.date+'T00:00:00'))}</span><span>+${money(c.amount/100)}</span></div>`).join('')}</details>`:''}`).join('');
     const extraExpenseLines = row.extrasThisCheck.map(e => `
       <div class="check-summary-row"><span>− ${bdEscape(e.label)} <span class="edited-tag" style="background:#fdf1e6;color:#a15f22;">one-time</span></span><span class="amount-input-wrap">${money(e.amount)}<span class="remove" style="margin-left:6px;" data-bd-click="removeExtraExpense(${row.paycheck}, ${e.id})">✕</span></span></div>
     `).join('');
@@ -6734,11 +6734,23 @@ window.showDebtAccountHistory=function(id){
 
 window.flushBearDenState=async()=>{clearTimeout(saveDebounceTimer);calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));};
 
+function renderPaycheckBillsBalance(details){
+ const box=details.querySelector('.paycheck-shared-balances'),balance=window.sharedBillsForPaycheck?.(details.dataset.paycheckDate);
+ if(!box)return;
+ if(!balance){box.textContent='Bills account balance is loading.';return;}
+ const known=balance.currentBalance!==null,projected=balance.projectedBalance!==null;
+ box.innerHTML=`<div><span>Bills account balance</span><strong>${known?money(balance.currentBalance/100):'Unavailable'}</strong><small>${bdEscape(balance.accountName)} · Latest synced balance</small></div><div class="${projected&&balance.projectedBalance<0?'is-negative':''}"><span>Left after bills</span><strong>${projected?money(balance.projectedBalance/100):'—'}</strong><small>${balance.historical?'Past pay period':projected?'Projected through '+fmtDate(new Date(balance.end+'T00:00:00')):'Connect your bills account to see the projection'}</small></div>${projected?'<p>Includes scheduled contributions and unpaid bills through the day before your next payday.</p>':''}`;
+}
+document.addEventListener('toggle',event=>{
+ const details=event.target;
+ if(details.matches?.('.paycheck-shared-details')&&details.open)renderPaycheckBillsBalance(details);
+},true);
+
 // Accounts publishes bill inputs; a stable signature prevents render/recalculate loops.
 let paycheckBillSignature;
-window.setPaycheckBills=(signature,resolve)=>{
+window.setPaycheckBills=(signature,resolve,sharedForecast)=>{
  if(signature===paycheckBillSignature)return false;
- paycheckBillSignature=signature;window.accountBillsForPaycheck=resolve;calculate();return true;
+ paycheckBillSignature=signature;window.accountBillsForPaycheck=resolve;window.sharedBillsForPaycheck=sharedForecast;calculate();return true;
 };
 
 document.getElementById('bonusControlsToggle').onchange=async e=>{

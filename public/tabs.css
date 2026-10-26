@@ -147,3 +147,10 @@ body{background:radial-gradient(ellipse at 0 0,#aad3bc16,transparent 38%),var(--
 .income-card .bill-card-header .bill-paid-button{border:1px solid var(--line);border-radius:9px;background:var(--accent-soft);color:var(--accent);padding:7px 10px;min-height:36px;font-size:.68rem;font-weight:700}
 .income-card .bill-card-header .bill-paid-button:hover{background:var(--accent);border-color:var(--accent);color:#fff}
 .debt-account-footer>.debt-due-date{flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--accent-soft);color:var(--accent);font-size:1.12rem;font-weight:800;line-height:1.4;letter-spacing:-.015em}
+
+.paycheck-shared-balances{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+.paycheck-shared-balances>div{padding:12px;background:var(--accent-soft);border:1px solid var(--line);border-radius:10px;color:var(--ink)}
+.paycheck-shared-balances span,.paycheck-shared-balances small{display:block;color:var(--muted);font-size:.65rem;line-height:1.5}
+.paycheck-shared-balances strong{display:block;font-size:1.18rem;letter-spacing:-.02em;margin:5px 0;color:var(--accent);overflow-wrap:anywhere}
+.paycheck-shared-balances .is-negative strong{color:var(--warn)}
+.paycheck-shared-balances>p{grid-column:1/-1;margin:0;font-size:.68rem;line-height:1.5}
