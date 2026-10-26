@@ -312,3 +312,5 @@ dialog::backdrop{touch-action:none}
 .bank-card .income-controls-header .bank-refresh span{display:none}
 .paycheck .pay-input{width:62px;box-sizing:border-box;appearance:textfield;font-variant-numeric:tabular-nums;padding:2px}
 .paycheck .pay-input::-webkit-inner-spin-button,.paycheck .pay-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+
+.paycheck-debt-actions{display:flex;flex-wrap:wrap;gap:4px;max-width:100%}

@@ -9,7 +9,7 @@ const toggle=source.slice(source.indexOf('function togglePaycheckSlice('),source
 function plan(options={}){
  const fields={takeHome:{value:'1000'},startDate:{value:'2026-10-26'}};
  const ctx=vm.createContext({window:{BearDenDebtPayments:payments,dispatchEvent(){},syncedDebtBalances:{}},document:{getElementById:id=>fields[id]||null},Event,
- cardsData:[{id:1,name:'A',balance:1000,apr:26,min:20},{id:2,name:'B',balance:500,apr:26,min:30}],paycheckSlices:{},budgetItems:[],currentPayoffMethod:'minimum',savingsGoals:[],paycheckOverrides:{},appliedBonuses:{},checkedPaychecks:{},budgetItemOverrides:{},savingsContributionOverrides:{},extraExpenses:{},accountPaymentOverrides:{},queueSaveAppState(){},...options});
+ cardsData:[{id:1,name:'A',balance:1000,apr:26,min:20},{id:2,name:'B',balance:500,apr:26,min:30}],paycheckSlices:{},paycheckSquashes:{},budgetItems:[],currentPayoffMethod:'minimum',savingsGoals:[],paycheckOverrides:{},appliedBonuses:{},checkedPaychecks:{},budgetItemOverrides:{},savingsContributionOverrides:{},extraExpenses:{},accountPaymentOverrides:{},queueSaveAppState(){},...options});
  ctx.renderResults=(cards,schedule,interest,savings,goals,date,paycheck,budget,comparison)=>{ctx.lastCardsForSpending=cards;ctx.lastSchedule=schedule;ctx.result={cards,schedule,interest,date,comparison};};
  vm.runInContext(calculate+'\n'+toggle,ctx);vm.runInContext('calculate()',ctx);return ctx;
 }
@@ -52,4 +52,33 @@ test('interest comparison can show Slice costs more than the full avalanche plan
  const p=plan({currentPayoffMethod:'avalanche',paycheckSlices:{1:{1:true}}});
  assert.ok(p.result.comparison.difference<0);assert.equal(p.result.comparison.through,null);
  assert.equal(p.result.schedule[0].payments[1],30);
+});
+
+
+test('Squash pays the full balance and projected interest, leaves other debts at minimum, and can be undone',()=>{
+ const p=plan();
+ vm.runInContext('togglePaycheckSquash(2,1)',p);
+ assert.deepEqual(values(p.result.schedule[0].payments),[20,505]);
+ assert.equal(p.result.schedule[0].balancesAfter[1],0);
+ assert.equal(p.result.schedule[0].cashAfterDebt,475);
+ assert.equal(p.result.schedule[1].payments[1],0);
+ assert.equal(p.result.comparison.actions,'Squash');
+ vm.runInContext('togglePaycheckSquash(2,1)',p);
+ assert.deepEqual(values(p.result.schedule[0].payments),[20,30]);
+ assert.deepEqual(values(p.paycheckSquashes),{});
+});
+
+test('Squash and Slice coexist, restore prior Slice on undo, and use refreshed future balances',()=>{
+ const p=plan({paycheckSlices:{1:{1:true}},window:{BearDenDebtPayments:payments,dispatchEvent(){},syncedDebtBalances:{2:{balance:20000,date:'2026-10-26'}}}});
+ vm.runInContext('togglePaycheckSquash(2,1)',p);
+ assert.deepEqual(values(p.result.schedule[0].payments),[500,202]);
+ assert.equal(p.result.comparison.actions,'Slice and Squash');
+ vm.runInContext('togglePaycheckSquash(1,1)',p);
+ assert.equal(p.result.schedule[0].payments[0],1010);
+ assert.equal(p.result.schedule[0].cashAfterDebt,-212);
+ vm.runInContext('togglePaycheckSquash(1,1)',p);
+ assert.equal(p.result.schedule[0].payments[0],500);
+ vm.runInContext('togglePaycheckSquash(1,1);togglePaycheckSlice(1,1)',p);
+ assert.equal(p.result.schedule[0].payments[0],500);
+ assert.equal(p.paycheckSquashes[1][1],undefined);
 });
