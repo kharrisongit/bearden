@@ -111,9 +111,9 @@ body{background:radial-gradient(ellipse at 0 0,#aad3bc16,transparent 38%),var(--
 @media(max-width:600px){.income-card .compact-account-picker select,.income-card .transaction-filters select{font-size:16px}.bill-amount>strong{font-size:1.2rem}.forecast-stats small{font-size:.6rem}.forecast-stats strong{font-size:.8rem}}
 
 /* Keep the card's actions together at its upper right without covering its title. */
-.debt-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap-reverse}
-.debt-card-header .debt-compact-main{order:0;flex:1 1 140px;min-width:0;padding-right:0}
-.debt-card-header .debt-account-tools{order:1;gap:4px}
+.debt-card-header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:10px}
+.debt-card-header .debt-compact-main{grid-column:1;grid-row:1;min-width:0;padding-right:0}
+.debt-card-header .debt-account-tools{grid-column:2;grid-row:1;margin:0;gap:4px;align-items:flex-start}
 .income-card .debt-card-header .account-edit{position:static}
 .setup-wizard .editor-save-action{display:none!important}
 #incomeEditorStatus:empty,#budgetEditorStatus:empty{display:none}
@@ -159,3 +159,16 @@ body{background:radial-gradient(ellipse at 0 0,#aad3bc16,transparent 38%),var(--
 
 .calendar-payments{margin:0 0 20px}
 .calendar-payments .account-list-heading{margin:0 0 10px}
+
+/* Keep all debt actions to the right on phones, with room for long account names. */
+.debt-card-header .debt-account-tools>button{white-space:nowrap}
+@media(max-width:600px){
+ .debt-card-header .debt-account-tools{display:grid;grid-template-columns:repeat(2,minmax(36px,auto));justify-items:end;gap:4px}
+ .debt-card-header .debt-account-tools>button:not(.bill-icon-button){grid-column:1/-1;justify-self:stretch}
+ .debt-card-header .debt-account-tools>.account-edit{grid-column:2}
+}
+
+.calendar-agenda-scroll{max-height:min(38dvh,300px);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;border:1px solid var(--line);border-radius:12px;background:var(--paper);padding:4px 8px}
+.calendar-agenda-scroll[hidden]{display:none}
+.calendar-agenda-scroll .calendar-agenda-row{padding:12px;margin:6px 0;font-size:.76rem}
+.calendar-agenda-scroll:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
