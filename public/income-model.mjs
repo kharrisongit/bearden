@@ -147,3 +147,11 @@ export function forecastTimeline(f,start){
 export function forecastBalanceOn(points,date){
  let lo=0,hi=points.length-1,index=-1;while(lo<=hi){const mid=(lo+hi)>>1;if(points[mid].date<=date){index=mid;lo=mid+1;}else hi=mid-1;}return index<0?null:points[index].balance;
 }
+
+// Loan balances describe the debt, never the recurring payment amount.
+export function linkedBillLoan(bill,planner,accounts=[]){
+ const id=planner.loanLinks?.[bill.id];
+ if(!id||bill.billKind!=='car-payment')return null;
+ const account=accounts.find(a=>a.id===id&&a.source==='plaid'&&a.type==='loan');
+ return account?{id,name:account.name,balance:account.balance,currency:account.currency||'USD'}:{id,unavailable:true};
+}
