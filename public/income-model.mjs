@@ -208,6 +208,31 @@ export function syncedDebtBalances(planner,accounts,today){
  return result;
 }
 
+// The debt list and Dashboard share these current balances. Bank/statement
+// snapshots never replace starting balances or historical paycheck payments.
+export function accountDebtBalances(planner,accounts,creditCards,cards,today,statements={}){
+ const result=syncedDebtBalances(planner,accounts,today);
+ const known=new Set(cards.map(c=>String(c.id)));
+ for(const card of creditCards){
+  if(planner.hiddenConnectedAccounts?.['plaid-'+card.accountId])continue;
+  const id=planner.creditCards?.[card.id]?.trackerCardId;
+  if(!id||!known.has(String(id))||planner.debtAccountLinks?.[id])continue;
+  const balance=card.emailBalance?card.balance:accounts.find(a=>a.id==='plaid-'+card.accountId)?.balance??card.balance;
+  if((card.currency||'USD')==='USD'&&Number.isSafeInteger(balance)&&balance>=0)result[id]={balance,date:today};
+ }
+ for(const card of cards){
+  const balance=statements[card.id]?.balance;
+  if(!result[card.id]&&Number.isSafeInteger(balance)&&balance>=0)result[card.id]={balance,date:today};
+ }
+ return result;
+}
+export function debtAccountSummary(accounts){
+ const totals=new Map();let missing=0,starting=0;
+ const known=accounts.filter(a=>{if(!Number.isFinite(a.amount)){missing++;return false;}return true;});
+ for(const a of known){const currency=a.currency||'USD';totals.set(currency,(totals.get(currency)||0)+Math.max(0,a.amount));starting+=Math.max(0,a.startingBalance??a.amount);}
+ return {accounts:known.map(a=>({...a,amount:Math.max(0,a.amount)})),totals:[...totals].map(([currency,amount])=>({currency,amount})),missing,starting};
+}
+
 export function personalChecking(accounts,household={}){
  const checking=accounts.filter(a=>(a.currency||'USD')==='USD'&&a.type==='depository'&&(a.subtype==='checking'||/checking/i.test(a.name||''))&&a.id!==household.billsAccountId);
  return household.personalAccountId?checking.find(a=>a.id===household.personalAccountId)||null:checking.length===1?checking[0]:null;

@@ -1500,21 +1500,26 @@ function buildAccountDetailHTML(d, idx){
   `;
 }
 
+let debtAccountSummary=null;
+window.setDebtAccountSummary=summary=>{debtAccountSummary=summary;updateDebtHeroProgress();};
+
 function updateDebtHeroProgress(){
   const avalancheBtn = document.getElementById('pmBtnAvalanche');
   const snowballBtn = document.getElementById('pmBtnSnowball');
   if (avalancheBtn) avalancheBtn.classList.toggle('active', currentPayoffMethod === 'avalanche');
   if (snowballBtn) snowballBtn.classList.toggle('active', currentPayoffMethod === 'snowball');
 
-  let remaining = lastStartTotal;
   const checkedNums = Object.keys(checkedPaychecks).filter(k => checkedPaychecks[k]).map(Number);
-  if (checkedNums.length > 0) {
-    const maxChecked = Math.max(...checkedNums);
-    const row = lastSchedule.find(r => r.paycheck === maxChecked);
-    if (row) remaining = row.total;
-  }
+  const row=lastSchedule.find(r=>r.paycheck===Math.max(...checkedNums));
+  const currentBalances=lastCardsForSpending.map((card,i)=>(window.syncedDebtBalances?.[card.id]?window.syncedDebtBalances[card.id].balance/100:row?.balancesAfter[i]??card.balance));
+  const summary=debtAccountSummary;
+  const remaining=summary?summary.totals.reduce((sum,t)=>sum+t.amount/100,0):currentBalances.reduce((a,b)=>a+b,0);
+  const startTotal=summary?summary.starting/100:lastStartTotal;
   const el = document.getElementById('heroTotal');
-  if (el) el.textContent = money(remaining);
+  if (el) el.textContent=summary?(summary.totals.length?summary.totals.map(t=>new Intl.NumberFormat('en-US',{style:'currency',currency:t.currency}).format(t.amount/100)).join(' · '):summary.missing?'Unavailable':money(0)):money(remaining);
+  let balanceNote=document.getElementById('heroBalanceNote');
+  if(!balanceNote&&el){balanceNote=document.createElement('p');balanceNote.id='heroBalanceNote';balanceNote.className='hero-balance-note';el.closest('.row').after(balanceNote);}
+  if(balanceNote){balanceNote.hidden=!summary?.missing;balanceNote.textContent=summary?.missing?summary.missing+' account'+(summary.missing===1?' has':'s have')+' no balance available.':'';}
 
   // Interest actually charged so far, based only on checked-off paychecks —
   // distinct from "Total interest you'll pay," which is the full projected
@@ -1530,9 +1535,9 @@ function updateDebtHeroProgress(){
   const pie = document.getElementById('heroPie');
   const pctLabel = document.getElementById('heroPiePct');
   if (pieWrap && pie && pctLabel) {
-    if (lastStartTotal > 0.005) {
-      const paidOffAmount = Math.max(0, lastStartTotal - remaining);
-      const pct = Math.min(100, (paidOffAmount / lastStartTotal) * 100);
+    if (startTotal > 0.005 && (!summary || summary.totals.length<=1)) {
+      const paidOffAmount = Math.max(0, startTotal - remaining);
+      const pct = Math.min(100, (paidOffAmount / startTotal) * 100);
       pie.style.background = `conic-gradient(#7fd9bd 0% ${pct.toFixed(2)}%, rgba(255,255,255,0.18) ${pct.toFixed(2)}% 100%)`;
       pctLabel.textContent = pct.toFixed(0) + '%';
       pieWrap.style.display = 'flex';
@@ -1545,17 +1550,11 @@ function updateDebtHeroProgress(){
   // each account, kept in sync so it's current whenever the dropdown opens.
   const breakdownEl = document.getElementById('debtBreakdownDropdown');
   if (breakdownEl) {
-    let remainingByAccount = lastCardsForSpending.map(c => c.balance);
-    if (checkedNums.length > 0) {
-      const maxChecked = Math.max(...checkedNums);
-      const row = lastSchedule.find(r => r.paycheck === maxChecked);
-      if (row) remainingByAccount = row.balancesAfter.slice();
-    }
-    const segments = lastCardsForSpending.map((c, i) => ({ label: c.name, value: Math.max(0, remainingByAccount[i]) }));
-    const pieHTML = buildPieChartHTML(segments, 180, null);
+    const segments=summary?summary.accounts.map(a=>({label:a.name,value:a.amount/100})):lastCardsForSpending.map((c,i)=>({label:c.name,value:Math.max(0,currentBalances[i])}));
+    const pieHTML = summary?.totals.length>1?'':buildPieChartHTML(segments, 180, null);
     breakdownEl.innerHTML = pieHTML
       ? `<div style="font-size:0.72rem;color:#c9d2d8;text-align:center;margin-bottom:8px;">Remaining balance by account</div><div class="debt-breakdown-pie">${pieHTML}</div>`
-      : `<p style="font-size:0.8rem;color:#c9d2d8;text-align:center;margin:0;">Add some accounts to see a breakdown.</p>`;
+      : `<p style="font-size:0.8rem;color:#c9d2d8;text-align:center;margin:0;">No balance breakdown available.</p>`;
   }
 }
 
@@ -1620,7 +1619,7 @@ function computeAndRenderSpendingTracker(){
         interestPaid += row.interestByAccount ? row.interestByAccount[i] : 0;
       }
     });
-    const remaining = maxCheckedRow ? maxCheckedRow.balancesAfter[i] : c.balance;
+    const remaining = window.syncedDebtBalances?.[c.id]?window.syncedDebtBalances[c.id].balance/100:(maxCheckedRow ? maxCheckedRow.balancesAfter[i] : c.balance);
     const isComplete = remaining <= 0.01;
 
     // Projected date this specific account's balance hits zero, per the

@@ -250,3 +250,20 @@ dialog::backdrop{touch-action:none}
 #incomeBudgetSlot #budgetDropdown input{color:var(--ink);background:var(--paper);border-color:var(--line)}
 #incomeBudgetSlot .remove{color:var(--warn)}
 #incomeBudgetSlot #budgetEditorStatus{color:var(--ink)}
+
+/* A manual payment can be reversed immediately or from its saved paid entry. */
+.payment-undo-notice{position:fixed;z-index:1050;left:50%;bottom:calc(88px + env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;align-items:center;gap:10px;width:min(480px,calc(100% - 32px));padding:12px 14px;border:1px solid #698e7f;border-radius:14px;background:#173c35;color:#fff9ed;box-shadow:0 8px 24px #102c3540;font-size:.8rem}
+.payment-undo-notice[hidden]{display:none}
+.payment-undo-notice>span{flex:1;min-width:0;overflow-wrap:anywhere}
+.payment-undo-notice button{flex:none;min-height:40px;border:1px solid #85b1a0;border-radius:8px;padding:7px 12px;background:#e4f0e8;color:#145f53;font:inherit;font-weight:700;cursor:pointer}
+.payment-undo-notice #dismissPaymentUndo{width:32px;padding:4px;background:transparent;color:#fff9ed;border-color:transparent;font-size:1.2rem}
+.payment-undo-notice button:disabled{opacity:.55;cursor:wait}
+.paid-bill-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}
+.paid-bill-row>span{min-width:0;overflow-wrap:anywhere}
+.paid-bill-row strong{font-size:.8rem}.paid-bill-row small{display:block;margin-top:4px;color:var(--muted);font-size:.68rem}
+.paid-bill-row .bill-paid-button{flex:none;white-space:nowrap}
+
+#billsForecastCard>.card-heading{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
+.income-card #chooseBillsAccount{margin:0;min-height:36px;padding:7px 9px;font-size:.7rem;white-space:nowrap}
+
+.hero-balance-note{font-size:.75rem;color:#e7eee9;margin:8px 0 0;text-align:right}
