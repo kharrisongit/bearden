@@ -331,3 +331,64 @@ dialog::backdrop{touch-action:none}
 .account-available-credit small{font-size:.61rem;color:var(--muted)}
 .account-available-credit strong{font-size:.86rem;color:var(--ink);font-variant-numeric:tabular-nums}
 #debtCreditLimit input[readonly],#creditEditorForm input[readonly]{background:var(--paper);color:var(--muted)}
+
+/* BearDen palette: one source for surfaces, actions, and status colors.
+   Keep this after the legacy component styles so new UI shares these tokens. */
+:root,:root:not([data-theme=dark]){
+  --ink:#233345;--ink-fixed:#233345;--muted:#596b7c;
+  --paper:#edf1f5;--card:#ffffff;--line:#bdcad5;
+  --accent:#126b68;--accent-soft:#e0f1ed;
+  --warn:#a83840;--warn-soft:#fcebed;--coral:#6375a1;
+  --surface-inset:#e8eef4;--surface-subtle:#f5f7fa;
+  --amount-line:#b4c3d1;--accent-line:#9bc7bc;
+  --header:#203349;--hero-debt:#243b53;--hero-savings:#234d4a;
+  --on-dark:#f7fafc;--on-dark-muted:#c5d4df;
+  --status:#335c91;--status-soft:#e7effa;--status-line:#b5c9e5;
+  --shadow:0 2px 4px #162d4310,0 8px 24px #162d4308;
+}
+:root[data-theme=dark]{
+  --ink:#e8eef5;--ink-fixed:#e8eef5;--muted:#aabccc;
+  --paper:#111c28;--card:#1c2b3b;--line:#43586d;
+  --accent:#86d9c8;--accent-soft:#23483f;
+  --warn:#ffacb4;--warn-soft:#462c39;--coral:#a9b9e5;
+  --surface-inset:#293d52;--surface-subtle:#223346;
+  --amount-line:#526d86;--accent-line:#517c70;
+  --header:#263f59;--hero-debt:#263f59;--hero-savings:#234d4a;
+  --status:#c0d8ff;--status-soft:#263f60;--status-line:#52729a;
+  --shadow:0 4px 18px #00000018;
+}
+body{background:var(--paper);color:var(--ink)}
+:root .tab-intro{background:var(--header);border-color:var(--header);box-shadow:var(--shadow)}
+.tab-intro h2,#tab-settings .connection-heading h2{color:var(--on-dark)}
+.tab-intro p,#tab-settings .connection-heading p{color:var(--on-dark-muted)}
+.tab-heading-icon{color:#9bddd0}.tab-intro::after{border-color:#ffffff12;box-shadow:0 0 0 24px #ffffff04}
+:root .hero.debt-hero{background:var(--hero-debt);border-color:#49617a;box-shadow:var(--shadow)}
+:root .hero.savings-hero{background:var(--hero-savings);border-color:#507770;box-shadow:var(--shadow)}
+:root .debt-hero .hero-pie-hole-sm{background:var(--hero-debt)}
+:root .savings-hero .hero-pie-hole-sm{background:var(--hero-savings)}
+.bank-card{background:var(--header);border-color:#49617a;box-shadow:var(--shadow);color:var(--on-dark)}
+.bank-card:before{border-color:#ffffff12;box-shadow:0 0 0 28px #ffffff04,0 0 0 58px #ffffff03}
+.bank-card .income-total{color:var(--on-dark)}
+.bank-card .income-eyebrow,.bank-card .income-meta,.bank-card .bank-row small,.bank-card .subtle,.bank-card .transaction-entry small,.bank-card .income-transactions .card-heading small,.hero-balance-note,.slice-interest-note{color:var(--on-dark-muted)}
+.bank-card .income-live-dot{background:#9bddd0}
+:root .income-card:not(.bank-card),:root .paycheck,:root #tab-settings #connectionDialog>section,:root #tab-settings #privateConnections>section{box-shadow:var(--shadow);border-color:var(--line)}
+:root .bill-tile,:root .debt-account{background:var(--card);border-top-color:var(--line);border-right-color:var(--line);border-bottom-color:var(--line);box-shadow:0 2px 6px #162d4308}
+:root #connectionDialog .connection-row{background:var(--surface-subtle);border-color:var(--line);box-shadow:none}
+:root .bill-amount,:root .debt-key-amounts>div{background:var(--surface-inset);border-color:var(--amount-line);box-shadow:none}
+:root .debt-key-amounts>.minimum-due{background:var(--accent-soft);border-color:var(--accent-line)}
+:root .bill-amount>span,:root .debt-key-amounts span{color:var(--muted)}
+.bill-tile>.account-card-footer,.bill-tile-footer{background:var(--surface-subtle)}
+.debt-account-footer>.debt-due-date{background:var(--surface-subtle);color:var(--ink)}
+.account-connection{color:var(--muted)}
+.account-total-card{background:var(--accent-soft);border-color:var(--accent-line)}
+.forecast-chart,.bill-progress{background:var(--surface-subtle)}
+:root .pm-btn.active,.bank-card .income-controls-header .income-widget-actions>button[aria-expanded=true]{background:#dff2ec;color:#155e58;border-color:#9bc7bc}
+.income-card .bill-save{background:var(--accent);color:var(--card);border-color:var(--accent);box-shadow:none}
+.paycheck .slice-payment{border-color:var(--accent-line)}
+:root #connectionDialog .connection-state[data-connected=true]{color:var(--status);background:var(--status-soft);border-color:var(--status-line)}
+.bottom-tabs{background:var(--card);box-shadow:0 -3px 18px #162d430c}
+.bottom-tabs button[aria-selected=true]{background:var(--accent-soft);color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
+.bill-calendar button.selected{background:var(--accent);color:var(--card)}
+.payment-undo-notice{background:var(--header);color:var(--on-dark);border-color:#526d86;box-shadow:var(--shadow)}
+.payment-undo-notice button{background:#dff2ec;color:#155e58;border-color:#9bc7bc}
+:root .milestone-banner-debt,:root .milestone-banner-account,:root .milestone-both{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line)}
