@@ -318,3 +318,19 @@ dialog::backdrop{touch-action:none}
 .account-available-credit small{font-size:.61rem;color:var(--muted)}
 .account-available-credit strong{font-size:.86rem;color:var(--ink);font-variant-numeric:tabular-nums}
 #debtCreditLimit input[readonly],#creditEditorForm input[readonly]{background:var(--paper);color:var(--muted)}
+
+
+/* Fixed bill sharing uses the existing dialog and color tokens. */
+.bill-sharing-toolbar{border-top:1px solid var(--line);padding-top:14px;margin-top:14px}
+.bill-share-open{max-width:100%;white-space:normal!important}
+#billShareDialog{width:min(560px,calc(100vw - 24px));box-sizing:border-box}
+.bill-share-tabs,.bill-share-actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+.bill-share-tabs button{flex:1}.bill-share-tabs button[aria-pressed="true"]{background:var(--accent-fill)!important;color:var(--on-accent,#fff)!important}
+.bill-share-choices{max-height:40dvh;overflow:auto;margin:14px 0}
+.bill-share-row{display:flex!important;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.bill-share-row>input{flex:0 0 18px;width:18px!important;height:18px!important;margin:0!important}
+.bill-share-row>span{flex:1;min-width:0;overflow-wrap:anywhere}.bill-share-row strong{font-size:.82rem}.bill-share-row>strong{white-space:nowrap}
+.bill-share-row small{display:block;color:var(--muted);font-size:.7rem;line-height:1.5;margin-top:4px}
+#billShareActive,#billSharePreviewForm{display:grid;gap:8px}#billShareActive[hidden]{display:none}
+#billShareCode,#billShareImportCode{width:100%;min-width:0;box-sizing:border-box;font-size:16px}
+#billShareCode{font-family:monospace;font-size:.85rem}#billShareStatus{overflow-wrap:anywhere}

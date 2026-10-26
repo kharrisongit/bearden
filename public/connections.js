@@ -186,6 +186,7 @@ window.BearDen=(()=>{
  });
  $('#classicBank').onclick=run(()=>connectBank());$('#classicGmail').onclick=()=>{if(requireLogin())location.href='/auth/google?gmail=1&account='+encodeURIComponent(config.accountId);};
  $('#classicOutlook').onclick=()=>{if(requireLogin()&&config.microsoftConfigured)location.href='/auth/microsoft?mail=1&account='+encodeURIComponent(config.accountId);};
+ bridge.billShare=async(action,body={})=>{await bridge.ready;await queue;if(!config.authenticated)throw Error('Sign in to BearDen to share or import bills.');return api('/api/bills/share/'+action,body);};
  bridge.readGmailMessage=async message=>{await queue;const result=await api('/api/gmail/message',{mailboxId:message.mailboxId,id:message.id});if(!result.message)throw Error('Could not read the selected email. Try again.');legacy.connections.gmailMessages=[...(legacy.connections.gmailMessages||[]).filter(m=>m.id!==result.message.id),result.message];return result.message;};
  bridge.searchGmail=async query=>{await queue;const result=await api('/api/gmail/search',{query:String(query||'').slice(0,100)});Object.assign(legacy.connections,result);renderConnections();return result;};
  $('#checkGmailAccounts').onclick=run(async()=>{$('#gmailFeedback').textContent='Checking email…';try{await bridge.searchGmail('');$('#gmailFeedback').textContent='Email checked.';}catch(error){$('#gmailFeedback').textContent=error.message;}});

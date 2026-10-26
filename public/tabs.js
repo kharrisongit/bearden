@@ -37,7 +37,7 @@
  const billCategories={electric:'Electric',rent:'Rent',utility:'Utility','car-payment':'Car payment',insurance:'Insurance','phone-internet':'Phone & internet',subscription:'Subscription','credit-card':'Credit card',loan:'Loan payment',other:'Other bill'};
  const pencil='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg>';
  let review={rows:[],bills:[],spending:{categories:[],total:0}};
- let month=new Date(new Date().getFullYear(),new Date().getMonth(),1),selected=null,agendaOpen=false,model,mailModel,rentModel,planner={manual:[],covered:{},paid:[],accountVisibility:{},dismissedEstimates:[],estimates:{},bankRules:{},creditCards:{},transactionLinks:{},emailLinks:{},billFunding:{},household:{},forecastDebtMode:'full'},linked={},ready=false;
+ let month=new Date(new Date().getFullYear(),new Date().getMonth(),1),selected=null,agendaOpen=false,model,mailModel,rentModel,sharingModel,planner={manual:[],covered:{},paid:[],accountVisibility:{},dismissedEstimates:[],estimates:{},bankRules:{},creditCards:{},transactionLinks:{},emailLinks:{},billFunding:{},household:{},forecastDebtMode:'full'},linked={},ready=false;
  let paymentSaveRunning=false,lastPaidAction=null;
  function showPaymentUndo(key,name){
   lastPaidAction={key,name};$('#paymentUndoText').textContent=name+' marked paid.';
@@ -51,7 +51,7 @@
  async function save(){if(!ready)throw Error('Accounts have not loaded. Reload before saving changes.');await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();}
  let initializing;
  $('#configureHousehold').disabled=true;$('#sharedBillsToggle').disabled=true;
- function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel]=await Promise.all([import('./income-model.mjs?v=ledger-controls1'),import('./email-model.mjs?v=balance-fix1'),import('./rent-model.mjs?v=rent-portal1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#sharedBillsToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
+ function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=ledger-controls1'),import('./email-model.mjs?v=balance-fix1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=fixed-bills1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#sharedBillsToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
  window.addEventListener('load',initialize,{once:true});
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});
@@ -367,11 +367,75 @@
   if(d.has('tracking')&&Object.entries(planner.creditCards).some(([id,p])=>id!==editingCredit.id&&p.tracking&&((d.get('trackerCardId')&&p.trackerCardId===d.get('trackerCardId'))||(d.get('replaces')&&p.replaces===d.get('replaces'))))){$('#creditEditorError').textContent='That debt or bill is already matched to another card.';return;}
   button.disabled=true;try{const fallbackLimit=form.elements.creditLimit.readOnly?old?.fallbackLimit??null:enteredCreditLimit(form.elements.creditLimit);storeEditorLink('credit','credit:'+editingCredit.id,String(d.get('name')).trim());planner.creditCards[editingCredit.id]={tracking:d.has('tracking'),name:String(d.get('name')).trim(),covered:d.has('covered'),trackerCardId:String(d.get('trackerCardId')||''),replaces:String(d.get('replaces')||''),fallbackAmount,fallbackDate,fallbackLimit};await save();$('#creditEditor').close();discoverMail('credit:'+editingCredit.id,String(d.get('name')));sessionStorage.removeItem('bearden-debt-draft');}catch(e){planner.emailLinks=oldEmailLinks;planner.transactionLinks=oldLinks;if(old)planner.creditCards[editingCredit.id]=old;else delete planner.creditCards[editingCredit.id];$('#creditEditorError').textContent=e.message;}finally{button.disabled=false;}
  };
+ const shareDialog=$('#billShareDialog');let shareCandidates=[],sharePreview=null,shareBusy=false;
+ const shareRepeat={once:'One time',weekly:'Weekly',biweekly:'Every two weeks',monthly:'Monthly'};
+ function shareMessage(text){$('#billShareStatus').textContent=text;}
+ function showShareMode(mode){
+  $('#billShareSend').hidden=mode!=='send';$('#billShareReceive').hidden=mode!=='receive';
+  $('#billShareSendTab').setAttribute('aria-pressed',String(mode==='send'));$('#billShareReceiveTab').setAttribute('aria-pressed',String(mode==='receive'));shareMessage('');
+ }
+ function shareRow(b,input,note=''){
+  return '<label class="bill-share-row">'+input+'<span><strong>'+esc(b.name)+'</strong><small>'+esc(billCategories[b.billKind]||'Other bill')+' · '+esc(shareRepeat[b.repeat]||b.repeat)+' · '+esc(new Date(b.date+'T12:00:00').toLocaleDateString())+'</small>'+(note?'<small>'+esc(note)+'</small>':'')+'</span><strong>'+money(b.amount)+'</strong></label>';
+ }
+ function showActiveShare(result){
+  $('#billShareActive').hidden=!result.code;$('#billShareCode').value=result.code||'';
+  $('#billShareExpiry').textContent=result.code?result.bills.length+' bills · expires '+new Date(result.expires).toLocaleDateString()+'. Anyone signed in with this code can copy these bills.':'';
+ }
+ async function sharingAction(button,fn){
+  if(shareBusy)return;shareBusy=true;button.disabled=true;shareMessage('');
+  try{await fn();}catch(e){shareMessage(e.message);}finally{shareBusy=false;button.disabled=false;}
+ }
+ async function openBillSharing(){
+  await initialize();if(!ready)return;
+  if(!window.BearDen.config?.authenticated){window.selectBearTab('settings');$('#connectionMessage').textContent='Sign in to BearDen to share or import fixed bills.';return;}
+  await renderIncome();shareCandidates=householdBills.filter(b=>Number.isSafeInteger(b.amount)&&b.date);
+  $('#billShareChoices').innerHTML=shareCandidates.map((b,i)=>shareRow(b,'<input type="checkbox" data-share-bill="'+i+'" '+(planner.billFunding[b.id]==='shared'||model.sharedBill(b,planner)?'checked':'')+'>')).join('')||'<p class="subtle">Add recurring bills in Accounts first. You can still import bills using a code.</p>';
+  showShareMode('send');shareDialog.showModal();showActiveShare({code:null});
+  try{showActiveShare(await window.BearDen.billShare('status'));}catch(e){shareMessage(e.message);}
+ }
+ document.addEventListener('click',e=>{if(e.target.closest('[data-open-bill-sharing]'))openBillSharing().catch(error);});
+ $('#closeBillShare').onclick=()=>shareDialog.close();
+ $('#billShareSendTab').onclick=()=>showShareMode('send');$('#billShareReceiveTab').onclick=()=>showShareMode('receive');
+ $('#createBillShare').onclick=e=>sharingAction(e.currentTarget,async()=>{
+  const selected=[...$('#billShareChoices').querySelectorAll('input:checked')].map(input=>sharingModel.cleanSharedBill(shareCandidates[Number(input.dataset.shareBill)]));
+  if(!selected.length)throw Error('Select at least one bill to share.');
+  showActiveShare(await window.BearDen.billShare('create',{bills:selected}));shareMessage('Code ready. Send it to the person who will import these bills.');
+ });
+ async function copyBillShare(){
+  const code=$('#billShareCode').value;if(!code)return;
+  try{await navigator.clipboard.writeText(code);shareMessage('Code copied.');}catch{const input=$('#billShareCode');input.focus();input.select();shareMessage('Select and copy the code above.');}
+ }
+ $('#copyBillShare').onclick=copyBillShare;
+ $('#sendBillShare').onclick=async()=>{
+  const code=$('#billShareCode').value;if(!code)return;
+  if(!navigator.share)return copyBillShare();
+  try{await navigator.share({title:'BearDen fixed bills',text:'Copy our fixed bills in BearDen: '+code+'\n'+location.origin+'\nAccounts → Recurring bills → Share / import fixed bills → Import bills.'});}catch(e){if(e.name!=='AbortError')await copyBillShare();}
+ };
+ $('#revokeBillShare').onclick=e=>sharingAction(e.currentTarget,async()=>{await window.BearDen.billShare('revoke');showActiveShare({code:null});shareMessage('Code revoked. Copies already imported remain in their accounts.');});
+ $('#billShareImportCode').oninput=()=>{sharePreview=null;$('#billSharePreview').hidden=true;$('#billShareImportStatus').textContent='';};
+ $('#billSharePreviewForm').onsubmit=e=>{
+  e.preventDefault();sharingAction($('#previewBillShare'),async()=>{
+   const code=$('#billShareImportCode').value.trim(),bundle=await window.BearDen.billShare('preview',{code}),rows=sharingModel.previewSharedBills(planner,bundle,householdBills);
+   sharePreview={code,bundle};$('#billShareImportChoices').innerHTML=rows.map(b=>shareRow(b,'<input type="checkbox" data-import-bill="'+b.index+'" '+(b.existingId?'disabled':'checked')+'>',b.existingId?'Already in your account':'')).join('');
+   $('#billSharePreview').hidden=false;$('#billShareImportStatus').textContent=rows.every(b=>b.existingId)?'These bills are already in your account.':model.householdEnabled(planner.household)?'These copies will use your Fixed Bills account. Connect your own emails and transactions after importing.':'After importing, set up your Fixed Bills account to fund these bills. Connect your own emails and transactions in each bill’s details.';
+   $('#importSharedBills').disabled=rows.every(b=>b.existingId);
+  });
+ };
+ $('#importSharedBills').onclick=e=>sharingAction(e.currentTarget,async()=>{
+  if(!sharePreview)throw Error('Preview a share code first.');
+  const selected=[...$('#billShareImportChoices').querySelectorAll('input:checked:not(:disabled)')].map(input=>Number(input.dataset.importBill)),bundle=await window.BearDen.billShare('preview',{code:sharePreview.code});
+  if(bundle.id!==sharePreview.bundle.id)throw Error('The shared bills changed. Preview the code again.');
+  const before=planner,result=sharingModel.importSharedBills(planner,bundle,selected,householdBills);planner=result.planner;
+  try{await save();}catch(e){planner=before;throw e;}
+  sharePreview=null;$('#billSharePreview').hidden=true;$('#billShareImportCode').value='';shareDialog.close();window.selectBearTab('accounts');selectAccountView('bills');
+  $('#accountStatus').textContent=result.added.length+' fixed bill'+(result.added.length===1?'':'s')+' added.'+(result.skipped.length?' '+result.skipped.length+' already existed.':'')+' Open each bill to link your own emails and bank transactions.';
+  if(!model.householdEnabled(planner.household)){openHouseholdEditor();$('#householdEditorStatus').textContent='Your bills were imported. Choose your own personal checking and shared bills account, then set your contributions.';}
+ });
  function openHouseholdEditor(){
   const h=planner.household,form=$('#householdForm'),accounts=(window.BearDen.plan?.state?.accounts||[]).filter(a=>['plaid','simplefin'].includes(a.source)&&(a.currency||'USD')==='USD'&&!['credit','loan'].includes(a.type)&&(a.source!=='simplefin'||a.type==='depository'));
   form.reset();for(const key of ['personalAccountId','billsAccountId']){form.elements[key].innerHTML='<option value="">Choose an account</option>'+accounts.filter(a=>accountShown(a.id)||a.id===h[key]).map(a=>'<option value="'+esc(a.id)+'">'+esc(connectedAccountName(a))+' · '+money(a.balance)+'</option>').join('');form.elements[key].value=h[key]||'';}
   form.elements.enabled.checked=h.enabled??true;form.elements.personalAmount.value=(h.personalAmount??72500)/100;form.elements.spouseAmount.value=(h.spouseAmount??72500)/100;form.elements.spouseStartDate.value=h.spouseStartDate||window.getDebtPlan().state.startDate||'';form.elements.spouseRepeat.value=h.spouseRepeat||'biweekly';
-  $('#householdBillChoices').innerHTML=householdBills.map(b=>'<label class="check-label"><input type="checkbox" data-shared-bill="'+esc(b.id)+'" '+(model.sharedBill(b,planner)?'checked':'')+'> '+esc(b.name)+'</label>').join('')||'<p class="subtle">Add bills in Accounts, then choose Shared bills account in their editors.</p>';
+  $('#householdBillChoices').innerHTML=householdBills.map(b=>'<label class="check-label"><input type="checkbox" data-shared-bill="'+esc(b.id)+'" '+(planner.billFunding[b.id]==='shared'||model.sharedBill(b,planner)?'checked':'')+'> '+esc(b.name)+'</label>').join('')||'<p class="subtle">Add bills in Accounts, then choose Shared bills account in their editors.</p>';
   $('#householdEditorStatus').textContent='';$('#householdEditor').showModal();
  }
  $('#sharedBillsToggle').onchange=async e=>{

@@ -363,3 +363,15 @@ test('Microsoft refresh-token rotation survives a selected message provider fail
  f.set('connections',{items:[],transactions:[],candidates:[],outlookAccounts:[{id:'ms',provider:'microsoft',email:'person@hotmail.com',refreshToken:'old'}]});
  await assert.rejects(()=>f.app.handle(f.req('/api/gmail/message',{mailboxId:'ms',id:'ms:message='})),/Provider request failed/);assert.equal(f.get('connections').outlookAccounts[0].refreshToken,'rotated');f.db.close();
 });
+
+test('bill sharing requires sign-in, origin and current account, and exposes only an encrypted selected template',async()=>{
+ const f=fixture(),member=privateSession(f),bills=[{name:'Shared Water',amount:4200,date:'2026-11-10',repeat:'monthly',billKind:'utility',bankToken:'private-bank',mailboxId:'private-mail',accountId:'private-id'}];
+ const payload={bills},anonymous=new Request(f.env.APP_URL+'/api/bills/share/create',{method:'POST',headers:{Origin:f.env.APP_URL,'Content-Type':'application/json'},body:JSON.stringify(payload)});
+ assert.equal((await f.app.handle(anonymous)).status,401);assert.equal((await f.app.handle(f.req('/api/bills/share/create',payload,'https://evil.example'))).status,403);assert.equal((await f.app.handle(member.req('/api/bills/share/create',payload,'wrong-account'))).status,409);
+ const created=await(await f.app.handle(f.req('/api/bills/share/create',payload))).json();assert.ok(created.code);const stored=f.db.prepare("SELECT value FROM vault WHERE id LIKE 'bill-share:%'").get().value;assert.doesNotMatch(stored,/Shared Water/);
+ const preview=await(await f.app.handle(member.req('/api/bills/share/preview',{code:created.code}))).json();assert.equal(preview.bills[0].name,'Shared Water');assert.doesNotMatch(JSON.stringify(preview),/private-|ownerId/);
+ assert.equal((await(await f.app.handle(member.req('/api/bills/share/status',{}))).json()).code,null);
+ const state=await(await f.app.handle(member.req('/api/classic'))).json();assert.deepEqual(state.state.values,{});assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM vault WHERE id LIKE '%connections'").get().n,0);
+ await f.app.handle(member.req('/api/bills/share/revoke',{code:created.code}));assert.equal((await f.app.handle(f.req('/api/bills/share/preview',{code:created.code}))).status,200);
+ await f.app.handle(f.req('/api/bills/share/revoke',{}));await assert.rejects(()=>f.app.handle(member.req('/api/bills/share/preview',{code:created.code})),/revoked/);f.db.close();
+});

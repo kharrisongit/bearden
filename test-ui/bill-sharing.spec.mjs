@@ -1,0 +1,34 @@
+import {test,expect} from '@playwright/test';import {readFileSync} from 'node:fs';
+import {blank} from '../public/engine.mjs';import {billSharingAction} from '../bill-sharing.mjs';
+const water={id:'water',name:'Water',amount:6400,date:'2026-11-15',repeat:'monthly',billKind:'utility',source:'manual'};
+const rent={id:'rent',name:'Rent',amount:72500,date:'2026-11-01',repeat:'monthly',billKind:'rent',source:'manual'};
+async function profile(browser,id,vault,{bills=[],enabled=true}={}){
+ const context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage(),state=blank();
+ state.accounts=[{id:'plaid-'+id+'-checking',source:'plaid',type:'depository',subtype:'checking',name:'Checking',balance:100000,currency:'USD'},{id:'plaid-'+id+'-shared',source:'plaid',type:'depository',subtype:'checking',name:'Shared bills',balance:200000,currency:'USD'}];
+ let tracker={state:{version:1,values:{'app-state':JSON.stringify({cards:[],budgetItems:[],budgetSetupVersion:2,takeHome:'1200',startDate:'2026-11-06'}),onboarding:JSON.stringify({completed:true}),notes:JSON.stringify({text:'Keep private '+id}),'income-planner':JSON.stringify({manual:bills,billFunding:Object.fromEntries(bills.map(b=>[b.id,'shared'])),household:enabled?{enabled:true,personalAccountId:state.accounts[0].id,billsAccountId:state.accounts[1].id,personalAmount:30000,spouseAmount:30000,spouseStartDate:'2026-11-06',spouseRepeat:'biweekly'}:{}})}},revision:0};
+ await page.route('https://bearden.test/**',async route=>{
+  const req=route.request(),path=new URL(req.url()).pathname;
+  if(path==='/api/config')return route.fulfill({json:{authenticated:true,email:id+'@example.com',accountId:id}});
+  if(path==='/api/state')return route.fulfill({json:{state,revision:0,connections:{items:[],transactions:[],candidates:[],gmailMessages:[],recurringBills:[],creditCards:[]}}});
+  if(path==='/api/classic'){
+   if(req.method()==='GET')return route.fulfill({json:tracker});const b=req.postDataJSON();if(b.revision!==tracker.revision)return route.fulfill({status:409,json:{error:'State changed'}});tracker={state:b.state,revision:tracker.revision+1};return route.fulfill({json:{revision:tracker.revision}});
+  }
+  if(path.startsWith('/api/bills/share/')){try{const json=await billSharingAction(path.split('/').at(-1),req.postDataJSON(),{accountId:id,read:async key=>vault.get(id+':'+key)||null,write:async(key,value)=>vault.set(id+':'+key,value),rawRead:async key=>vault.get(key)||null,rawWrite:async(key,value)=>vault.set(key,value),rawDelete:async key=>vault.delete(key)});return route.fulfill({json});}catch(e){return route.fulfill({status:400,json:{error:e.message}});}}
+  if(path.startsWith('/api/'))return route.fulfill({status:404,json:{error:'Not found'}});
+  const name=path==='/'?'index.html':path.slice(1);try{return route.fulfill({body:readFileSync(new URL('../public/'+name,import.meta.url)),contentType:name.endsWith('.css')?'text/css':/\.(js|mjs)$/.test(name)?'text/javascript':'text/html'});}catch{return route.fulfill({status:404,body:''});}
+ });
+ await page.goto('https://bearden.test/');await page.evaluate(()=>window.classicReady);await page.locator('#configureHousehold').waitFor({state:'attached'});await expect(page.locator('#configureHousehold')).toBeEnabled();
+ return {page,context,get tracker(){return tracker;},async open(){await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-bills').click();await page.locator('#billListCard [data-open-bill-sharing]').click();await expect(page.locator('#billShareDialog')).toBeVisible();}};
+}
+test('share selected fixed bills across private profiles, preserve existing bills, and revoke the code',async({browser})=>{
+ const vault=new Map(),owner=await profile(browser,'owner',vault,{bills:[water,rent]}),recipient=await profile(browser,'recipient',vault,{bills:[{...rent,id:'my-rent'}]});
+ await owner.open();await expect(owner.page.locator('[data-share-bill]:checked')).toHaveCount(2);await owner.page.locator('#createBillShare').click();await expect(owner.page.locator('#billShareCode')).toHaveValue(/^BD1-/);const code=await owner.page.locator('#billShareCode').inputValue();
+ await recipient.open();await recipient.page.locator('#billShareReceiveTab').click();await recipient.page.locator('#billShareImportCode').fill(code);await recipient.page.locator('#previewBillShare').click();await expect(recipient.page.locator('#billShareImportChoices')).toContainText('Already in your account');await expect(recipient.page.locator('[data-import-bill]:checked')).toHaveCount(1);await recipient.page.locator('#importSharedBills').click();await expect(recipient.page.locator('#accountStatus')).toContainText('1 fixed bill added.');
+ const planner=JSON.parse(recipient.tracker.state.values['income-planner']);expect(planner.manual).toHaveLength(2);expect(planner.manual.find(b=>b.name==='Rent').id).toBe('my-rent');expect(planner.household.billsAccountId).toBe('plaid-recipient-shared');expect(planner.emailLinks||{}).toEqual({});expect(planner.transactionLinks||{}).toEqual({});expect(recipient.tracker.state.values.notes).toContain('Keep private recipient');
+ await recipient.open();await recipient.page.locator('#billShareReceiveTab').click();await recipient.page.locator('#billShareImportCode').fill(code);await recipient.page.locator('#previewBillShare').click();await expect(recipient.page.locator('#importSharedBills')).toBeDisabled();
+ await owner.page.locator('#revokeBillShare').click();await expect(owner.page.locator('#billShareStatus')).toContainText('revoked');await recipient.page.locator('#previewBillShare').click();await expect(recipient.page.locator('#billShareStatus')).toContainText('revoked');
+ await owner.context.close();await recipient.context.close();
+});
+test('import into a new profile opens its own Fixed Bills setup with imported bills selected',async({browser})=>{
+ const vault=new Map(),owner=await profile(browser,'sender',vault,{bills:[water]}),recipient=await profile(browser,'new',vault,{enabled:false});await owner.open();await owner.page.locator('#createBillShare').click();await expect(owner.page.locator('#billShareCode')).toHaveValue(/^BD1-/);const code=await owner.page.locator('#billShareCode').inputValue();await recipient.open();await recipient.page.locator('#billShareReceiveTab').click();await recipient.page.locator('#billShareImportCode').fill(code);await recipient.page.locator('#previewBillShare').click();await recipient.page.locator('#importSharedBills').click();await expect(recipient.page.locator('#householdEditor')).toBeVisible();await expect(recipient.page.locator('[data-shared-bill]:checked')).toHaveCount(1);await expect(recipient.page.locator('#householdForm select[name="billsAccountId"]')).toHaveValue('');await owner.context.close();await recipient.context.close();
+});

@@ -1,3 +1,4 @@
+import {billSharingAction} from '../bill-sharing.mjs';
 import {microsoftAuthorization,exchangeMicrosoftToken,microsoftUser,requireMicrosoftMail} from '../microsoft.mjs';
 import {rentPortalUrl} from '../rent-portal.mjs';
 import {rememberRentReadings} from '../public/rent-model.mjs';
@@ -133,6 +134,7 @@ export function runtime(env,fetcher=fetch){
    if(path==='/api/sync')return json(await sync(true,false,null,b.gmailOnly===true));
    if(path==='/api/plaid/link'){const c=await connections(),item=c.items.find(i=>i.id===b.itemId);const d=await plaid('/link/token/create',{user:{client_user_id:hash(users.current().scope||owner)},client_name:'BearDen',...creditLinkOptions(b,item),country_codes:['US'],language:'en',...(env.PLAID_REDIRECT_URI?{redirect_uri:env.PLAID_REDIRECT_URI}:{})});return json({link_token:d.link_token});}
    return locked(async()=>{
+    if(path.startsWith('/api/bills/share/'))return json(await billSharingAction(path.slice('/api/bills/share/'.length),b,{read,write,rawRead,rawWrite,rawDelete:id=>run('DELETE FROM vault WHERE id=?',id),accountId:users.current().accountId}));
     if(path.startsWith('/api/rent/')){
      const c=await connections(),now=Date.now();
      try{
@@ -243,7 +245,7 @@ export function runtime(env,fetcher=fetch){
    });
   }
   if(!['GET','HEAD'].includes(req.method))return json({error:'Method not allowed'},405);
-  if(!['/','/index.html','/plaid-return','/style.css','/app.mjs','/engine.mjs','/setup-key','/setup-key.html','/setup-key.mjs','/favicon.ico','/tabs.js','/tabs.css','/theme.css','/income-model.mjs','/debt-payments.mjs','/rent-model.mjs','/rent-browser.mjs','/household-model.mjs','/credit-model.mjs','/transaction-links.mjs','/email-model.mjs','/tax-model.mjs','/tax-ui.mjs','/onboarding.js','/bank-activity.mjs','/classic.js','/classic.css','/classic-theme.js','/classic-events.js','/classic-migrate.mjs','/connections.js','/connections.css','/purify.min.js'].includes(path))return json({error:'Not found'},404);
+  if(!['/','/index.html','/plaid-return','/style.css','/app.mjs','/engine.mjs','/setup-key','/setup-key.html','/setup-key.mjs','/favicon.ico','/tabs.js','/tabs.css','/theme.css','/income-model.mjs','/debt-payments.mjs','/rent-model.mjs','/rent-browser.mjs','/household-model.mjs','/bill-sharing.mjs','/credit-model.mjs','/transaction-links.mjs','/email-model.mjs','/tax-model.mjs','/tax-ui.mjs','/onboarding.js','/bank-activity.mjs','/classic.js','/classic.css','/classic-theme.js','/classic-events.js','/classic-migrate.mjs','/connections.js','/connections.css','/purify.min.js'].includes(path))return json({error:'Not found'},404);
   const target=new URL(req.url);if(path==='/plaid-return')target.pathname='/';const asset=await env.ASSETS.fetch(new Request(target,req)),response=new Response(asset.body,asset);for(const [k,v]of Object.entries(headers))response.headers.set(k,v);return response;
  }
  async function handle(req){const identity=await sessionIdentity(req);return users.run(identity,()=>handleScoped(req));}
