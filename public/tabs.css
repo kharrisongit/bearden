@@ -326,3 +326,8 @@ dialog::backdrop{touch-action:none}
 .paycheck .paycheck-debt-amounts .pay-input{width:100%;min-width:0;font-size:.75rem;line-height:1.5;padding:0 2px}
 
 .paycheck-slice-note.payoff-paused{background:var(--warn-soft);color:var(--warn);border:1px solid currentColor}
+.account-card-footer.has-available-credit{justify-content:space-between;gap:12px;align-items:flex-end}
+.account-available-credit{display:flex;flex-direction:column;gap:3px;flex-shrink:0;text-align:left}
+.account-available-credit small{font-size:.61rem;color:var(--muted)}
+.account-available-credit strong{font-size:.86rem;color:var(--ink);font-variant-numeric:tabular-nums}
+#debtCreditLimit input[readonly],#creditEditorForm input[readonly]{background:var(--paper);color:var(--muted)}

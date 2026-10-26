@@ -6,8 +6,20 @@ export function normalizeCreditCards(response,item,previous=[],now=new Date().to
  return (response.accounts||[]).filter(a=>a.type==='credit').map(a=>{
   const d=details.get(a.account_id),id='credit-'+a.account_id,old=previous.find(c=>c.id===id),balance=amount(a.balances?.current);
   const history=(old?.history||[]).filter(p=>p.date!==now.slice(0,10)).slice(-89);if(balance!==null)history.push({date:now.slice(0,10),balance});
-  return {id,accountId:a.account_id,itemId:item.id,institution:item.name,name:a.name,mask:a.mask||'',currency:a.balances?.iso_currency_code||null,balance,limit:amount(a.balances?.limit),minimum:amount(d?.minimum_payment_amount),dueDate:date(d?.next_payment_due_date),statementBalance:amount(d?.last_statement_balance),statementDate:date(d?.last_statement_issue_date),lastPayment:amount(d?.last_payment_amount),lastPaymentDate:date(d?.last_payment_date),overdue:d?.is_overdue??null,aprs:(d?.aprs||[]).filter(p=>typeof p.apr_percentage==='number'&&Number.isFinite(p.apr_percentage)).map(p=>({type:String(p.apr_type||'other'),rate:p.apr_percentage})),detailsAvailable:!!d,updated:now,history};
+  return {id,accountId:a.account_id,itemId:item.id,institution:item.name,name:a.name,mask:a.mask||'',currency:a.balances?.iso_currency_code||null,balance,limit:amount(a.balances?.limit),available:amount(a.balances?.available),minimum:amount(d?.minimum_payment_amount),dueDate:date(d?.next_payment_due_date),statementBalance:amount(d?.last_statement_balance),statementDate:date(d?.last_statement_issue_date),lastPayment:amount(d?.last_payment_amount),lastPaymentDate:date(d?.last_payment_date),overdue:d?.is_overdue??null,aprs:(d?.aprs||[]).filter(p=>typeof p.apr_percentage==='number'&&Number.isFinite(p.apr_percentage)).map(p=>({type:String(p.apr_type||'other'),rate:p.apr_percentage})),detailsAvailable:!!d,updated:now,history};
  });
+}
+export function creditCapacity({card=null,account=null,enteredLimit=null,balance=null}={}){
+ const nonnegative=n=>Number.isSafeInteger(n)&&n>=0?n:null;
+ const bank=account?.type==='credit'?account:null;
+ const providerLimit=nonnegative(bank?.creditLimit)??nonnegative(card?.limit);
+ const limit=providerLimit??nonnegative(enteredLimit);
+ // Reported available credit includes holds/pending purchases. Do not replace
+ // it with limit minus balance or free credit early for projected payments.
+ const bankAvailable=bank&&!bank.balanceUnavailable?(bank.source==='plaid'?amount(bank.reportedAvailable):bank.source==='simplefin'?bank.rawAvailable:null):null;
+ const reported=Number.isSafeInteger(bankAvailable)?bankAvailable:Number.isSafeInteger(card?.available)?card.available:null;
+ const available=reported!==null?Math.max(0,reported):limit!==null&&Number.isSafeInteger(balance)?Math.max(0,limit-balance):null;
+ return {limit,providerLimit,available};
 }
 export function cardPayments(card,transactions=[]){
  const payments=transactions.filter(t=>t.itemId===card.itemId&&t.account_id===card.accountId&&!t.pending&&t.currency===card.currency&&t.amount<0&&!/refund|reversal|cashback|cash back|reward/i.test(t.name||'')&&(/LOAN_PAYMENTS_CREDIT_CARD_PAYMENT/.test(t.category||'')||/\bpayment\b/i.test(t.name||''))).map(t=>({id:t.transaction_id,date:t.date,amount:Math.round(-t.amount*100),name:t.name,source:'transaction'}));

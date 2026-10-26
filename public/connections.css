@@ -40,3 +40,14 @@ html,body{overflow-x:clip}
 #connectionDialog .connection-account-actions>button{min-height:32px;margin:0;padding:5px 8px;font-size:.7rem;background:transparent}
 #connectionDialog .connection-account-actions>.rename-account-button{display:grid;place-items:center;width:32px;padding:7px;border-color:transparent}
 .rename-account-button svg{width:17px;height:17px;display:block}
+
+dialog.rent-browser{position:fixed;inset:var(--rent-view-top,0) 0 auto;width:min(100%,800px);max-width:100%;height:var(--rent-view-height,100dvh);max-height:none;margin:0 auto;padding:12px 12px max(12px,env(safe-area-inset-bottom));box-sizing:border-box;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:0;overflow:hidden}
+dialog.rent-browser[open]{display:flex;flex-direction:column;gap:9px;max-height:none;overflow:hidden}
+.rent-browser-heading,.rent-browser-controls,.rent-browser-entry{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-shrink:0}
+.rent-browser-heading h3{margin:0;font-size:1rem}.rent-browser button{min-height:40px;margin:0;padding:8px 12px;border:1px solid var(--line);border-radius:9px;background:var(--accent-soft);color:var(--accent);font:inherit;font-size:.76rem;font-weight:650}
+.rent-browser button:disabled{opacity:.5}.rent-browser-help,.rent-browser-status{margin:0;font-size:.7rem;line-height:1.45;flex-shrink:0}.rent-browser-status{color:var(--accent)}
+.rent-browser-screen{flex:1;min-height:80px;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:#ecece8;touch-action:none}
+.rent-browser-screen img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;touch-action:none;user-select:none;-webkit-user-select:none}
+.rent-browser [hidden]{display:none!important}.rent-browser-keyboard{flex-shrink:0;margin:0;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
+.rent-browser-keyboard label{display:block;font-size:.7rem;margin:0 0 7px}.rent-browser-entry input{width:0;min-width:0;flex:1;font-size:16px;padding:10px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink)}
+.rent-browser-keyboard [data-cancel]{min-height:30px;padding:5px 0;border:0;background:transparent;font-size:.65rem}.rent-browser [data-save]{background:var(--accent);color:#fff}

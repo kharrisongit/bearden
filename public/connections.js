@@ -59,9 +59,14 @@ window.BearDen=(()=>{
   try{await queue;const result=await api('/api/rent/'+action,action==='start'?{portalUrl:$('#rentPortalUrl').value.trim()}:{});
    if(action==='start'){const url=new URL(result.url);if(url.protocol!=='https:'||url.hostname!=='live.browser.run')throw Error('The private sign-in address could not be verified.');rentLoginUrl=url.href;}
    if(['complete','cancel','disconnect'].includes(action))rentLoginUrl=null;
-   await refresh();if(result.status)$('#rentFeedback').textContent=result.status;
-  }catch(error){$('#rentFeedback').textContent=error.message;}finally{button.disabled=false;}
+   await refresh();if(result.status)$('#rentFeedback').textContent=result.status;return true;
+  }catch(error){$('#rentFeedback').textContent=error.message;return false;}finally{button.disabled=false;}
  }
+ $('#rentLoginLink').onclick=async event=>{
+  if(!window.matchMedia('(pointer: coarse)').matches&&!navigator.maxTouchPoints)return;
+  event.preventDefault();if(!rentLoginUrl)return;
+  try{const {openRentBrowser}=await import('./rent-browser.mjs?v=mobile-keyboard1');openRentBrowser({url:rentLoginUrl,expires:legacy?.connections?.sun?.pendingUntil,onSave:async()=>{if(!await rentAction($('#rentComplete'),'complete'))throw Error($('#rentFeedback').textContent);}});}catch(error){$('#rentFeedback').textContent=error.message;}
+ };
  $('#rentPortalForm').onsubmit=e=>{e.preventDefault();rentAction($('#rentConnect'),'start');};
  $('#rentEnabledToggle').onchange=async e=>{const button=e.currentTarget,enabled=button.checked;button.disabled=true;try{await queue;await api('/api/rent/settings',{enabled});await refresh();$('#featureSettingsStatus').textContent=enabled?'Rent enabled.':'Rent hidden; your saved connection is kept.';}catch(error){button.checked=!enabled;$('#featureSettingsStatus').textContent=error.message;}finally{button.disabled=false;}};
  $('#rentComplete').onclick=e=>rentAction(e.currentTarget,'complete');

@@ -3,7 +3,7 @@ import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-p
 import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=shared-bill-list3';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
 export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs?v=spending-drilldown1';
-export {creditBills} from './credit-model.mjs';
+export {creditBills,creditCapacity} from './credit-model.mjs?v=available-credit1';
 export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment} from './transaction-links.mjs?v=affirm-history1';
 import {day,occurrences} from './engine.mjs';
 const cents=n=>Math.round((Number(n)||0)*100);
