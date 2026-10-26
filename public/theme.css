@@ -11,7 +11,10 @@
  --header:#215c60;--hero-debt:#215c60;--hero-savings:#285257;
  --on-dark:#fffdf5;--on-dark-muted:#dbe9df;--on-dark-accent:#e6c88e;--on-dark-line:#658e89;
  --on-dark-hover:#18484c;--on-dark-disabled:#285257;
- --status:#28735c;--status-soft:#e0ebe5;--status-line:#91b5a4;
+ --amount-bg:#e2edf5;--amount-ink:#254f6d;--amount-label:#456179;--amount-border:#b1c7d7;
+ --due-bg:#f4e4bd;--due-ink:#744b16;--due-border:#d8bd83;
+ --paid-fill:#276342;--on-paid:#f4fff6;--paid-hover:#1d4e33;--paid-border:#276342;
+ --status:#f4fff6;--status-soft:#1e5637;--status-line:#1e5637;
  --danger-fill:#a3353e;--on-danger:#fffdf5;
  --chart-bill:#946036;--chart-debt:#a3353e;--chart-pay:#28735c;--chart-spouse:#3d6d8a;
  --shadow:0 5px 18px #163b350a;
@@ -26,7 +29,10 @@
  --header:#183e4a;--hero-debt:#183e4a;--hero-savings:#193943;
  --on-dark:#edf3ee;--on-dark-muted:#b9d9d5;--on-dark-accent:#e6c88e;--on-dark-line:#4b737c;
  --on-dark-hover:#284854;--on-dark-disabled:#263e4b;
- --status:#a2d8bd;--status-soft:#23483e;--status-line:#557d70;
+ --amount-bg:#243f54;--amount-ink:#c3e1f4;--amount-label:#b5cbdc;--amount-border:#4e7086;
+ --due-bg:#493b22;--due-ink:#f3d39a;--due-border:#907545;
+ --paid-fill:#2e6b49;--on-paid:#f4fff6;--paid-hover:#24593c;--paid-border:#6a9a7c;
+ --status:#f4fff6;--status-soft:#245f3e;--status-line:#4a825e;
  --chart-bill:#e6c88e;--chart-debt:#ffb5ad;--chart-pay:#a2d8bd;--chart-spouse:#a5cae3;
  --shadow:0 5px 18px #050f1a30;
  color-scheme:dark;
@@ -36,10 +42,10 @@ body{background:var(--paper);color:var(--ink)}
 .app-title-box h1{font:400 2.25rem/1.2 Georgia,"Times New Roman",serif;letter-spacing:-.035em;filter:none}
 .app-title-box h1:after{background:var(--gold);width:5px;height:5px;border-radius:50%;margin-left:5px}
 .app-title-box button{border-radius:50%;background:var(--card)}
-/* Quiet page headings echo Quill; the opaque surface still masks the peeking bear. */
-:root .tab-intro{background:var(--paper);color:var(--ink);border:0;border-bottom:1px solid var(--line);border-radius:0;box-shadow:none;padding:16px 0 24px}
-.tab-intro h2,#tab-settings .connection-heading h2{color:var(--ink);font:400 2rem/1.2 Georgia,"Times New Roman",serif;letter-spacing:-.035em}
-.tab-intro p,#tab-settings .connection-heading p{color:var(--muted);font-size:.78rem;max-width:32em}
+/* Solid banners give the peeking bears a visible top edge. */
+:root .tab-intro{background:var(--header);color:var(--on-dark);border:1px solid var(--on-dark-line);border-radius:12px;box-shadow:var(--shadow);padding:22px}
+.tab-intro h2,#tab-settings .connection-heading h2{color:var(--on-dark);font:400 2rem/1.2 Georgia,"Times New Roman",serif;letter-spacing:-.035em}
+.tab-intro p,#tab-settings .connection-heading p{color:var(--on-dark-muted);font-size:.78rem;max-width:32em}
 .tab-heading-icon{color:var(--accent);width:28px;height:28px;padding:0;background:transparent;border-radius:0}
 .tab-intro::after{display:none}
 :root .hero.debt-hero{background:var(--hero-debt);border:1px solid var(--on-dark-line);border-radius:12px;box-shadow:var(--shadow)}
@@ -57,13 +63,16 @@ body{background:var(--paper);color:var(--ink)}
 :root .debt-account{border-top-color:var(--line)}
 :root .debt-account.is-paid-off{border-top-color:var(--accent)}
 :root .bill-amount,:root .debt-key-amounts>div{background:var(--surface-inset);border:1px solid var(--amount-line);border-radius:8px;box-shadow:none}
-:root .debt-key-amounts>.minimum-due{background:var(--accent-soft);border-color:var(--accent-line)}
+:root .bill-amount,:root .debt-key-amounts>.minimum-due{background:var(--amount-bg);border-color:var(--amount-border)}
 :root .bill-amount>span,:root .debt-key-amounts span{color:var(--muted)}
+:root .bill-amount>span,:root .debt-key-amounts>.minimum-due span{color:var(--amount-label)}
+:root .bill-amount>strong,:root .debt-key-amounts>.minimum-due strong{color:var(--amount-ink)}
 .bill-amount>strong,.debt-key-amounts strong{letter-spacing:-.045em}
-.bill-date{border-radius:10px;background:var(--accent-soft);border:1px solid var(--accent-line)}
+.bill-date{border-radius:10px;background:var(--due-bg);color:var(--due-ink);border:1px solid var(--due-border)}
 .bill-tile>.account-card-footer,.bill-tile-footer{background:var(--surface-subtle)}
 .account-connection{color:var(--muted)}
-.debt-account-footer>.debt-due-date{background:var(--surface-subtle);color:var(--ink);border-radius:8px;border-color:var(--line)}
+:root .bill-due-date,:root .debt-account-footer>.debt-due-date{background:var(--due-bg);color:var(--due-ink);border-radius:8px;border-color:var(--due-border)}
+:root .debt-due-date small{color:var(--due-ink)}
 .forecast-chart,.bill-progress,.forecast-stats>div{background:var(--surface-subtle);border-radius:8px}
 .income-card button,#connectionDialog button,.connection-button{border-radius:8px}
 .income-card .bill-save{background:var(--accent-fill);color:var(--on-accent);border-color:var(--accent-fill);box-shadow:none}
@@ -91,7 +100,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 :root[data-theme=dark] .payoff-star{fill:var(--accent)}
 .payment-undo-notice{background:var(--header);color:var(--on-dark);border-color:var(--on-dark-line);box-shadow:var(--shadow)}
 .payment-undo-notice button{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line)}
-@media(max-width:380px){.tab-intro h2,#tab-settings .connection-heading h2{font-size:1.75rem}:root .tab-intro{padding:14px 0 22px}}
+@media(max-width:380px){.tab-intro h2,#tab-settings .connection-heading h2{font-size:1.75rem}:root .tab-intro{padding:18px}}
 /* Shared controls and inset content also follow the palette. */
 :root .hero .hero-date-banner,:root .hero .day-counter,:root .hero .paycheck-counter{background:#ffffff0f;border-color:#ffffff30;color:#fff}
 :root .hero .icon-btn,:root .hero .savings-save-btn{background:#ffffff14;border-color:#ffffff40;color:#fff}
@@ -100,13 +109,15 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 :root .paycheck.milestone-debt,:root .paycheck.milestone-both{border-color:var(--accent-line);border-image:none}
 :root .app-title-box{background:none;box-shadow:none}
 :root .app-title-box h1{color:var(--ink);background:none}
-:root .income-card .bill-paid-button,:root .debt-account .debt-paid-button{background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line)}
+/* Target the action attribute too: connected credit cards do not use the bill class. */
+:root .income-card [data-bill-paid]{background:var(--paid-fill);color:var(--on-paid);border:1px solid var(--paid-border)}
+:root .income-card [data-bill-unpaid]{background:var(--surface-subtle);color:var(--muted);border:1px solid var(--line)}
 :root .income-card .account-edit,:root .income-card .bill-icon-button{background:transparent;color:var(--muted);border-color:transparent}
 :root .income-card .account-edit:hover,:root .income-card .bill-icon-button:hover{background:var(--accent-soft);color:var(--accent)}
 :root .setup-emblem{background:var(--accent-soft);color:var(--accent)}
 :root .paycheck .edited-tag{background:var(--accent-soft);color:var(--accent)}
 :root .spending-ring{box-shadow:none}
-:root .bill-date.is-overdue{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
+:root .bill-date.is-overdue,:root .bill-due-date.is-overdue{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
 :root .forecast-chart{border:1px solid var(--line)}
 :root dialog::backdrop{background:#10212db8;backdrop-filter:blur(5px)}
 
@@ -120,7 +131,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 :root .income-card:not(.bank-card),:root .paycheck{color:var(--ink)}
 :root .bill-amount,:root .debt-key-amounts>div{color:var(--ink)}
 :root .debt-progress span{background:var(--accent)}
-:root .tab-heading-icon{background:transparent;color:var(--accent)}
+:root .tab-heading-icon{background:transparent;color:var(--on-dark-accent)}
 
 /* Filled controls have a dedicated foreground in each theme. */
 :root .account-view-tabs button[aria-selected=true],
@@ -136,9 +147,10 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 :root .rent-browser [data-save]{
  background:var(--accent-fill);color:var(--on-accent);border-color:var(--accent-fill);box-shadow:none;
 }
-:root .income-card .bill-card-header .bill-paid-button:hover{
- background:var(--accent-fill);color:var(--on-accent);border-color:var(--accent-fill);
+:root .income-card [data-bill-paid]:hover{
+ background:var(--paid-hover);color:var(--on-paid);border-color:var(--paid-border);
 }
+:root .income-card .bill-card-header [data-bill-unpaid]:hover{background:var(--surface-inset);color:var(--ink);border-color:var(--line)}
 :root button.add-btn{background:var(--header);color:var(--on-dark);border-color:var(--on-dark-line)}
 :root .income-card button:disabled,:root #connectionDialog button:disabled,
 :root .paycheck .slice-payment:disabled,:root .setup-wizard button:disabled{
