@@ -18,6 +18,32 @@ async function fixture(page,{messages=[],debtKind='credit-card',accounts=[],inco
  await page.goto('https://bearden.test/');await page.evaluate(()=>window.classicReady);
  return {started,releaseSync,connections,emailCalls,get tracker(){return tracker;}};
 }
+test('optional car payments update debt totals and payoff, persist, and reserve each payment only once',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});await page.clock.setFixedTime(new Date('2026-10-26T12:00:00Z'));
+ const car={id:'car',name:'Buick payment',billKind:'car-payment',amount:10000,date:'2026-11-12',repeat:'monthly',source:'manual'};
+ const f=await fixture(page,{goalContribution:50,debtOverrides:{balance:100,min:46.15,monthlyMinimum:100},accounts:[{id:'simplefin-car',name:'Auto loan',type:'loan',source:'simplefin',balance:25000,currency:'USD'}],incomePlanner:{manual:[car],loanLinks:{car:'simplefin-car'},carLoanDetails:{car:{apr:0}}}});
+ await expect(page.locator('#carPaymentsInDebtToggle')).toBeEnabled();await expect(page.locator('#heroTotal')).toHaveText('$100.00');
+ const before=await page.evaluate(()=>window.getDebtPlan().schedule[0]);
+ await page.locator('#nav-settings').click();await expect(page.locator('#carPaymentsInDebtToggle')).not.toBeChecked();await page.locator('#carPaymentsInDebtToggle').check();
+ await expect(page.locator('#featureSettingsStatus')).toHaveText('Car payment preference saved.');await expect(page.locator('#heroTotal')).toHaveText('$350.00');await expect(page.locator('#heroDate')).toContainText('Jan 12, 2027');
+ const after=await page.evaluate(()=>window.getDebtPlan().schedule[0]);expect(after.accountBillsThisCheck).toEqual(before.accountBillsThisCheck);expect(after.accountBillsThisCheck.filter(b=>b.id==='car')).toHaveLength(1);expect(after.accountBillsThisCheck.reduce((sum,b)=>sum+b.amount,0)).toBe(10000);expect(after.cashAfterDebt).toBe(before.cashAfterDebt);expect(after.carDebt.balance).toBe(15000);expect(after.carDebt.reduction).toBe(10000);expect(after.payments).toEqual(before.payments);
+ expect(JSON.parse(f.tracker.state.values['income-planner']).showCarPaymentsInDebt).toBe(true);
+ await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();await expect(page.locator('[data-car-payment="car"]')).toContainText('$250.00');
+ await page.locator('[data-car-payment="car"] [data-edit-bill]').click();await expect(page.locator('[name="carLoanBalance"]')).toHaveValue('250');await expect(page.locator('[name="carLoanBalance"]')).toHaveAttribute('readonly','');await expect(page.locator('[name="carLoanApr"]')).toHaveValue('0');
+ await page.screenshot({path:'test-results/car-loan-editor.png'});await page.locator('[name="carLoanApr"]').fill('6');await page.locator('#billEditorForm [type="submit"]').click();await expect(page.locator('#billEditor')).toBeHidden();
+ await expect(page.locator('#heroInterest')).not.toHaveText('$0.00');
+ await page.reload();await page.evaluate(()=>window.classicReady);await expect(page.locator('#heroTotal')).toHaveText('$350.00');await expect(page.locator('#carPaymentsInDebtToggle')).toBeChecked();
+ await page.locator('#nav-settings').click();await page.locator('#carPaymentsInDebtToggle').uncheck();await expect(page.locator('#heroTotal')).toHaveText('$100.00');await expect(page.locator('#heroInterest')).toHaveText('$0.00');
+ expect(JSON.parse(f.tracker.state.values['income-planner']).manual[0].amount).toBe(10000);expect(errors).toEqual([]);
+});
+test('a manual car loan can supply missing balance and APR from its existing bill editor',async({page})=>{
+ await page.clock.setFixedTime(new Date('2026-10-26T12:00:00Z'));
+ await fixture(page,{goalContribution:50,debtOverrides:{balance:100,monthlyMinimum:100},incomePlanner:{showCarPaymentsInDebt:true,manual:[{id:'car',name:'Car payment',billKind:'car-payment',amount:10000,date:'2026-11-12',repeat:'monthly',source:'manual'}]}});
+ await expect(page.locator('#heroDate')).toHaveText('Car loan details needed');await expect(page.locator('#heroInterest')).toHaveText('Unavailable');
+ await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();await page.locator('[data-car-payment="car"]').getByRole('button',{name:'Add loan details'}).click();
+ await page.locator('[name="carLoanBalance"]').fill('250');await page.locator('[name="carLoanApr"]').fill('0');await page.locator('#billEditorForm [type="submit"]').click();
+ await expect(page.locator('#heroDate')).toContainText('Jan 12, 2027');await expect(page.locator('#heroTotal')).toHaveText('$350.00');await expect(page.locator('#debtForecastNote')).toBeHidden();
+});
 test('Minimums explains an unfinished forecast and restores valid totals when the method changes',async({page})=>{
  test.setTimeout(90000); // The capped fixture renders the full 780-paycheck schedule.
  const errors=[];page.on('pageerror',e=>errors.push(e.message));

@@ -823,7 +823,9 @@ function calculate(isInitialLoad){
   let debtFreeDate = null;
   let debtFreePaycheck = null;
 
-  while ((paycheck < incomeHorizon || balances.reduce((a,b)=>a+b,0) > 0.01 || anyGoalStillTracking()) && paycheck < maxPaychecks) {
+  const carPayoffDate=(window.carDebtForecast||[]).map(l=>l.payoffDate).filter(Boolean).sort().at(-1);
+  const carPayoffHorizon=carPayoffDate?new Date(carPayoffDate+'T00:00:00'):null;
+  while ((paycheck < incomeHorizon || carPayoffHorizon&&date<=carPayoffHorizon || balances.reduce((a,b)=>a+b,0) > 0.01 || anyGoalStillTracking()) && paycheck < maxPaychecks) {
     paycheck++;
     const thisCheckTakeHome = paycheckOverrides[paycheck] !== undefined ? paycheckOverrides[paycheck] : takeHome;
     const bonusThisCheck = appliedBonuses[paycheck] || 0;
@@ -1840,7 +1842,8 @@ function paycheckCompletesAPayoff(paycheckNum){
     if (prevBal > 0.01 && row.balancesAfter[i] <= 0.01) names.push(c.name);
   });
   const prevTotal = idx > 0 ? lastSchedule[idx - 1].total : lastCardsForSpending.reduce((a,c)=>a+c.balance,0);
-  const whole = prevTotal > 0.01 && row.total <= 0.01;
+  const previousCar=idx>0?lastSchedule[idx-1].carDebt?.balance:(window.carDebtForecast||[]).reduce((sum,l)=>sum+(l.balance||0),0);
+  const whole = row.carDebt?.balance!==null&&(prevTotal+(previousCar||0)/100)>0.01&&row.total+(row.carDebt?.balance||0)/100<=0.01;
   return { any: names.length > 0 || whole, whole, names };
 }
 
@@ -2107,11 +2110,20 @@ function debtForecastNotice(cards,schedule,debtFreeDate,checked={},today=new Dat
 function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo, debtFreeDate, debtFreePaycheck, budgetItemsSnapshot, sliceComparison=null){
   const startTotal = cards.reduce((a,c)=>a+c.balance,0);
   lastStartTotal = startTotal;
+  const baseDebtFreeDate=debtFreeDate;
+  const dateKey=date=>date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+  const forecast=window.BearDenCarDebt.combinedDebtForecast({date:debtFreeDate?dateKey(debtFreeDate):null,interest:totalInterest,hasDebt:cards.some(c=>c.balance>0)},window.carDebtForecast||[],dateKey(new Date()));
+  debtFreeDate=forecast.date?new Date(forecast.date+'T00:00:00'):null;
+  if((window.carDebtForecast||[]).length){
+    const first=document.getElementById('startDate').value;
+    debtFreePaycheck=debtFreeDate&&first?Math.max(1,Math.floor((debtFreeDate-new Date(first+'T00:00:00'))/86400000/14)+1):null;
+    totalInterest=forecast.interest;
+  }
   const neverPaysOff = debtFreeDate === null;
 
   if (neverPaysOff) {
     const missingFutureMinimum=schedule.some(row=>row.debtTiming?.some((t,i)=>t.missingFutureMinimum&&row.balancesBefore[i]>0));
-    document.getElementById('heroDate').textContent = missingFutureMinimum?'Future minimum needed':cards.some(c=>c.balance>0)&&Number(document.getElementById('takeHome').value)>0?'No payoff within 30 years':'Set up income, budget, and debt to begin';
+    document.getElementById('heroDate').textContent = forecast.needsCarDetails?'Car loan details needed':missingFutureMinimum?'Future minimum needed':(cards.some(c=>c.balance>0)||(window.carDebtForecast||[]).some(l=>l.balance>0))&&Number(document.getElementById('takeHome').value)>0?'No payoff within 30 years':'Set up income, budget, and debt to begin';
     document.getElementById('heroDate').style.color = '#e8a15c';
     document.getElementById('heroDate').style.fontSize = '1.15rem';
     document.getElementById('heroDayCounter').textContent = '';
@@ -2127,7 +2139,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
   document.getElementById('heroPaycheckCounter').style.display=neverPaysOff?'none':'';
   document.getElementById('heroInterest').textContent = neverPaysOff?'Unavailable':money(totalInterest);
   const forecastNote=document.getElementById('debtForecastNote');
-  forecastNote.textContent=debtForecastNotice(cards,schedule,debtFreeDate,checkedPaychecks);
+  forecastNote.textContent=debtForecastNotice(cards,schedule,baseDebtFreeDate,checkedPaychecks);
   forecastNote.hidden=!forecastNote.textContent;
   const sliceNote=document.getElementById('sliceInterestNote');
   sliceNote.hidden=!sliceComparison;
@@ -2193,6 +2205,8 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
   const restOutCheckedDivs = [];
 
   schedule.forEach((row, rowIdx) => {
+    const periodEnd=new Date(row.date);periodEnd.setDate(periodEnd.getDate()+13);
+    row.carDebt=window.BearDenCarDebt.carDebtPeriod(window.carDebtForecast||[],dateKey(row.date),dateKey(periodEnd));
     const isDebtFreeCard = debtFreePaycheck !== null && row.paycheck === debtFreePaycheck;
     const isAfterDebtFree = debtFreePaycheck !== null && row.paycheck > debtFreePaycheck;
     const reachedGoalsThisRow = goalsInfo.filter(g => g.reachedPaycheck === row.paycheck);
@@ -2294,7 +2308,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
     let accountsSection = '';
     if (lines) {
       accountsSection = lines;
-    } else if (!isAfterDebtFree) {
+    } else if (!isAfterDebtFree&&!(window.carDebtForecast||[]).length) {
       accountsSection = `<p style="text-align:center;color:var(--muted);font-size:0.8rem;padding:6px 0;">${row.balancesBefore.some(n=>n>0)?'No debt payment scheduled for this paycheck.':'All accounts paid off 🎉'}</p>`;
     }
 
@@ -2312,15 +2326,15 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
       bottomSection += `
       <div class="line" style="padding:4px 0;">
         <span>💸 Interest charged this check</span>
-        <span style="color:var(--warn);font-weight:600;">${money(row.interestThisCheck)}</span>
+        <span style="color:var(--warn);font-weight:600;">${row.carDebt.interest===null?'Unavailable':money(row.interestThisCheck+row.carDebt.interest/100)}</span>
       </div>
       <div class="line debt-reduction-line">
         <span>⬇ Debt reduced this check</span>
-        <span style="color:var(--accent);font-weight:700;">${money(row.debtReduction)}</span>
+        <span style="color:var(--accent);font-weight:700;">${row.carDebt.reduction===null?'Unavailable':money(row.debtReduction+row.carDebt.reduction/100)}</span>
       </div>
       <div class="line" style="border-top:1px solid var(--line);margin-top:6px;padding-top:8px;">
         <span style="font-weight:700;">Total remaining debt</span>
-        <span style="font-weight:700;">${money(row.total)}</span>
+        <span style="font-weight:700;">${row.carDebt.balance===null?'Unavailable':money(row.total+row.carDebt.balance/100)}</span>
       </div>`;
     }
     if (savingsEnabled) {
@@ -6784,7 +6798,8 @@ function setupPaycheckBears(){
 
 window.classicReady=(async function init(){
   await window.BearDen.ready;
-  window.BearDenDebtPayments=await import('./debt-payments.mjs?v=connections-audit1');
+  window.BearDenDebtPayments=await import('./debt-payments.mjs?v=paid-cycle1');
+  window.BearDenCarDebt=await import('./car-debt.mjs?v=car-debt1');
   window.BearDenTaxes=await import('./tax-ui.mjs?v=tracker-401k1');window.BearDenTaxes.mount();
   applyThemeButtonIcon(); // reflect whatever the early <head> script already applied
   applyThemeBackground(document.documentElement.getAttribute('data-theme') === 'dark');
@@ -6907,6 +6922,11 @@ document.getElementById('bonusControlsToggle').onchange=async e=>{
  try{calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('featureSettingsStatus').textContent='Bonus preference saved.';}
  catch(error){bonusControlsEnabled=before;e.target.checked=before;calculate();clearTimeout(saveDebounceTimer);document.getElementById('featureSettingsStatus').textContent=error.message;}
  finally{e.target.disabled=false;}
+};
+
+window.setCarDebtForecast=loans=>{
+ if(JSON.stringify(loans)===JSON.stringify(window.carDebtForecast||[]))return false;
+ window.carDebtForecast=loans;calculate();return true;
 };
 
 window.setSyncedDebtBalances=snapshots=>{

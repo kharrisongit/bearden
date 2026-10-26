@@ -37,7 +37,7 @@
  const billCategories={electric:'Electric',rent:'Rent',utility:'Utility','car-payment':'Car payment',insurance:'Insurance','phone-internet':'Phone & internet',subscription:'Subscription','credit-card':'Credit card',loan:'Loan payment',other:'Other bill'};
  const pencil='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg>';
  let review={rows:[],bills:[],spending:{categories:[],total:0}};
- let month=new Date(new Date().getFullYear(),new Date().getMonth(),1),selected=null,agendaOpen=false,model,mailModel,rentModel,sharingModel,planner={manual:[],covered:{},paid:[],accountVisibility:{},dismissedEstimates:[],estimates:{},bankRules:{},creditCards:{},transactionLinks:{},emailLinks:{},billFunding:{},household:{},forecastDebtMode:'full'},linked={},ready=false;
+ let month=new Date(new Date().getFullYear(),new Date().getMonth(),1),selected=null,agendaOpen=false,model,mailModel,rentModel,sharingModel,planner={manual:[],covered:{},paid:[],accountVisibility:{},dismissedEstimates:[],estimates:{},bankRules:{},transactionCategories:{},creditCards:{},transactionLinks:{},emailLinks:{},billFunding:{},household:{},forecastDebtMode:'full'},linked={},ready=false;
  let paymentSaveRunning=false,lastPaidAction=null;
  function showPaymentUndo(key,name){
   lastPaidAction={key,name};$('#paymentUndoText').textContent=name+' marked paid.';
@@ -50,8 +50,8 @@
  function error(e){$('#incomeStatus').textContent=e.message||String(e);$('#accountStatus').textContent=e.message||String(e);$('#accountSaveStatus').textContent=e.message||String(e);}
  async function save(){if(!ready)throw Error('Accounts have not loaded. Reload before saving changes.');await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();}
  let initializing;
- $('#configureHousehold').disabled=true;$('#sharedBillsToggle').disabled=true;
- function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=paid-cycle1'),import('./email-model.mjs?v=connections-audit1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=fixed-bills1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#sharedBillsToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
+ $('#configureHousehold').disabled=true;$('#sharedBillsToggle').disabled=true;$('#carPaymentsInDebtToggle').disabled=true;
+ function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=auto-categories1'),import('./email-model.mjs?v=connections-audit1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=fixed-bills1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#sharedBillsToggle').disabled=false;$('#carPaymentsInDebtToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
  window.addEventListener('load',initialize,{once:true});
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});
@@ -275,7 +275,12 @@
     +debtAccountMarkup(c.id)+'<template class="debt-detail-template">'+debtSourceMarkup(resolvedDebts[c.id])+paymentMarkup('debt:'+c.id)+'<div class="debt-progress"><span style="width:'+progress+'%"></span></div><p class="subtle">'+Math.round(progress)+'% paid down · '+money(status.paid)+' in checked payments</p>'+bankPaymentHistoryMarkup(bankHistory)+'<button type="button" data-edit-debt="'+esc(c.id)+'">Account details &amp; history</button></template>'+cardFooterMarkup('debt:'+c.id,null,capacity,account?.currency||'USD')+'</article>'};
   });
   const paymentOnly=payments.filter(b=>model.isDebtPayment(b)&&!['tracker-debt','plaid-credit'].includes(b.source)).map(b=>({amount:b.amount,name:b.name,html:'<article class="debt-account payment-only-debt"><div class="debt-card-header"><div class="debt-account-tools"><button data-bill-paid="'+esc(b.key)+'">✓ Mark paid</button><button type="button" class="bill-icon-button account-edit" data-edit-bill="'+esc(b.id)+'" aria-label="Edit '+esc(b.name)+'">'+pencil+'</button></div><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(b.name)+'</h4><small>Scheduled payment · '+esc(dateLabel(b.date))+'</small></div><div class="debt-compact-amount"><strong>'+money(b.amount)+'</strong></div></div></div><div class="debt-account-footer"><span>Payment tracking only</span></div>'+cardFooterMarkup('bill:'+b.id,b)+'</article>'}));
-  const all=[...connected,...manual,...paymentOnly].sort(amountOrder);$('#debtAccounts').innerHTML=all.map(account=>account.html).join('')||'<p class="subtle">Add a debt to track a balance, or connect your credit card with Plaid.</p>';$('#debtAccountCount').textContent=all.length;
+  const carPayments=(window.carDebtForecast||[]).map(loan=>{
+   totalBalances.push({name:loan.name,amount:loan.balance,startingBalance:loan.startingBalance,currency:loan.currency});
+   const due=payments.find(b=>b.id===loan.id),bill={...loan,billKind:'car-payment'};
+   return {name:loan.name,amount:loan.balance,html:'<article class="debt-account car-payment-debt" data-car-payment="'+esc(loan.id)+'"><div class="debt-card-header"><div class="debt-account-tools"><button type="button" class="bill-icon-button account-edit" data-edit-bill="'+esc(loan.id)+'" aria-label="Edit '+esc(loan.name)+'">'+pencil+'</button></div><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(loan.name)+'</h4><small>Car loan</small></div></div></div><div class="debt-key-amounts"><div><span>Remaining balance</span><strong>'+esc(loan.balance===null?'Not set':money(loan.balance,loan.currency))+'</strong></div><div class="minimum-due"><span>'+esc(({monthly:'Monthly',biweekly:'Biweekly',weekly:'Weekly',once:'Scheduled'})[loan.repeat]||'Scheduled')+' payment</span><strong>'+money(loan.amount)+'</strong></div></div><div class="debt-account-footer"><span class="debt-due-date">'+esc(due?'Due '+dateLabel(due.date):loan.balance===0?'Paid off':'Payment scheduled')+'</span></div>'+(loan.needsDetails?'<button type="button" data-edit-bill="'+esc(loan.id)+'">Add loan details</button>':'')+cardFooterMarkup('bill:'+loan.id,bill)+'</article>'};
+  });
+  const all=[...connected,...manual,...paymentOnly,...carPayments].sort(amountOrder);$('#debtAccounts').innerHTML=all.map(account=>account.html).join('')||'<p class="subtle">Add a debt to track a balance, or connect your credit card with Plaid.</p>';$('#debtAccountCount').textContent=all.length;
   const debtBalances=[...totalBalances,...paymentOnly.map(()=>({amount:null}))];
   renderAccountTotal('#debtTotalAmount',debtBalances);
   window.setDebtAccountSummary(model.debtAccountSummary(debtBalances));
@@ -478,6 +483,12 @@
   $('#householdBillChoices').innerHTML=householdBills.map(b=>'<label class="check-label"><input type="checkbox" data-shared-bill="'+esc(b.id)+'" '+(planner.billFunding[b.id]==='shared'||model.sharedBill(b,planner)?'checked':'')+'> '+esc(b.name)+'</label>').join('')||'<p class="subtle">Add bills in Accounts, then choose Shared bills account in their editors.</p>';
   $('#householdEditorStatus').textContent='';$('#householdEditor').showModal();
  }
+ $('#carPaymentsInDebtToggle').onchange=async e=>{
+  const before=!!planner.showCarPaymentsInDebt;planner.showCarPaymentsInDebt=e.target.checked;e.target.disabled=true;
+  try{await save();$('#featureSettingsStatus').textContent='Car payment preference saved.';}
+  catch(err){planner.showCarPaymentsInDebt=before;e.target.checked=before;await renderIncome();$('#featureSettingsStatus').textContent=err.message;}
+  finally{e.target.disabled=false;}
+ };
  $('#sharedBillsToggle').onchange=async e=>{
   const before=structuredClone(planner.household);
   if(e.target.checked&&!model.householdEnabled({...planner.household,enabled:true})){e.target.checked=false;openHouseholdEditor();$('#householdForm').elements.enabled.checked=true;return;}
@@ -521,7 +532,7 @@
    $('#debtBankUpdated').textContent=connections.bankUpdated?'Last synced '+new Date(connections.bankUpdated).toLocaleString():'';
    $('#accountChoices').innerHTML=accounts.filter(a=>accountShown(a.id)).map(a=>'<label class="check-label"><input type="checkbox" data-account-visible="'+esc(a.id)+'" '+(visible.some(v=>v.id===a.id)?'checked':'')+'> '+esc(connectedAccountName(a))+'</label>').join('')||'<p class="subtle">Connect a bank in Settings first.</p>';
    $('#restoreBankEstimates').hidden=true;
-   review=model.reviewBankActivity(connections.transactions||[],planner.bankRules,connections.recurringBills||[],currentDay,planner.transactionLinks);
+   review=model.reviewBankActivity(connections.transactions||[],planner.bankRules,connections.recurringBills||[],currentDay,planner.transactionLinks,planner.transactionCategories);
    await syncRentBill();
    const electricRule=Object.values(planner.bankRules).find(r=>r.id===planner.electricBillId&&r.choice==='bill')||planner.manual.find(b=>b.id===planner.electricBillId);
    const electricLabel=$('#electricBillSelection');if(electricLabel)electricLabel.textContent=electricRule?'Linked bill: '+electricRule.name:'Choose Electric and enable email updates in a bill’s details to link it.';
@@ -539,10 +550,14 @@
    const bankPaymentDetails=model.matchedBillPayments(allBillEvents.filter(b=>b.source!=='tracker-debt'),connections.transactions||[],planner.transactionLinks,currentDay,{details:true}),bankPaidDates=new Map(bankPaymentDetails.map(p=>[p.key,p.paidDate])),bankPaid=new Set(bankPaidDates.keys());
    paymentsPlanner.paid=[...new Set([...paymentsPlanner.paid,...bankPaid])];
    for(const bill of billPlan.bills)bill.paidByBank=bankPaid.has(bill.id+':'+bill.date);
+   $('#carPaymentsInDebtToggle').checked=!!planner.showCarPaymentsInDebt;
+   const carLoans=model.carPaymentLoans([...billPlan.bills,...paymentsPlanner.manual],paymentsPlanner,accounts,currentDay);
+   if(window.setCarDebtForecast(carLoans))return;
+   paymentsPlanner.carDebtPayoffs=Object.fromEntries(carLoans.filter(l=>l.payoffDate).map(l=>[l.id,{asOf:l.asOf,payoffDate:l.payoffDate,finalPayment:l.finalPayment}]));
    // Reserve bills before the payoff engine distributes money to debts. Payment
    // status stays in the forecast, where cash leaves on the actual due date.
    const h=planner.household;
-   const paycheckInputs=structuredClone({legacy:{bills:billPlan.bills.filter(b=>b.source!=='tracker-debt'),paid:billPlan.paid||[]},planner:{manual:paymentsPlanner.manual,covered:planner.covered,electricBillId:planner.electricBillId,emailLinks:planner.emailLinks,paid:paymentsPlanner.paid,household:h,billFunding:planner.billFunding,transactionLinks:planner.transactionLinks},linked,today:currentDay,accounts:accounts.filter(a=>a.id===h.billsAccountId),plan:{state:{startDate:plan.state.startDate,checkedPaychecks:plan.state.checkedPaychecks||{}}},transactions:(connections.transactions||[]).filter(t=>[h.personalAccountId,h.billsAccountId].includes(model.transactionAccountId(t)))});
+   const paycheckInputs=structuredClone({legacy:{bills:billPlan.bills.filter(b=>b.source!=='tracker-debt'),paid:billPlan.paid||[]},planner:{manual:paymentsPlanner.manual,carDebtPayoffs:paymentsPlanner.carDebtPayoffs,covered:planner.covered,electricBillId:planner.electricBillId,emailLinks:planner.emailLinks,paid:paymentsPlanner.paid,household:h,billFunding:planner.billFunding,transactionLinks:planner.transactionLinks},linked,today:currentDay,accounts:accounts.filter(a=>a.id===h.billsAccountId),plan:{state:{startDate:plan.state.startDate,checkedPaychecks:plan.state.checkedPaychecks||{}}},transactions:(connections.transactions||[]).filter(t=>[h.personalAccountId,h.billsAccountId].includes(model.transactionAccountId(t)))});
    householdBills=model.householdBillChoices([...billPlan.bills,...paymentsPlanner.manual]);
    if(window.setPaycheckBills(JSON.stringify(paycheckInputs),(date,n)=>model.paycheckBillItems(paycheckInputs,date,n),date=>model.paycheckBillsBalance(paycheckInputs,date)))return;
    householdBills=model.householdBillChoices([...billPlan.bills,...paymentsPlanner.manual]);
@@ -555,9 +570,9 @@
    $('#transactionAccountFilter').innerHTML='<option value="">All accounts</option>'+transactionAccounts.map(id=>'<option value="'+esc(id)+'">'+esc(accountName(id))+'</option>').join('');
    $('#transactionAccountFilter').value=transactionAccounts.includes(selectedAccount)?selectedAccount:'';
    const filter=$('#transactionFilter').value,accountFilter=$('#transactionAccountFilter').value,activity=review.rows.filter(t=>(!accountFilter||t.account_id===accountFilter)&&(filter!=='spending'||personalTransactions.some(p=>p.transaction_id===t.transaction_id))&&(filter==='all'||t.choice===filter)&&(!spendingCategory||t.spendingCategoryKey===spendingCategory));
-   activity.sort((a,b)=>($('#transactionSort').value==='account'?accountName(a.account_id).localeCompare(accountName(b.account_id))||a.account_id.localeCompare(b.account_id):0)||b.date.localeCompare(a.date));
+   activity.sort((a,b)=>($('#transactionSort').value==='category'?a.categoryLabel.localeCompare(b.categoryLabel):$('#transactionSort').value==='account'?accountName(a.account_id).localeCompare(accountName(b.account_id))||a.account_id.localeCompare(b.account_id):0)||b.date.localeCompare(a.date));
    $('#transactionCount').textContent=activity.length+' transaction'+(activity.length===1?'':'s');
-   $('#bankTransactions').innerHTML=activity.map(t=>'<div class="transaction-entry"><div class="bill-entry-top"><span>'+esc(t.name)+'</span><strong>'+money(Math.round(t.amount*100))+'</strong></div><small>'+esc(dateLabel(t.date)+' · '+accountName(t.account_id)+' · '+t.label)+'</small><div class="bill-actions">'+(t.linkedTarget?'<button type="button" data-edit-linked="'+esc(t.linkedTarget)+'">Edit linked account</button>':'<button type="button" data-track-transaction="'+esc(t.transaction_id)+'" '+(t.choice==='bill'?'disabled':'')+'>'+(t.choice==='bill'?'Tracking bill':'Track bill')+'</button><button type="button" data-spending-transaction="'+esc(t.transaction_id)+'" '+(planner.bankRules[t.key]?.choice==='spending'?'disabled':'')+'>Personal spending</button>'+(planner.bankRules[t.key]?'<button type="button" data-reset-transaction="'+esc(t.transaction_id)+'">Undo choice</button>':''))+'</div></div>').join('')||'<p class="subtle">'+(review.rows.length?'No transactions in this group.':'Refresh your bank to load recent outgoing transactions.')+'</p>';
+   $('#bankTransactions').innerHTML=activity.map(t=>'<div class="transaction-entry"><div class="bill-entry-top"><span>'+esc(t.name)+'</span><strong>'+money(Math.round(t.amount*100))+'</strong></div><small>'+esc(dateLabel(t.date)+' · '+accountName(t.account_id)+(t.linkedTarget?' · '+t.label:''))+'</small><div class="bill-actions">'+transactionCategoryButton(t)+(t.linkedTarget?'<button type="button" data-edit-linked="'+esc(t.linkedTarget)+'">Edit linked account</button>':'<button type="button" data-track-transaction="'+esc(t.transaction_id)+'" '+(t.choice==='bill'?'disabled':'')+'>'+(t.choice==='bill'?'Tracking bill':'Track bill')+'</button>'+(planner.bankRules[t.key]?'<button type="button" data-reset-transaction="'+esc(t.transaction_id)+'">Undo choice</button>':''))+'</div></div>').join('')||'<p class="subtle">'+(review.rows.length?'No transactions in this group.':'Refresh your bank to load recent outgoing transactions.')+'</p>';
 
    $('#incomeBalances').innerHTML=balanceNote;
    $('#incomeBankUpdated').textContent=connections.bankUpdated?'Last synced '+new Date(connections.bankUpdated).toLocaleString():'';
@@ -623,13 +638,13 @@
    const lastDebtRow=plan.schedule?.at(-1);if(debtMode==='full'&&lastDebtRow?.total>0.01&&future>lastDebtRow.date)$('#forecastRangeStatus').textContent+=' Later debt payments are outside the current payoff plan.';
    for(const button of document.querySelectorAll('[data-forecast-debt-mode]'))button.setAttribute('aria-pressed',String(button.dataset.forecastDebtMode===debtMode));
    $('#forecastModeNote').textContent=({full:'Includes your full planned debt payments.',minimum:'Uses your saved minimum-payment plan.',none:'Shows your personal balance before debt payments.'})[debtMode];
-   const spending=model.reviewBankActivity(personalTransactions,planner.bankRules,[],currentDay,planner.transactionLinks).spending;
+   const spending=model.reviewBankActivity(personalTransactions,planner.bankRules,[],currentDay,planner.transactionLinks,planner.transactionCategories).spending;
    const groups=spending.categories||[],spendingTotal=spending.total;let angle=0;
    const stops=groups.map((g,i)=>{const from=angle;angle+=g.amount/spendingTotal*360;return chartColors[i%chartColors.length]+' '+from+'deg '+angle+'deg';});
    $('#spendingDonut').innerHTML='<div class="spending-chart"><div class="spending-ring" role="img" aria-label="'+esc('Personal spending total '+money(spendingTotal))+'" style="background:'+(stops.length?'conic-gradient('+stops.join(',')+')':'var(--line)')+'"><div><small>SPENT</small><strong>'+money(spendingTotal)+'</strong><span>last 30 days</span></div></div><div class="spending-highlight"><span class="chart-eyebrow">Your spending mix</span><strong>'+esc(groups[0]?.label||'A fresh start')+'</strong><p>'+(groups.length?Math.round(groups[0].amount/spendingTotal*100)+'% went to this category. Tap a category below to explore.':'Your chart fills in as bank purchases arrive.')+'</p></div></div>';
    $('#personalSpending').innerHTML=groups.map((g,i)=>'<button type="button" class="spending-category" data-spending-category="'+esc(g.key)+'"><span class="category-heading"><span><i style="background:'+chartColors[i%chartColors.length]+'"></i>'+esc(g.label)+'</span><strong>'+money(g.amount)+'</strong></span><span class="category-bar"><i style="width:'+g.amount/spendingTotal*100+'%;background:'+chartColors[i%chartColors.length]+'"></i></span><small>'+g.count+' purchase'+(g.count===1?'':'s')+' · '+Math.round(g.amount/spendingTotal*100)+'%</small></button>').join('');
    $('#spendingForecastNote').textContent=personalAccount?.source==='simplefin'?'This SimpleFIN connection supplies balances only; purchase history is unavailable.':personalAccount?'Last 30 days from '+connectedAccountName(personalAccount)+' only: '+money(spendingTotal)+'. The forecast uses your planned budget; past purchases are already reflected in your balance.':'Choose your personal checking account above. Spending from other accounts is excluded.';
-   renderBillsSpending(model.billsAccountSpending(connections.transactions||[],billsAccount,currentDay,planner.bankRules,planner.transactionLinks),billsAccount);
+   renderBillsSpending(model.billsAccountSpending(connections.transactions||[],billsAccount,currentDay,planner.bankRules,planner.transactionLinks,planner.transactionCategories),billsAccount);
    renderAccountForecast(f,today,plan,'personal');renderAccountForecast(billsForecast,today,plan,'bills');
    paymentDisplaySignature=mailDisplaySignature();
   }catch(e){error(e);}
@@ -655,7 +670,7 @@
   $('#billsSpendingTransactionSummary').textContent=group?group.label+' transactions ('+rows.length+')':'View transactions ('+rows.length+')';
   $('#clearBillsSpendingCategory').hidden=!group;
   for(const element of document.querySelectorAll('[data-bills-spending-category]'))element.setAttribute('aria-pressed',String(element.dataset.billsSpendingCategory===billsSpendingCategory));
-  $('#billsSpendingTransactions').innerHTML=rows.map(t=>'<div class="forecast-row"><span>'+esc(t.name)+'<small>'+esc(dateLabel(t.date)+' · '+t.spendingLabel)+'</small></span><strong>'+money(Math.round(t.amount*100))+'</strong></div>').join('')||'<p class="subtle">No posted outgoing payments available for this account.</p>';
+  $('#billsSpendingTransactions').innerHTML=rows.map(t=>'<div class="forecast-row"><span>'+esc(t.name)+'<small>'+esc(dateLabel(t.date))+'</small>'+transactionCategoryButton(t,t.spendingLabel)+'</span><strong>'+money(Math.round(t.amount*100))+'</strong></div>').join('')||'<p class="subtle">No posted outgoing payments available for this account.</p>';
  }
  function selectBillsSpendingCategory(key){
   if(key&&!billsSpendingView?.categories.some(g=>g.key===key))return;
@@ -789,11 +804,15 @@
   const note=loan.balanceUnavailable?'Loan balance not supplied by your bank. Your scheduled payment is unchanged.':loan.unavailable?'Linked loan unavailable · Reconnect your bank in Settings.':loan.balance===0?'Your bank reports a $0 loan balance; this is not the payment due. Your scheduled payment is unchanged. Verify with your bank.':'';
   return note?'<p class="bill-loan-note">'+esc(note)+'</p>':'<div class="bill-loan-balance"><span>Remaining loan balance</span><strong>'+esc(money(loan.balance,loan.currency))+'</strong></div>';
  }
- const loanField=document.createElement('div');loanField.id='billLoanField';loanField.innerHTML='<label>Linked loan account<select name="loanAccount"><option value="">No linked loan</option></select></label><p class="subtle" id="billLoanInfo"></p>';
+ const loanField=document.createElement('div');loanField.id='billLoanField';loanField.innerHTML='<label>Linked loan account<select name="loanAccount"><option value="">No linked loan</option></select></label><p class="subtle" id="billLoanInfo"></p><div class="form-pair"><label>Remaining loan balance ($)<input name="carLoanBalance" type="number" min="0" max="1000000000" step="0.01" placeholder="Balance"></label><label>APR (%)<input name="carLoanApr" type="number" min="0" max="100" step="0.01" placeholder="APR"></label></div>';
  $('#billCategory').closest('label').after(loanField);
  function renderBillLoanInfo(){
   const form=$('#billEditorForm'),id=form.elements.loanAccount.value,a=(window.BearDen.plan?.state?.accounts||[]).find(a=>a.id===id&&a.type==='loan');
   loanField.hidden=form.elements.billKind.value!=='car-payment';
+  const details=planner.carLoanDetails?.[editingBill?.id]||{},bankBalance=a&&!a.balanceUnavailable&&a.balance>0?a.balance:null;
+  form.elements.carLoanBalance.value=(bankBalance??details.balance)!=null?(bankBalance??details.balance)/100:'';
+  form.elements.carLoanBalance.readOnly=bankBalance!==null;
+  form.elements.carLoanApr.value=details.apr??a?.apr??'';
   $('#billLoanInfo').textContent=a?connectedAccountName(a)+' · Remaining loan balance '+(a.balanceUnavailable?'Not supplied':money(a.balance,a.currency||'USD'))+'. Updates when your bank syncs. Keep the monthly payment and due date below.':id?'Linked loan unavailable. Reconnect your bank in Settings.':'Choose the loan for this car, including an ELGA loan. The loan balance does not replace your monthly payment. Use the transaction link below to track payments from checking.';
  }
  $('#billEditorForm').elements.loanAccount.onchange=renderBillLoanInfo;
@@ -838,6 +857,11 @@
     const correction={};if(amount!==editingBill.base.amount)correction.amount=amount;if(date!==editingBill.base.date)correction.date=date;planner.estimates[id]=correction;
    }
    planner.loanLinks??={};if(billKind==='car-payment'&&d.get('loanAccount'))planner.loanLinks[id]=String(d.get('loanAccount'));else delete planner.loanLinks[id];
+   if(billKind==='car-payment'){
+    const balance=String(d.get('carLoanBalance')||'').trim()===''?null:Math.round(Number(d.get('carLoanBalance'))*100),apr=String(d.get('carLoanApr')||'').trim()===''?null:Number(d.get('carLoanApr'));
+    if(balance!==null&&(!Number.isSafeInteger(balance)||balance<0)||apr!==null&&(!Number.isFinite(apr)||apr<0||apr>100))throw Error('Enter a valid loan balance and APR.');
+    planner.carLoanDetails??={};planner.carLoanDetails[id]={balance,apr,startingBalance:planner.carLoanDetails[id]?.startingBalance??balance};
+   }
    storeEditorLink('bill','bill:'+id,name);
    if(!linkDrafts.bill.link&&!editingBill.manual&&!editingBill.newManual){delete planner.bankRules[editingBill.key];delete planner.estimates[id];planner.manual.push({id,name,amount,date,repeat,billKind,source:'manual'});}
    planner.sunRentDisabled??={};if(billKind==='rent'&&sunConnection()?.snapshot)planner.sunRentDisabled[id]=!d.has('sunRent');
@@ -852,7 +876,7 @@
  };
  $('#stopTrackingBill').onclick=async()=>{
   if(!editingBill?.id)return;const snapshot=structuredClone(planner),id=editingBill.id;
-  try{if(editingBill.manual)planner.manual=planner.manual.filter(b=>b.id!==id);else delete planner.bankRules[editingBill.key];delete planner.estimates[id];delete planner.covered[id];if(planner.sunRent?.billId===id)delete planner.sunRent;if(planner.loanLinks)delete planner.loanLinks[id];delete planner.transactionLinks['bill:'+id];delete planner.emailLinks['bill:'+id];if(planner.electricBillId===id)delete planner.electricBillId;await save();$('#billEditor').close();}catch(e){planner=snapshot;$('#billEditorError').textContent=e.message;}
+  try{if(editingBill.manual)planner.manual=planner.manual.filter(b=>b.id!==id);else delete planner.bankRules[editingBill.key];delete planner.estimates[id];delete planner.covered[id];if(planner.sunRent?.billId===id)delete planner.sunRent;if(planner.loanLinks)delete planner.loanLinks[id];if(planner.carLoanDetails)delete planner.carLoanDetails[id];delete planner.transactionLinks['bill:'+id];delete planner.emailLinks['bill:'+id];if(planner.electricBillId===id)delete planner.electricBillId;await save();$('#billEditor').close();}catch(e){planner=snapshot;$('#billEditorError').textContent=e.message;}
  };
 
  document.addEventListener('click',e=>{const category=e.target.closest('[data-bills-spending-category]');if(category)selectBillsSpendingCategory(category.dataset.billsSpendingCategory);});
@@ -865,6 +889,34 @@
  $('#transactionFilter').onchange=()=>{spendingCategory=null;if($('#transactionFilter').value==='spending')$('#transactionAccountFilter').value='';renderIncome();};
  $('#transactionAccountFilter').onchange=()=>{spendingCategory=null;if($('#transactionFilter').value==='spending')$('#transactionFilter').value='all';renderIncome();};
  $('#transactionSort').onchange=()=>renderIncome();
+ function transactionCategoryButton(t,label=t.categoryLabel){
+  return '<button type="button" class="transaction-category-edit" data-edit-transaction-category="'+esc(t.transaction_id)+'" aria-label="'+esc('Change category for '+t.name)+ '">'+esc(label||'Other spending')+pencil+'</button>';
+ }
+ let editingTransactionCategory=null,savingTransactionCategory=false;
+ document.addEventListener('click',e=>{
+  const button=e.target.closest('[data-edit-transaction-category]');if(!button||!model||savingTransactionCategory)return;
+  const t=bankTransactions().find(t=>t.transaction_id===button.dataset.editTransactionCategory);if(!t)return;
+  editingTransactionCategory=t;
+  const current=model.categorizeTransaction(t,planner.transactionCategories);
+  $('#transactionCategoryMerchant').textContent=t.name+' · '+money(Math.round(t.amount*100))+' · '+dateLabel(t.date);
+  $('#transactionCategoryChoice').innerHTML='<option value="auto">Automatic</option>'+model.transactionCategories.map(c=>'<option value="'+esc(c.key)+'">'+esc(c.label)+'</option>').join('');
+  $('#transactionCategoryChoice').value=current.key;
+  $('#transactionCategoryRemember').disabled=!model.transactionMerchantKey(t);
+  $('#transactionCategoryRemember').checked=!$('#transactionCategoryRemember').disabled&&current.source!=='transaction';
+  $('#transactionCategoryError').textContent='';$('#transactionCategoryEditor').showModal();
+ });
+ $('#closeTransactionCategory').onclick=()=>$('#transactionCategoryEditor').close();
+ $('#transactionCategoryForm').onsubmit=async e=>{
+  e.preventDefault();if(!editingTransactionCategory||savingTransactionCategory)return;
+  const before=planner.transactionCategories,button=e.currentTarget.querySelector('[type="submit"]');
+  savingTransactionCategory=true;button.disabled=true;
+  try{
+   planner.transactionCategories=model.setTransactionCategory(before,editingTransactionCategory,$('#transactionCategoryChoice').value,$('#transactionCategoryRemember').checked);
+   await save();$('#transactionCategoryEditor').close();
+  }catch(err){planner.transactionCategories=before;await renderIncome();$('#transactionCategoryError').textContent=err.message||'Category could not be saved. Try again.';}
+  finally{savingTransactionCategory=false;button.disabled=false;}
+ };
+
  document.addEventListener('click',async e=>{
   const button=e.target.closest('[data-track-transaction],[data-spending-transaction],[data-reset-transaction]');if(!button)return;
   const id=button.dataset.trackTransaction||button.dataset.spendingTransaction||button.dataset.resetTransaction,t=review.rows.find(t=>t.transaction_id===id);if(!t)return;

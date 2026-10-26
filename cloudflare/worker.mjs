@@ -247,7 +247,7 @@ export function runtime(env,fetcher=fetch){
    });
   }
   if(!['GET','HEAD'].includes(req.method))return json({error:'Method not allowed'},405);
-  if(!['/','/index.html','/plaid-return','/style.css','/app.mjs','/engine.mjs','/setup-key','/setup-key.html','/setup-key.mjs','/favicon.ico','/tabs.js','/tabs.css','/theme.css','/income-model.mjs','/connection-model.mjs','/debt-payments.mjs','/rent-model.mjs','/rent-browser.mjs','/household-model.mjs','/bill-sharing.mjs','/credit-model.mjs','/transaction-links.mjs','/email-model.mjs','/tax-model.mjs','/tax-ui.mjs','/onboarding.js','/bank-activity.mjs','/classic.js','/classic.css','/classic-theme.js','/classic-events.js','/classic-migrate.mjs','/connections.js','/connections.css','/purify.min.js'].includes(path))return json({error:'Not found'},404);
+  if(!['/','/index.html','/plaid-return','/style.css','/app.mjs','/engine.mjs','/setup-key','/setup-key.html','/setup-key.mjs','/favicon.ico','/tabs.js','/tabs.css','/theme.css','/income-model.mjs','/connection-model.mjs','/debt-payments.mjs','/rent-model.mjs','/rent-browser.mjs','/household-model.mjs','/bill-sharing.mjs','/credit-model.mjs','/transaction-links.mjs','/email-model.mjs','/tax-model.mjs','/tax-ui.mjs','/onboarding.js','/bank-activity.mjs','/transaction-categories.mjs','/car-debt.mjs','/classic.js','/classic.css','/classic-theme.js','/classic-events.js','/classic-migrate.mjs','/connections.js','/connections.css','/purify.min.js'].includes(path))return json({error:'Not found'},404);
   const target=new URL(req.url);if(path==='/plaid-return')target.pathname='/';const asset=await env.ASSETS.fetch(new Request(target,req)),response=new Response(asset.body,asset);for(const [k,v]of Object.entries(headers))response.headers.set(k,v);return response;
  }
  async function handle(req){const identity=await sessionIdentity(req);return users.run(identity,()=>handleScoped(req));}
@@ -261,3 +261,4 @@ export default {
  async fetch(req,env){try{return await runtime(env).handle(req);}catch(e){return json({error:e.message||'Request failed'},400);}},
  async scheduled(_event,env,ctx){const app=runtime(env);if(app.configured)ctx.waitUntil(app.syncNextAccount().catch(()=>{/* Connection errors are stored in the private status. Do not log tokens or payloads. */}));}
 };
+

@@ -1,3 +1,5 @@
+export {carPaymentLoans} from './car-debt.mjs?v=car-debt1';
+export {transactionCategories,categorizeTransaction,transactionMerchantKey,setTransactionCategory} from './transaction-categories.mjs?v=auto-categories1';
 export {resolveDebtConnections,resolveDebtDetails} from './connection-model.mjs?v=paid-cycle1';
 import {transactionAccountId} from './transaction-links.mjs?v=connections-audit1';
 import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=paid-cycle1';
@@ -5,7 +7,7 @@ export {monthlyMinimum} from './debt-payments.mjs?v=paid-cycle1';
 import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-portal1';
 import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=connections-audit1';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
-export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs?v=connections-audit1';
+export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs?v=auto-categories1';
 export {creditBills,creditCapacity} from './credit-model.mjs?v=paid-cycle1';
 export {transactionAccountId};
 export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment} from './transaction-links.mjs?v=connections-audit1';
@@ -135,11 +137,13 @@ export function billEvents(legacy,planner,linked,start,end){
    // Prefer a manually entered or confirmed bill over a matching bank estimate.
    const norm=s=>String(s).toLowerCase().replace(/[^a-z0-9]/g,'');
    if(!bill.gmailConfirmed&&['bank-estimate','bank-tracked'].includes(bill.source)&&bills.some(other=>!['bank-estimate','bank-tracked'].includes(other.source)&&(norm(other.name)===norm(bill.name)||(!electric&&bill.billKind==='electric'&&(other.billKind==='electric'||/consumers\s*energy/i.test(other.name))))&&occurrences(other.date,other.repeat||'once',day(date,-7),day(date,7)).length))continue;
+   const carPayoff=planner.carDebtPayoffs?.[bill.id];
+   if(carPayoff&&date>=carPayoff.asOf&&(date>carPayoff.payoffDate||date===carPayoff.payoffDate&&carPayoff.finalPayment===0))continue;
    const key=bill.id+':'+date;
    if((bill.billKind==='rent'&&[...paid,...(legacy?.paid||[])].some(k=>rentPaidKey(k,bill)===key))||paid.has(key)||legacy?.paid?.includes(key)||(bill.gmailConfirmed&&[...paid,...(legacy?.paid||[])].some(k=>k.startsWith(bill.id+':'+date.slice(0,7)))))continue;
    const covered=Boolean(linked[bill.id])||bill.paidByCard||bill.source==='tracker-debt'||(bill.source==='plaid-credit'?bill.covered:(overrides[bill.id]??(bill.source!=='gmail'&&bill.source!=='manual'&&bill.source!=='bank-estimate'&&bill.source!=='bank-tracked')));
    const shared=sharedBill(bill,planner);
-   out.push({...rentOccurrence(bill,date),date,key,type:'bill',covered:shared?false:covered,shared,overdue:date<start,emailConfirmed:!!bill.emailConfirmed&&date===(bill.emailDueDate||bill.date)});
+   out.push({...rentOccurrence(bill,date),...(carPayoff&&date===carPayoff.payoffDate?{amount:carPayoff.finalPayment}:{}),date,key,type:'bill',covered:shared?false:covered,shared,overdue:date<start,emailConfirmed:!!bill.emailConfirmed&&date===(bill.emailDueDate||bill.date)});
   }
  }
  return out.sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name));

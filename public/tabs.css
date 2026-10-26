@@ -334,3 +334,6 @@ dialog::backdrop{touch-action:none}
 #billShareActive,#billSharePreviewForm{display:grid;gap:8px}#billShareActive[hidden]{display:none}
 #billShareCode,#billShareImportCode{width:100%;min-width:0;box-sizing:border-box;font-size:16px}
 #billShareCode{font-family:monospace;font-size:.85rem}#billShareStatus{overflow-wrap:anywhere}
+
+
+.transaction-category-edit{display:inline-flex;align-items:center;gap:7px;max-width:100%;text-align:left}.transaction-category-edit svg{width:14px;height:14px;flex-shrink:0}.forecast-row .transaction-category-edit{margin-top:7px;font-size:.7rem;padding:6px 9px}.forecast-row:has(.transaction-category-edit)>span{min-width:0;overflow-wrap:anywhere}
