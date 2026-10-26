@@ -22,7 +22,7 @@ test('SimpleFIN controls clear the token, refresh imported accounts, and save ex
  vm.runInNewContext(readFileSync('public/connections.js','utf8'),context);await window.BearDen.ready;
  element('#simplefinToken').value='only-once';await element('#simplefinConnectForm').onsubmit({preventDefault(){}});
  assert.equal(element('#simplefinToken').value,'');assert.equal(element('#simplefinActions').hidden,false);assert.match(element('#simplefinAccounts').innerHTML,/Indigo/);assert.match(element('#simplefinAccounts').innerHTML,/218.45 owed/);
- const status=element('accountStatus'),button=element('accountButton'),form={dataset:{simplefinAccount:'simplefin-one'},elements:{kind:{value:'credit'},debtSign:{value:'negative'}},querySelector:s=>s==='button'?button:status};
+ const status=element('accountStatus'),button=element('accountButton'),form={dataset:{simplefinAccount:'simplefin-one'},elements:{kind:{value:'credit'},debtSign:{value:'negative'}},querySelector:s=>s==='button[type=submit]'?button:status};
  await element('#simplefinAccounts').handlers.submit({preventDefault(){},target:{closest:()=>form}});
  assert.equal(button.disabled,false);assert.equal(element('#simplefinStatus').textContent,'Connected');assert.equal(element('#simplefinStatus').dataset.connected,'true');assert.match(element('#simplefinFeedback').textContent,/Account type saved/);
  await element('#simplefinRefresh').onclick();assert.equal(element('#simplefinStatus').textContent,'Connected');assert.match(element('#simplefinFeedback').textContent,/checked recently/);

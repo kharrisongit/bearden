@@ -35,3 +35,8 @@ html,body{overflow-x:clip}
 [data-theme=dark] #connectionDialog .connection-state[data-connected=true]{color:#bcd5ff;background:#243a57;border-color:#466184}
 #connectionDialog .reset-tracker-button{display:block;margin-top:18px;background:#a73236;color:#fff;border:1px solid #8e2529;font-weight:700}
 #connectionDialog .reset-tracker-button:hover{background:#8e2529}
+
+.connection-account-actions{display:flex;align-items:center;gap:3px;flex-shrink:0}
+#connectionDialog .connection-account-actions>button{min-height:32px;margin:0;padding:5px 8px;font-size:.7rem;background:transparent}
+#connectionDialog .connection-account-actions>.rename-account-button{display:grid;place-items:center;width:32px;padding:7px;border-color:transparent}
+.rename-account-button svg{width:17px;height:17px;display:block}

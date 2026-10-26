@@ -171,7 +171,7 @@ export function paycheckBillsBalance({legacy,planner,linked,accounts=[],plan={},
  const h=planner.household,end=day(date,13);
  const account=accounts.find(a=>a.id===h?.billsAccountId&&(a.currency||'USD')==='USD'&&!['credit','loan'].includes(a.type));
  const currentBalance=account&&!account.balanceUnavailable&&Number.isSafeInteger(account.balance)?account.balance:null;
- const result={accountName:account?.name||'Bills account',currentBalance,projectedBalance:null,end,historical:!!today&&end<today};
+ const result={accountName:account?.displayName||account?.name||'Bills account',currentBalance,projectedBalance:null,end,historical:!!today&&end<today};
  if(!today||result.historical||currentBalance===null||!householdEnabled(h))return result;
  const length=Math.round((Date.parse(end+'T12:00:00Z')-Date.parse(today+'T12:00:00Z'))/86400000);
  const bills=billEvents(legacy,planner,linked,today,end);
@@ -195,7 +195,7 @@ export function linkedBillLoan(bill,planner,accounts=[]){
  const id=planner.loanLinks?.[bill.id];
  if(!id||bill.billKind!=='car-payment')return null;
  const account=accounts.find(a=>a.id===id&&['plaid','simplefin'].includes(a.source)&&a.type==='loan');
- return account?{id,name:account.name,balance:account.balance,balanceUnavailable:!!account.balanceUnavailable,currency:account.currency||'USD'}:{id,unavailable:true};
+ return account?{id,name:account.displayName||account.name,balance:account.balance,balanceUnavailable:!!account.balanceUnavailable,currency:account.currency||'USD'}:{id,unavailable:true};
 }
 
 export function syncedDebtBalances(planner,accounts,today){
