@@ -1,27 +1,27 @@
 
   :root{
-    --ink:#2a2d35;
-    --ink-fixed:#31353f;
-    --paper:#eaebee;
+    --ink:#2f2a35;
+    --ink-fixed:#37313f;
+    --paper:#eceaee;
     --card:#ffffff;
-    --line:#c0c9de;
-    --accent:#4a70c9;
-    --accent-soft:#e4e6ea;
+    --line:#ccc0de;
+    --accent:#7f4ac9;
+    --accent-soft:#e6e4ea;
     --warn:#a8452e;
-    --warn-soft:#e8eaed;
-    --muted:#58637d;
+    --warn-soft:#eae8ed;
+    --muted:#67587d;
     color-scheme:light;
   }
   [data-theme="dark"]{
-    --ink:#e7ebf1;
-    --paper:#12161d;
-    --card:#1c222c;
-    --line:#333c49;
-    --accent:#4a66a8;
-    --accent-soft:#24272e;
-    --warn:#5d84dd;
-    --warn-soft:#282b32;
-    --muted:#9aa4b2;
+    --ink:#ebe7f1;
+    --paper:#17121d;
+    --card:#231c2c;
+    --line:#3c3349;
+    --accent:#714aa8;
+    --accent-soft:#28242e;
+    --warn:#9360da;
+    --warn-soft:#2c2832;
+    --muted:#a49ab2;
     color-scheme:dark;
   }
   html{background:var(--paper);}
@@ -37,12 +37,12 @@
     box-shadow:0 8px 22px rgba(47,111,94,0.32);
   }
   [data-theme="dark"] .hero.debt-hero{
-    background:linear-gradient(135deg, #2b2f42, #3d4160);
+    background:linear-gradient(135deg, #352b42, #4c3d60);
   }
   [data-theme="dark"] .hero.savings-hero{
-    background:linear-gradient(135deg, #2b2f42, #3d4160);
+    background:linear-gradient(135deg, #352b42, #4c3d60);
   }
-  [data-theme="dark"] .debt-hero .hero-pie-hole-sm{background:#242838;}
+  [data-theme="dark"] .debt-hero .hero-pie-hole-sm{background:#2c2438;}
   [data-theme="dark"] .savings-hero .icon-btn,
   [data-theme="dark"] .savings-hero .day-counter,
   [data-theme="dark"] .savings-hero .paycheck-counter,
@@ -50,23 +50,23 @@
     background:rgba(255,255,255,0.1);
     border-color:rgba(255,255,255,0.18);
   }
-  [data-theme="dark"] .savings-hero .hero-pie-hole-sm{background:#242838;}
+  [data-theme="dark"] .savings-hero .hero-pie-hole-sm{background:#2c2438;}
   [data-theme="dark"] .milestone-banner-debt{
-    background:linear-gradient(135deg, #2f426f, #4863a1);
+    background:linear-gradient(135deg, #4a2f6f, #6d48a1);
   }
   [data-theme="dark"] .milestone-both{
-    background:linear-gradient(135deg, #2f426f, #5a7bc8);
+    background:linear-gradient(135deg, #4a2f6f, #885ac8);
   }
   [data-theme="dark"] .milestone-banner-account{
-    background:linear-gradient(135deg, #3a538f, #5c78b8);
+    background:linear-gradient(135deg, #5d3a8f, #825cb8);
   }
   [data-theme="dark"] .paycheck.milestone-debt{
-    border-color:#2f426f;
+    border-color:#4a2f6f;
     box-shadow:0 4px 18px rgba(47,111,94,0.25);
   }
-  [data-theme="dark"] .paycheck.milestone-account{border-left-color:#3a538f;}
+  [data-theme="dark"] .paycheck.milestone-account{border-left-color:#5d3a8f;}
   [data-theme="dark"] .paycheck.milestone-debt.milestone-savings{
-    border-image:linear-gradient(135deg, #2f426f, #5a7bc8) 1;
+    border-image:linear-gradient(135deg, #4a2f6f, #885ac8) 1;
   }
   *{box-sizing:border-box;}
   body{
@@ -84,14 +84,14 @@
     letter-spacing:-0.02em;
     margin:0;
     text-align:center;
-    background:linear-gradient(135deg, #e8eaed, #ffffff);
+    background:linear-gradient(135deg, #eae8ed, #ffffff);
     -webkit-background-clip:text;
     background-clip:text;
     color:transparent;
     filter:drop-shadow(0 2px 6px rgba(0,0,0,0.25));
   }
   .app-title-box{
-    background:linear-gradient(135deg, #4a70c9, #6f91e1);
+    background:linear-gradient(135deg, #7f4ac9, #9f72de);
     border-radius:18px;
     padding:18px 20px;
     margin:0 0 34px;
@@ -349,7 +349,7 @@
     border-radius:14px;
     padding:12px 14px 10px;
   }
-  .hero .label{font-size:1.1rem;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;color:#f0f3f5;}
+  .hero .label{font-size:1.1rem;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;color:#f2f0f5;}
   .hero .big{font-size:2.05rem;font-weight:800;margin:3px 0 8px;letter-spacing:-0.02em;text-shadow:0 2px 10px rgba(0,0,0,0.18);}
   .day-counter{
     display:inline-block;
@@ -378,7 +378,7 @@
   .hero.savings-hero{
     background:
       radial-gradient(circle at 14% 8%, rgba(255,255,255,0.28), transparent 45%),
-      linear-gradient(135deg, #2e53a8 0%, #486fc9 48%, #7a9ae3 100%);
+      linear-gradient(135deg, #612ea8 0%, #7e48c9 48%, #a67de0 100%);
     margin-bottom:14px;
   }
   /* Slight honey-tinted variation on the translucent overlay pieces within
@@ -408,8 +408,8 @@
   }
   .icon-btn:active{opacity:0.7;}
   .icon-btn.active{
-    background:linear-gradient(135deg, #819fe4, #3464d4);
-    color:#1a1c20;
+    background:linear-gradient(135deg, #ab83e2, #7738d0);
+    color:#1c1a20;
     box-shadow:0 0 8px 2px rgba(255,209,102,0.7), inset 0 0 4px rgba(0,0,0,0.25);
     transform:scale(0.94);
   }
@@ -457,9 +457,9 @@
   .field-name-dark{
     flex:1;
     font-size:0.8rem;
-    color:#e8ecef;
+    color:#ebe8ef;
   }
-  .field-name-dark small{display:block;color:#c9d2d8;font-size:0.68rem;}
+  .field-name-dark small{display:block;color:#cfc9d8;font-size:0.68rem;}
   .field-row-dark input{
     width:92px;
     text-align:right;
@@ -486,12 +486,12 @@
   .savings-withdraw-label{
     font-size:0.8rem;
     font-weight:700;
-    color:#e8ecef;
+    color:#ebe8ef;
     margin-bottom:2px;
   }
   .savings-withdraw-hint{
     font-size:0.68rem;
-    color:#c9d2d8;
+    color:#cfc9d8;
     margin-bottom:8px;
     line-height:1.35;
   }
@@ -513,7 +513,7 @@
     align-items:center;
     gap:8px;
     font-size:0.75rem;
-    color:#e8ecef;
+    color:#ebe8ef;
     padding:5px 0;
     border-top:1px solid rgba(255,255,255,0.1);
   }
@@ -781,7 +781,7 @@
   }
   .add-item-box{
     display:none;
-    background:#f2f3f5;
+    background:#f3f2f5;
     border:1px dashed transparent;
     border-radius:10px;
     padding:0 12px;
@@ -802,7 +802,7 @@
   .add-toggle-btn{
     width:100%;
     padding:10px;
-    border:1px dashed #9ba3ac;
+    border:1px dashed #a29bac;
     border-radius:10px;
     background:transparent;
     color:var(--muted);
@@ -857,7 +857,7 @@
     width:32px;
     height:32px;
     border-radius:50%;
-    border:1px dashed #9ba3ac;
+    border:1px dashed #a29bac;
     background:transparent;
     color:var(--muted);
     font-size:0.95rem;
@@ -893,10 +893,10 @@
   .bonus-inline-btn{
     width:auto;
     padding:5px 10px;
-    border:1.5px dashed #5a7bc8;
+    border:1.5px dashed #885ac8;
     border-radius:7px;
-    background:#f2f3f5;
-    color:#1f3f8a;
+    background:#f3f2f5;
+    color:#4c2089;
     font-size:0.68rem;
     font-weight:700;
     cursor:pointer;
@@ -907,12 +907,12 @@
     display:flex;
     align-items:center;
     gap:8px;
-    background:#f2f3f5;
-    border:1px solid #a8bbe9;
+    background:#f3f2f5;
+    border:1px solid #c3a8e9;
     border-radius:8px;
     padding:8px 10px;
     margin:6px 0;
-    color:#343842;
+    color:#3a3442;
   }
   .bonus-inline-input input{
     flex:1;
@@ -921,7 +921,7 @@
     box-sizing:border-box;
   }
   .bonus-inline-input button{
-    background:#5a7bc8;
+    background:#885ac8;
     color:#fff;
     border:none;
     border-radius:6px;
@@ -935,12 +935,12 @@
     display:flex;
     flex-direction:column;
     gap:8px;
-    background:#f0f1f3;
-    border:1px solid #bbcbf0;
+    background:#f1f0f3;
+    border:1px solid #d1bcef;
     border-radius:8px;
     padding:10px;
     margin:6px 0;
-    color:#223c7a;
+    color:#47227a;
   }
   .extra-expense-input input[type="text"]{
     width:100%;
@@ -959,7 +959,7 @@
     box-sizing:border-box;
   }
   .extra-expense-input button{
-    background:#3f68c9;
+    background:#783fc9;
     color:#fff;
     border:none;
     border-radius:6px;
@@ -1028,7 +1028,7 @@
   }
   .account-terms-section-warn{
     background:var(--warn-soft);
-    border-color:#dfe1e5;
+    border-color:#e2dfe5;
   }
   .account-terms-mini{
     background:var(--paper);
@@ -1040,7 +1040,7 @@
   }
   .account-terms-mini-warn{
     background:var(--warn-soft);
-    border-color:#dfe1e5;
+    border-color:#e2dfe5;
   }
   .account-terms-mini-row{
     display:flex;
@@ -1071,7 +1071,7 @@
   .account-terms-mini-sm .account-terms-mini-row span:last-child{font-size:0.74rem;}
   .account-detail-title-box{
     text-align:center;
-    background:linear-gradient(135deg, #2f426f, #4a6196);
+    background:linear-gradient(135deg, #4a2f6f, #6a4a96);
     border-radius:18px;
     padding:22px 16px;
     box-shadow:0 8px 22px rgba(47,111,94,0.32);
@@ -1142,7 +1142,7 @@
     gap:6px;
   }
   .pie-legend-item:active{opacity:0.6;}
-  .debt-breakdown-pie .pie-legend-item{color:#e8ecef;}
+  .debt-breakdown-pie .pie-legend-item{color:#ebe8ef;}
   .pie-legend-dot{
     width:9px;
     height:9px;
@@ -1152,7 +1152,7 @@
   .hero.debt-hero{
     background:
       radial-gradient(circle at 86% 8%, rgba(255,255,255,0.18), transparent 45%),
-      linear-gradient(135deg, #28417a 0%, #2f53a8 50%, #4a70c9 100%);
+      linear-gradient(135deg, #4a287a 0%, #612fa8 50%, #7f4ac9 100%);
   }
   /* Bear Run: a little Chrome-Dino-style endless runner living in its own
      hero card. Teal/green so it reads as a distinct, playful "bonus" card
@@ -1405,7 +1405,7 @@
     padding:10px 24px;
     border:none;
     border-radius:999px;
-    background:linear-gradient(135deg, #4a70c9, #6f91e1);
+    background:linear-gradient(135deg, #7f4ac9, #9f72de);
     color:#fff;
     font-size:0.85rem;
     font-weight:800;
@@ -1675,19 +1675,19 @@
     margin-bottom:20px;
   }
   [data-theme="dark"] .hero.notes-hero{
-    background:linear-gradient(135deg, #2b2f42, #3d4160);
+    background:linear-gradient(135deg, #352b42, #4c3d60);
   }
   .notebook-page-wrap{
     position:relative;
     border-radius:14px;
-    background:linear-gradient(135deg, #fbfbfc, #e4e6ea);
+    background:linear-gradient(135deg, #fbfbfc, #e6e4ea);
     border:1px solid rgba(255,255,255,0.35);
     box-shadow:inset 0 1px 0 rgba(255,255,255,0.6), 0 4px 10px rgba(0,0,0,0.15);
     padding:14px 14px 10px;
     overflow:hidden;
   }
   [data-theme="dark"] .notebook-page-wrap{
-    background:linear-gradient(135deg, #1c1e24, #24272d);
+    background:linear-gradient(135deg, #1f1c24, #28242d);
     border-color:rgba(255,255,255,0.1);
   }
   /* A faint paw print watermark tucked in the corner of the page, purely
@@ -1723,10 +1723,10 @@
     padding:2px 4px 4px;
     font-family:inherit;
     font-size:0.88rem;
-    color:#31353f;
+    color:#37313f;
   }
   [data-theme="dark"] .notebook-textarea{
-    color:#e7ebf1;
+    color:#ebe7f1;
     background:
       repeating-linear-gradient(
         to bottom,
@@ -1736,8 +1736,8 @@
       );
     background-position:0 4px;
   }
-  .notebook-textarea::placeholder{color:#7a87a4;}
-  [data-theme="dark"] .notebook-textarea::placeholder{color:#7a8291;}
+  .notebook-textarea::placeholder{color:#8b7aa4;}
+  [data-theme="dark"] .notebook-textarea::placeholder{color:#847a91;}
   .notebook-save-indicator{
     text-align:center;
     color:rgba(255,255,255,0.85);
@@ -1773,7 +1773,7 @@
     box-shadow:0 6px 14px rgba(107,74,36,0.32), inset 0 1px 0 rgba(255,255,255,0.3);
   }
   [data-theme="dark"] .notes-toggle-btn{
-    background:linear-gradient(135deg, #3d4160, #2b2f42);
+    background:linear-gradient(135deg, #4c3d60, #352b42);
     box-shadow:0 12px 28px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
   }
   /* Page-flip controls beneath the notebook textarea: prev/next paw
@@ -1842,8 +1842,8 @@
     justify-content:center;
     color:#fff;
   }
-  .debt-hero .hero-pie-hole-sm{background:#28417a;}
-  .savings-hero .hero-pie-hole-sm{background:#2e53a8;}
+  .debt-hero .hero-pie-hole-sm{background:#4a287a;}
+  .savings-hero .hero-pie-hole-sm{background:#612ea8;}
   .hero-pie-hole-sm .pct{font-size:0.8rem;font-weight:800;}
   .spend-item{
     padding:10px 0;
@@ -2075,7 +2075,7 @@
     padding:14px;
     border:none;
     border-radius:12px;
-    background:linear-gradient(135deg, #3d5a80, #22405e);
+    background:linear-gradient(135deg, #593d80, #3b225e);
     color:#fff;
     font-size:0.9rem;
     font-weight:700;
@@ -2085,22 +2085,22 @@
   }
   .schedule-expand-btn:active{opacity:0.8;}
   [data-theme="dark"] .schedule-expand-btn{
-    background:linear-gradient(135deg, #5b7ba8, #34547a);
+    background:linear-gradient(135deg, #7b5ba8, #51347a);
     box-shadow:0 3px 10px rgba(0,0,0,0.35);
   }
 
   .paycheck{
     position:relative;
-    background:linear-gradient(135deg, #fcfcfc, #e0e2e7);
-    border:1.5px solid #94abe0;
+    background:linear-gradient(135deg, #fcfcfc, #e3e0e7);
+    border:1.5px solid #b494e0;
     border-radius:14px;
     padding:14px 16px;
     margin-bottom:24px;
     box-shadow:0 2px 8px rgba(26,34,48,0.08);
   }
   [data-theme="dark"] .paycheck{
-    background:linear-gradient(135deg, #2b2f42, #3d4160);
-    border-color:#4a4e6b;
+    background:linear-gradient(135deg, #352b42, #4c3d60);
+    border-color:#584a6b;
   }
   /* A little full-bodied bear sitting at the bottom of every paycheck
      card, smiling and giving a friendly wave. Three independently
@@ -2532,15 +2532,15 @@
     align-items:center;
   }
   .check-summary-row.bonus-row{
-    background:#f2f3f5;
-    border:1px solid #a8bbe9;
+    background:#f3f2f5;
+    border:1px solid #c3a8e9;
     border-radius:8px;
     padding:8px 10px;
     margin:4px 0;
     font-weight:700;
   }
   .check-summary-row.bonus-row span:last-child{
-    color:#1f3f8a;
+    color:#4c2089;
   }
   .check-summary-row.prominent-row{
     background:var(--accent-soft);
@@ -2677,24 +2677,24 @@
     letter-spacing:0.01em;
   }
   .milestone-banner-debt{
-    background:linear-gradient(135deg, #a8452e, #4a70c9);
+    background:linear-gradient(135deg, #a8452e, #7f4ac9);
     color:#fff;
     border-radius:13px 13px 0 0;
   }
   .milestone-banner-savings{
-    background:linear-gradient(135deg, #5a7bc8, #7d9ce4);
-    color:#202329;
+    background:linear-gradient(135deg, #885ac8, #a880e1);
+    color:#242029;
     border-radius:13px 13px 0 0;
   }
   .milestone-both{
-    background:linear-gradient(135deg, #a8452e, #5a7bc8);
+    background:linear-gradient(135deg, #a8452e, #885ac8);
     color:#fff;
     border-radius:13px 13px 0 0;
   }
   .milestone-banner-account{
     display:block;
     width:fit-content;
-    background:linear-gradient(135deg, #304b8a, #4a70c9);
+    background:linear-gradient(135deg, #55308a, #7f4ac9);
     color:#fff;
     border-radius:20px;
     padding:6px 16px;
@@ -2703,18 +2703,18 @@
     margin:12px auto 0;
   }
   .paycheck.milestone-debt{
-    border:2px solid #4a70c9;
+    border:2px solid #7f4ac9;
     box-shadow:0 4px 18px rgba(201,111,74,0.25);
   }
   .paycheck.milestone-account{
-    border-left:4px solid #304b8a;
+    border-left:4px solid #55308a;
   }
   .paycheck.milestone-savings{
-    border:2px solid #5a7bc8;
+    border:2px solid #885ac8;
     box-shadow:0 4px 18px rgba(200,161,90,0.25);
   }
   .paycheck.milestone-debt.milestone-savings{
-    border-image:linear-gradient(135deg, #4a70c9, #5a7bc8) 1;
+    border-image:linear-gradient(135deg, #7f4ac9, #885ac8) 1;
   }
   .paycheck.milestone-debt .paycheck-head .date,
   .paycheck.milestone-savings .paycheck-head .date{
