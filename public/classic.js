@@ -1885,6 +1885,7 @@ function resetCheckedPaychecks(){
 
 function buildSavingsGoalHeroHTML(g, canDelete, isEditing, isWithdrawing){
   return `
+    <div class="hero-peek-wrap savings-peek-wrap"><div class="hero-bear"><div class="hero-bear-wings"></div><div class="hero-bear-face"></div><div class="hero-bear-paw"></div><div class="hero-bear-hat"></div><div class="hero-bear-fangs"></div><div class="hero-bear-horns"></div><div class="hero-bear-bubble">Grrr</div></div>
     <div class="hero savings-hero" id="savingsHero-${g.id}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <div class="hero-title" style="margin-bottom:0;">🐷 Savings Tracker</div>
@@ -1974,7 +1975,7 @@ function buildSavingsGoalHeroHTML(g, canDelete, isEditing, isWithdrawing){
       <div class="row"><span>Goal amount</span><span>${money(g.goal)}</span></div>
       <div class="row"><span>Contribution per paycheck</span><span>${money(g.contribution)}</span></div>
       ${g.withdrawalHistory && g.withdrawalHistory.length > 0 ? `<div class="row"><span>Total withdrawn</span><span>${money(g.withdrawalHistory.reduce((a,w)=>a+w.amount,0))}</span></div>` : ''}
-    </div>
+    </div></div>
   `;
 }
 
@@ -2010,6 +2011,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
     heroContainer.innerHTML = goalsInfo.map(g =>
         buildSavingsGoalHeroHTML(g, canDelete, savingsGoalEditingId === g.id, savingsWithdrawOpenId === g.id)
       ).join('');
+    setupHeroBear(heroContainer);
     if (justAddedGoalId !== null) {
       const newCardEl = document.getElementById('savingsHero-' + justAddedGoalId);
       if (newCardEl) newCardEl.classList.add('savings-card-entering');
@@ -2305,8 +2307,11 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
 
 // Peeking hero bear: pops up in a random spot along the top of the debt
 // box each cycle, and glares angrily (a sharp shake + "Grrr" bubble) on tap.
-function setupHeroBear(){
-  document.querySelectorAll('.hero-bear').forEach(bear => {
+const initializedHeroBears=new WeakSet();
+function setupHeroBear(root=document){
+  root.querySelectorAll('.hero-bear').forEach(bear => {
+  if(initializedHeroBears.has(bear))return;
+  initializedHeroBears.add(bear);
 
   function moveToRandomSpot(){
     // Keep clear of the rounded corners at either end (roughly 6%-78%
