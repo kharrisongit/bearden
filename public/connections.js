@@ -2,7 +2,7 @@
 window.BearDen=(()=>{
  const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),money=n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n/100);
  const keys=new Set(['app-state','notes','runnerHighScore','crushHighScore','questBestWave','catchSave','theme','holiday','linked-bills','income-planner','onboarding']);
- let config={},values={},revision=0,legacy=null,queue=Promise.resolve(),blocked=false;
+ let config={},values={},revision=0,legacy=null,queue=Promise.resolve(),blocked=false,rentLoginUrl=null;
  const bridge={loaded:false,storage:{},ready:null};
  function message(t){$('#connectionMessage').textContent=t;}
  async function api(path,body){const r=await fetch(path,{method:body===undefined?'GET':'POST',headers:{...(body===undefined?{}:{'Content-Type':'application/json'}),...(config.accountId?{'X-BearDen-Account':config.accountId}:{})},body:body===undefined?undefined:JSON.stringify(body)});let d;try{d=await r.json();}catch{throw Error('Could not read the server response.');}if(!r.ok){const error=Error(d.error||'Request failed');error.status=r.status;throw error;}return d;}
@@ -27,11 +27,33 @@ window.BearDen=(()=>{
   $('#classicBankStatus').textContent=c.items?.length?`${c.items.length} bank connection(s). To sign in again, use Reconnect existing bank below. ${config.syncDescription||''}`:'Connect a bank to see its balances here.';
   $('#classicBalances').innerHTML=(s?.accounts||[]).filter(a=>a.source==='plaid').map(a=>`<div class="connection-row"><strong>${esc(a.name)}</strong>${a.balanceUnavailable?'Balance not supplied':money(a.balance)}<small>${esc(a.currency||'USD')}${a.balanceRetrieved?' · Retrieved '+esc(new Date(a.balanceRetrieved).toLocaleString()):''}</small>${['loan','credit'].includes(a.type)&&a.balance===0?'<small>Plaid reports zero; verify with your bank. This is a balance, not a payment due.'+(a.lastPositiveBalance>0?' Last positive balance received: '+money(a.lastPositiveBalance)+'.':'')+'</small>':''}<details><summary>Balance details</summary><small>Connection: ${esc(c.items?.find(i=>i.id===a.itemId)?.name||'Bank')}${c.items?.find(i=>i.id===a.itemId)?.balanceError?'<br>Last balance refresh failed: '+esc(c.items.find(i=>i.id===a.itemId).balanceError):''}<br>Account type: ${esc(a.type||'Not supplied')} / ${esc(a.subtype||'Not supplied')}<br>Current balance reported by Plaid: ${a.reportedCurrent===undefined?'No balance response saved for this account':a.reportedCurrent===null?'Not supplied':money(Math.round(a.reportedCurrent*100))}<br>Available balance reported by Plaid: ${a.reportedAvailable===undefined?'No balance response saved for this account':a.reportedAvailable===null?'Not supplied':money(Math.round(a.reportedAvailable*100))}</small></details></div>`).join('');
   $('#classicBanks').innerHTML=(c.items||[]).map((i,index)=>`<div class="connection-row"><strong>${esc(i.name)}</strong><button data-bank-reconnect="${esc(i.id)}">Reconnect existing bank</button><button data-credit-update="${esc(i.id)}">${i.liabilities?'Manage extra card permissions':'Request due dates & minimums'}</button><small>Balances already sync. Extra card details may require additional Plaid permission; linking an existing account in Accounts does not.</small><button data-bank-disconnect="${esc(i.id)}">Disconnect</button>${i.balanceError?'<small role="status">Balance refresh failed: '+esc(i.balanceError)+'</small>':i.balanceWarning?'<small role="status">'+esc(i.balanceWarning)+'</small>':''}${i.liabilitiesStatus?'<small>'+esc(i.liabilitiesStatus)+'</small>':''}${c.items.slice(0,index).find(other=>other.name===i.name)?'<button data-bank-combine="'+esc(i.id)+'" data-bank-keep="'+esc(c.items.slice(0,index).find(other=>other.name===i.name).id)+'">Combine duplicate '+esc(i.name)+' connections</button>':''}</div>`).join('');
-  renderSimplefin(c,s);
+  renderSimplefin(c,s);renderRent(c.sun);
   $('#classicGmail').textContent='Add Gmail account';$('#classicDisconnectGmail').hidden=true;$('#checkGmailAccounts').hidden=!c.gmail;
   $('#classicEmailStatus').textContent=c.gmail?'Connected. Bills and payment notices update in the background.':'Connect Gmail to find bills and payment notices.';
   $('#gmailAccountList').innerHTML=(c.gmailAccounts||[]).map(a=>'<div class="connection-row"><strong>'+esc(a.email||'Gmail account')+'</strong><small>'+esc(a.status||'Connected')+(a.updated?' · '+esc(new Date(a.updated).toLocaleString()):'')+'</small><button type="button" data-gmail-disconnect="'+esc(a.id)+'">Disconnect</button></div>').join('');
  }
+ function renderRent(rent){
+  $('#rentConnect').disabled=!config.rentConfigured;$('#rentConnect').textContent=rent?.connected?'Reconnect Sun rent portal':'Connect Sun rent portal';
+  $('#rentStatus').textContent=!config.rentConfigured?'Rent sign-in is available on the hosted Cloudflare version of BearDen.':rent?.status||'Not connected.';
+  $('#rentActions').hidden=!rent?.connected;$('#rentLogin').hidden=!rent?.pendingUntil;
+  $('#rentLoginLink').hidden=!rentLoginUrl||!rent?.pendingUntil;
+  if(rentLoginUrl)$('#rentLoginLink').href=rentLoginUrl;else $('#rentLoginLink').removeAttribute('href');
+  $('#rentExpiry').textContent=rent?.pendingUntil?'Window expires at '+new Date(rent.pendingUntil).toLocaleTimeString()+'.'+(!rentLoginUrl?' Use the private window you already opened, or start a new connection.':''):'';
+  const r=rent?.snapshot;$('#rentSnapshot').innerHTML=r?'<div class="connection-row"><strong>Latest Sun reading</strong><p>Minimum payment: '+money(r.amountDue)+'</p><p>Current balance: '+money(r.currentBalance)+'</p><p>Due date: '+esc(r.dueDate||'Not supplied')+'</p><small>Checked '+esc(new Date(r.checkedAt).toLocaleString())+(rent.needsLogin?' · Sign in again to update.':'')+'</small></div>':'';
+ }
+ async function rentAction(button,action){
+  if(!requireLogin())return;button.disabled=true;$('#rentStatus').textContent=action==='start'?'Opening a private Sun sign-in window…':action==='complete'?'Reading Sun’s balance and saving the connection…':'Updating rent connection…';
+  try{await queue;const result=await api('/api/rent/'+action,{});
+   if(action==='start'){const url=new URL(result.url);if(url.protocol!=='https:'||url.hostname!=='live.browser.run')throw Error('The private sign-in address could not be verified.');rentLoginUrl=url.href;}
+   if(['complete','cancel','disconnect'].includes(action))rentLoginUrl=null;
+   await refresh();if(result.status)$('#rentStatus').textContent=result.status;
+  }catch(error){$('#rentStatus').textContent=error.message;}finally{button.disabled=false;}
+ }
+ $('#rentConnect').onclick=e=>rentAction(e.currentTarget,'start');
+ $('#rentComplete').onclick=e=>rentAction(e.currentTarget,'complete');
+ $('#rentCancel').onclick=e=>rentAction(e.currentTarget,'cancel');
+ $('#rentRefresh').onclick=e=>rentAction(e.currentTarget,'refresh');
+ $('#rentDisconnect').onclick=e=>{if(confirm('Remove the saved Sun sign-in session from BearDen and stop rent checks? Your entered bills will stay.'))rentAction(e.currentTarget,'disconnect');};
  function renderSimplefin(c,s){
   const connected=!!c.simplefin,accounts=(s?.accounts||[]).filter(a=>a.source==='simplefin');
   $('#simplefinActions').hidden=!connected;$('#simplefinSetup').hidden=connected;$('#simplefinConnect').textContent=connected?'Replace SimpleFIN token':'Connect SimpleFIN';

@@ -6,6 +6,7 @@
     "nodejs_compat"
   ],
   "workers_dev": true,
+  "browser": { "binding": "BROWSER" },
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",

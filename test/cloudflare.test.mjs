@@ -263,3 +263,24 @@ test('SimpleFIN failed initial fetch keeps its consumed token and scheduled refr
  const setup=Buffer.from('https://beta-bridge.simplefin.org/simplefin/claim/sample').toString('base64');await f.app.handle(f.req('/api/simplefin/connect',{token:setup}));let c=f.get('connections');assert.equal(c.simplefin.accessUrl,access);assert.match(c.simplefin.status,/503/);
  ready=true;c.simplefin.nextSync=0;c.simplefin.lastAttempt=Date.now()-300001;f.set('connections',c);await f.app.sync();assert.equal(calls,2);assert.match(f.get('connections').simplefin.status,/Add financial institutions/);f.db.close();
 });
+
+import {fakeSunBrowser} from './helpers/sun-browser.mjs';
+test('rent browser is authenticated, origin checked, encrypted, and absent from public state',async()=>{
+ const f=fixture(),browser=fakeSunBrowser();f.env.BROWSER=browser.binding;const app=runtime(f.env);
+ assert.equal((await app.handle(new Request(f.env.APP_URL+'/api/rent/start',{method:'POST'}))).status,401);
+ assert.equal((await app.handle(f.req('/api/rent/start',{},'https://evil.example'))).status,403);assert.equal(browser.state.starts.length,0);
+ const start=await(await app.handle(f.req('/api/rent/start',{}))).json();assert.match(start.url,/live.browser.run/);
+ let view=await(await app.handle(f.req('/api/state'))).text();assert.doesNotMatch(view,/private-live-secret|private-browser/);
+ assert.equal((await app.handle(f.req('/api/rent/complete',{}))).status,200);
+ const saved=f.get('sun-session');assert.match(saved.session,/sun-access-secret/);assert.ok(!f.db.prepare("SELECT value FROM vault WHERE id='sun-session'").get().value.includes('sun-access-secret'));
+ view=await(await app.handle(f.req('/api/state'))).text();assert.doesNotMatch(view,/sun-access-secret|sun-refresh-secret|sun-cookie-secret|property-a/);assert.equal(JSON.parse(view).connections.sun.snapshot.amountDue,102545);
+ assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM vault WHERE id='plan' OR id='classic'").get().n,0);
+ await app.handle(f.req('/api/rent/disconnect',{}));assert.equal(f.get('sun-session'),null);assert.equal(f.get('connections').sun,undefined);f.db.close();
+});
+test('rent browser routes cannot access another BearDen account pending sign-in',async()=>{
+ const f=fixture(),browser=fakeSunBrowser();f.env.BROWSER=browser.binding;const app=runtime(f.env);await app.handle(f.req('/api/rent/start',{}));
+ const identity=googleIdentity({email:'another@example.com',sub:'another',email_verified:true},f.env.ALLOWED_EMAIL),token='v2.private-rent-test',hash=createHash('sha256').update(token).digest('hex');
+ f.db.prepare('INSERT INTO sessions VALUES(?,?)').run(hash,Date.now()+60000);f.set('auth-session:'+hash,identity);
+ const req=new Request(f.env.APP_URL+'/api/rent/complete',{method:'POST',headers:{Cookie:'bearden='+token,Origin:f.env.APP_URL,'Content-Type':'application/json','X-BearDen-Account':identity.accountId},body:'{}'});
+ const result=await app.handle(req);assert.equal(result.status,400);assert.match((await result.json()).error,/expired/);assert.equal(browser.state.calls.length,0);assert.ok(f.get('connections').sun.pending);f.db.close();
+});

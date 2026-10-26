@@ -1,3 +1,4 @@
+import {createSunBrowser,publicSun,sunMessage,syncSun} from '../sun-rent.mjs';
 import {claimSimplefin,publicSimplefin,syncSimplefin,configureSimplefinAccount} from '../simplefin.mjs';
 import {plaidAccountEntry,bankAccounts,combineBankConnections} from '../providers.mjs';
 import {userScope,googleIdentity,sessionMismatch} from '../user-scope.mjs';
@@ -23,7 +24,7 @@ function redirect(path,setCookies=[]){const h=new Headers({...headers,Location:p
 async function body(req){if(!req.headers.get('content-type')?.startsWith('application/json'))throw Error('Expected JSON');let length=0,parts=[];for await(const chunk of req.body||[]){length+=chunk.length;if(length>250000)throw Error('Plan/request exceeds 250 KB');parts.push(chunk);}return JSON.parse(Buffer.concat(parts).toString()||'{}');}
 export function runtime(env,fetcher=fetch){
  const key=env.DATA_KEY?Buffer.from(env.DATA_KEY,'base64'):null,origin=env.APP_URL?new URL(env.APP_URL).origin:null,owner=env.ALLOWED_EMAIL?.toLowerCase();
- const users=userScope(owner);
+ const users=userScope(owner),sunBrowser=createSunBrowser(env.BROWSER);
  const configured=!!(env.DB&&key?.length===32&&origin?.startsWith('https:')&&owner&&env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET);
  const run=(sql,...args)=>env.DB.prepare(sql).bind(...args).run(),first=(sql,...args)=>env.DB.prepare(sql).bind(...args).first();
  function encrypt(value){if(key?.length!==32)throw Error('Configure a 32-byte DATA_KEY');const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);return Buffer.concat([iv,cipher.update(Buffer.from(JSON.stringify(value),'utf8')),cipher.final(),cipher.getAuthTag()]).toString('base64');}
@@ -41,7 +42,8 @@ export function runtime(env,fetcher=fetch){
  async function request(url,options={}){const r=await fetcher(url,{...options,signal:AbortSignal.timeout(15000)});let d;try{d=await r.json();}catch{throw Error('Provider response unreadable');}if(!r.ok){const error=Error(d.error_code||d.error?.status||'Provider request failed ('+r.status+')');error.code=d.error_code;throw error;}return d;}
  async function plaid(path,data){if(!env.PLAID_CLIENT_ID||!env.PLAID_SECRET)throw Error('Plaid is not configured');const mode=env.PLAID_ENV||'sandbox';if(!['sandbox','production'].includes(mode))throw Error('Invalid Plaid environment');return request(`https://${mode}.plaid.com${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:env.PLAID_CLIENT_ID,secret:env.PLAID_SECRET,...data})});}
  const googleToken=data=>request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,...data})});
- function publicConnections(c){return {simplefin:publicSimplefin(c),items:c.items.map(publicItem),creditCards:publicCredit(c),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates.filter(x=>!x.dismissed),...publicMail(c,users.current().email),bankUpdated:c.bankUpdated,status:c.status};}
+ function publicConnections(c){return {sun:publicSun(c.sun),simplefin:publicSimplefin(c),items:c.items.map(publicItem),creditCards:publicCredit(c),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates.filter(x=>!x.dismissed),...publicMail(c,users.current().email),bankUpdated:c.bankUpdated,status:c.status};}
+ async function syncSunRent(c,force=false){return syncSun(c.sun,await read('sun-session',null),sunBrowser,value=>write('sun-session',value),{force});}
  async function syncSimplefinBalances(c){return syncSimplefin(c,async()=>(await plan()).state.accounts,accounts=>updatePlan(s=>{s.accounts=accounts;}),fetcher);}
  async function syncBalances(c,item,live=false){
    item.balanceAttempt=Date.now();
@@ -66,6 +68,7 @@ export function runtime(env,fetcher=fetch){
   return account.status;
  }
  async function sync(force=false,bankOnly=false,targetId=null,gmailOnly=false){return locked(async()=>{const c=await connections(),now=Date.now(),bank=!gmailOnly&&c.items.filter(i=>(!targetId||i.id===targetId)&&(force||i.pending||!i.nextSync||i.nextSync<=now)).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0],gmail=!bankOnly&&mailboxes(c,users.current().email).filter(a=>force||a.backlog?.length||a.page||!a.nextSync||a.nextSync<=now).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0];
+   if(!bankOnly&&!gmailOnly&&!targetId&&c.sun?.connected&&!c.sun.needsLogin&&(!c.sun.nextSync||c.sun.nextSync<=now)&&!(c.sun.pending?.expires>now)){c.lastTask='rent';c.status=await syncSunRent(c);await write('connections',c);return {status:c.status};}
    if(!gmailOnly&&!targetId&&c.simplefin&&(force||!c.simplefin.nextSync||c.simplefin.nextSync<=now)&&(!bank||c.lastTask==='bank')){c.lastTask='simplefin';c.status=await syncSimplefinBalances(c);await write('connections',c);return {status:c.status};}
    if(targetId&&!bank)throw Error('Bank connection not found. Reload your connections.');
    if(!bank&&!gmail)return {status:gmailOnly?'No Gmail accounts connected.':c.status};if(bank)bank.lastSyncAttempt=now;try{if(force&&bank)await syncBalances(c,bank,true);if(gmail&&(!bank||c.lastTask==='bank')){c.lastTask='gmail';c.status=await syncGmail(c,gmail);}else{c.lastTask='bank';c.status=await syncBank(c,bank,force);}}catch(e){c.status='Sync needs attention: '+e.message;if(c.lastTask==='gmail'&&gmail){gmail.nextSync=now+sixHours;gmail.status=c.status;}}
@@ -74,7 +77,7 @@ export function runtime(env,fetcher=fetch){
  async function handleScoped(req){
   const u=new URL(req.url),path=u.pathname;
   if(path==='/health')return json({ok:true,hosting:'cloudflare-free',configured});
-  if(path==='/api/config'&&req.method==='GET')return json({authenticated:await authorized(req),accountId:await authorized(req)?users.current().accountId:null,email:await authorized(req)?users.current().email:null,googleConfigured:configured,plaidConfigured:!!(env.PLAID_CLIENT_ID&&env.PLAID_SECRET),plaidEnvironment:env.PLAID_ENV||'sandbox',syncDescription:'balances loaded on connection; background updates about every 6 hours'});
+  if(path==='/api/config'&&req.method==='GET')return json({authenticated:await authorized(req),accountId:await authorized(req)?users.current().accountId:null,email:await authorized(req)?users.current().email:null,googleConfigured:configured,rentConfigured:!!env.BROWSER?.acquire,plaidConfigured:!!(env.PLAID_CLIENT_ID&&env.PLAID_SECRET),plaidEnvironment:env.PLAID_ENV||'sandbox',syncDescription:'balances loaded on connection; background updates about every 6 hours'});
   if(path==='/auth/google'&&req.method==='GET'){
    if(!configured)return json({error:'Configure Cloudflare D1 and the Google/owner/encryption secrets first.'},503);const gmail=u.searchParams.has('gmail');if(gmail&&!await authorized(req))return redirect('/auth/google');if(gmail&&sessionMismatch(users.current(),u.searchParams.get('account'),'POST'))return json({error:'Your BearDen account changed. Reload before adding Gmail.'},409);
    const state=random(),verifier=random();await run('DELETE FROM oauth WHERE expires < ?',Date.now());await run('INSERT INTO oauth VALUES(?,?,?,?)',hash(state),encrypt(gmail?{verifier,ownerSession:hash(cookies(req).bearden)}:verifier),gmail?1:0,Date.now()+600000);
@@ -104,6 +107,36 @@ export function runtime(env,fetcher=fetch){
    if(path==='/api/sync')return json(await sync(true,false,null,b.gmailOnly===true));
    if(path==='/api/plaid/link'){const c=await connections(),item=c.items.find(i=>i.id===b.itemId);const d=await plaid('/link/token/create',{user:{client_user_id:hash(users.current().scope||owner)},client_name:'BearDen',...creditLinkOptions(b,item),country_codes:['US'],language:'en',...(env.PLAID_REDIRECT_URI?{redirect_uri:env.PLAID_REDIRECT_URI}:{})});return json({link_token:d.link_token});}
    return locked(async()=>{
+    if(path.startsWith('/api/rent/')){
+     const c=await connections(),now=Date.now();
+     try{
+      if(path==='/api/rent/start'){
+       const usage=await read('sun-browser-usage',{since:now,count:0,last:0});if(now-usage.since>=86400000){usage.since=now;usage.count=0;}
+       if(usage.count>=6)return json({error:'The rent sign-in attempt limit has been reached. Try again tomorrow.'},429);
+       if(now-usage.last<20000)return json({error:'Wait 20 seconds before starting another rent sign-in.'},429);
+       usage.count++;usage.last=now;await write('sun-browser-usage',usage);
+       if(c.sun?.pending)await sunBrowser.close(c.sun.pending.sessionId).catch(()=>{});
+       const started=await sunBrowser.start();c.sun={...c.sun,pending:started.pending,status:'Sign in to Sun in the private window, open Payments, then select Save connection.'};
+       try{await write('connections',c);}catch(error){await sunBrowser.close(started.pending.sessionId).catch(()=>{});throw error;}
+       return json({url:started.url,expires:started.pending.expires});
+      }
+      if(path==='/api/rent/complete'){
+       const result=await sunBrowser.finish(c.sun?.pending);await write('sun-session',result.session);
+       const pending=c.sun.pending;c.sun={connected:true,snapshot:result.snapshot,updated:now,lastAttempt:now,nextSync:now+86400000,needsLogin:false,status:'Sun connected. Balance and due date saved; checks run about daily.'};
+       await write('connections',c);await sunBrowser.close(pending.sessionId).catch(()=>{});return json({status:c.sun.status});
+      }
+      if(path==='/api/rent/refresh'){const status=await syncSunRent(c,true);await write('connections',c);return json({status});}
+      if(path==='/api/rent/cancel'){
+       if(c.sun?.pending)await sunBrowser.close(c.sun.pending.sessionId).catch(()=>{});
+       if(c.sun){delete c.sun.pending;c.sun.status=c.sun.connected?'Sign-in cancelled. Your existing rent connection is kept.':'Sign-in cancelled.';await write('connections',c);}return json({status:'Sign-in cancelled.'});
+      }
+      if(path==='/api/rent/disconnect'){
+       if(c.sun?.pending)await sunBrowser.close(c.sun.pending.sessionId).catch(()=>{});
+       await write('sun-session',null);delete c.sun;await write('connections',c);return json({status:'Sun disconnected. The saved sign-in session has been removed from BearDen.'});
+      }
+      return json({error:'Not found'},404);
+     }catch(error){return json({error:sunMessage(error)},400);}
+    }
     if(path==='/api/simplefin/connect'){
      const c=await connections();if(c.simplefin&&!b.replace)return json({error:'SimpleFIN is already connected. Use Replace token to reconnect it.'},409);
      const accessUrl=await claimSimplefin(b.token,fetcher);c.simplefin={accessUrl,status:'SimpleFIN connected. Loading balances.'};

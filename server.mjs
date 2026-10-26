@@ -1,3 +1,4 @@
+import {publicSun} from './sun-rent.mjs';
 import {claimSimplefin,publicSimplefin,syncSimplefin,configureSimplefinAccount} from './simplefin.mjs';
 import {plaidAccountEntry,bankAccounts,combineBankConnections} from './providers.mjs';
 import {userScope,googleIdentity,sessionMismatch} from './user-scope.mjs';
@@ -30,7 +31,7 @@ const read=(id,fallback)=>rawRead(users.key(id),fallback),write=(id,data)=>rawWr
 function getPlan(){return read('plan',{state:blank(),revision:0});}
 function updatePlan(fn){const p=getPlan();fn(p.state);p.revision++;write('plan',p);return p;}
 function connections(){return read('connections',{items:[],transactions:[],candidates:[],seen:[],gmail:null,status:'No connections yet.'});}
-function publicConnections(c){return {simplefin:publicSimplefin(c),items:c.items.map(publicItem),creditCards:publicCredit(c),...publicMail(c,users.current().email),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates,bankUpdated:c.bankUpdated,status:c.status};}
+function publicConnections(c){return {sun:publicSun(c.sun),simplefin:publicSimplefin(c),items:c.items.map(publicItem),creditCards:publicCredit(c),...publicMail(c,users.current().email),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates,bankUpdated:c.bankUpdated,status:c.status};}
 function cookies(req){return Object.fromEntries((req.headers.cookie||'').split(';').map(x=>x.trim().split('=')).filter(x=>x.length===2));}
 function sessionIdentity(req){const s=cookies(req).bearden;if(!s)return null;const id=hash(s),r=db.prepare('SELECT expires FROM sessions WHERE hash=?').get(id);return r&&r.expires>Date.now()?rawRead('auth-session:'+id,s.startsWith('v2.')?null:users.legacy):null;}
 function authenticated(req){return !!sessionIdentity(req);}
@@ -61,7 +62,7 @@ async function handle(req,res){
  res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Frame-Options','DENY');res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
  res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self' https://cdn.plaid.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.plaid.com; frame-src https://*.plaid.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
  try{const u=new URL(req.url,origin),path=u.pathname;if(req.method==='GET'&&path==='/health')return json(res,200,{ok:true});
-  if(req.method==='GET'&&path==='/api/config')return json(res,200,{authenticated:authenticated(req),accountId:authenticated(req)?users.current().accountId:null,email:authenticated(req)?users.current().email:null,googleConfigured,plaidConfigured:!!(process.env.PLAID_CLIENT_ID&&process.env.PLAID_SECRET),plaidEnvironment:process.env.PLAID_ENV||'sandbox'});
+  if(req.method==='GET'&&path==='/api/config')return json(res,200,{authenticated:authenticated(req),accountId:authenticated(req)?users.current().accountId:null,email:authenticated(req)?users.current().email:null,googleConfigured,rentConfigured:false,plaidConfigured:!!(process.env.PLAID_CLIENT_ID&&process.env.PLAID_SECRET),plaidEnvironment:process.env.PLAID_ENV||'sandbox'});
   if(req.method==='GET'&&path==='/auth/google'){
    if(!googleConfigured)return json(res,503,{error:'Configure Google credentials, ALLOWED_EMAIL, APP_URL and DATA_KEY on the server first.'});const gmail=u.searchParams.has('gmail');if(gmail&&!authenticated(req))return redirect(res,'/auth/google');if(gmail&&sessionMismatch(users.current(),u.searchParams.get('account'),'POST'))return json(res,409,{error:'Your BearDen account changed. Reload before adding Gmail.'});
    db.prepare('DELETE FROM oauth WHERE expires < ?').run(Date.now());const state=random(),verifier=random();db.prepare('INSERT INTO oauth VALUES(?,?,?,?)').run(hash(state),encrypt(gmail?{verifier,ownerSession:hash(cookies(req).bearden)}:verifier),gmail?1:0,Date.now()+600000);
@@ -83,6 +84,7 @@ async function handle(req,res){
    if(req.method==='GET'&&path==='/api/classic')return json(res,200,read('classic',{state:{version:1,values:{}},revision:0}));
    if(req.method==='GET'&&path==='/api/state')return json(res,200,{...getPlan(),connections:publicConnections(connections())});
    if(req.method!=='POST')return json(res,405,{error:'Method not allowed'});const b=await body(req);
+   if(path.startsWith('/api/rent/'))return json(res,503,{error:'Rent sign-in runs on the deployed Cloudflare app. Open your hosted BearDen account to connect Sun.'});
    if(path.startsWith('/api/simplefin/')){
     while(runningSync())await runningSync();const identity=users.current().accountId;
     const task=(async()=>{const c=connections();
