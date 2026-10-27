@@ -7,7 +7,8 @@ const id=v=>typeof v==='number'&&Number.isSafeInteger(v)?String(v):typeof v==='s
 const money=v=>((typeof v==='number'&&Number.isFinite(v))||(typeof v==='string'&&/^-?\d+(?:\.\d+)?$/.test(v)))&&Math.abs(Number(v))<=1e10&&Number.isSafeInteger(Math.round(Number(v)*100))?Math.round(Number(v)*100):null;
 const currency=v=>typeof v==='string'&&/^[A-Z]{3}$/.test(v)?v:null;
 async function request(key,path,fetcher){
- let response;try{response=await fetcher('https://lunchflow.app/api/v1'+path,{headers:{'x-api-key':key,Accept:'application/json'},redirect:'manual',signal:AbortSignal.timeout(20000)});}catch{throw Error('Lunch Flow could not be reached. Try again later.');}
+ // The apex host redirects API requests to www; use the canonical host directly.
+ let response;try{response=await fetcher('https://www.lunchflow.app/api/v1'+path,{headers:{'x-api-key':key,Accept:'application/json'},redirect:'manual',signal:AbortSignal.timeout(20000)});}catch{throw Error('Lunch Flow could not be reached. Try again later.');}
  if(!response.ok)throw Error(response.status===401||response.status===403?'Lunch Flow refused access. Check your API key and the accounts enabled for its API destination.':response.status===429?'Lunch Flow is limiting requests. Try again later.':'Lunch Flow request failed ('+response.status+').');
  const reader=response.body?.getReader();if(!reader)throw Error('Lunch Flow returned an empty response.');
  const parts=[];let size=0;for(;;){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>2000000){await reader.cancel();throw Error('Lunch Flow response is too large. Try sharing fewer accounts.');}parts.push(value);}
