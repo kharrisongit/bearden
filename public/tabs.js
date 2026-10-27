@@ -835,10 +835,11 @@
  $('#billEditorForm').elements.sunRent.onchange=()=>renderBillRentInfo(true);
  $('#billEditorForm').elements.date.addEventListener('change',()=>renderBillRentInfo());
  function billLoanMarkup(b){
-  if(!accountShown(planner.loanLinks?.[b.id]))return '';
-  const loan=model.linkedBillLoan(b,planner,window.BearDen.plan?.state?.accounts||[]);
+  const linkedId=planner.loanLinks?.[b.id],savedBalance=planner.carLoanDetails?.[b.id]?.balance;
+  if(b.billKind!=='car-payment'||!accountShown(linkedId))return '';
+  const loan=linkedId?model.linkedBillLoan(b,planner,window.BearDen.plan?.state?.accounts||[]):Number.isSafeInteger(savedBalance)&&savedBalance>=0?{balance:savedBalance,currency:'USD'}:null;
   if(!loan)return '';
-  const note=loan.balanceUnavailable?'Loan balance not supplied by your bank. Your scheduled payment is unchanged.':loan.unavailable?'Linked loan unavailable · Reconnect your bank in Settings.':loan.balance===0?'Your bank reports a $0 loan balance; this is not the payment due. Your scheduled payment is unchanged. Verify with your bank.':'';
+  const note=loan.balanceUnavailable?'Loan balance not supplied by your bank. Your scheduled payment is unchanged.':loan.unavailable?'Linked loan unavailable · Reconnect your bank in Settings.':linkedId&&loan.balance===0?'Your bank reports a $0 loan balance; this is not the payment due. Your scheduled payment is unchanged. Verify with your bank.':'';
   return note?'<p class="bill-loan-note">'+esc(note)+'</p>':'<div class="bill-loan-balance"><span>Remaining loan balance</span><strong>'+esc(money(loan.balance,loan.currency))+'</strong></div>';
  }
  const loanField=document.createElement('div');loanField.id='billLoanField';loanField.innerHTML='<label>Linked loan account<select name="loanAccount"><option value="">No linked loan</option></select></label><p class="subtle" id="billLoanInfo"></p><div class="form-pair"><label>Remaining loan balance ($)<input name="carLoanBalance" type="number" min="0" max="1000000000" step="0.01" placeholder="Balance"></label><label>APR (%)<input name="carLoanApr" type="number" min="0" max="100" step="0.01" placeholder="APR"></label></div>';
