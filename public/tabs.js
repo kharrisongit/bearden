@@ -45,7 +45,7 @@
  const modelDay=(s,n)=>{const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);return iso(d);};
  const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
  const dateLabel=d=>new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
- let editingBill=null,spendingCategory=null,billsSpendingCategory=null,billsSpendingView=null,forecastViews={},householdBills=[],forecastStart='',forecastLength=30,billsSavingsContext=null,billsToolRequests={savings:0,reclaim:0},billsDepositDrafts={},savingExtraDeposits=false;
+ let editingBill=null,spendingCategory=null,billsSpendingCategory=null,billsSpendingView=null,forecastViews={},householdBills=[],forecastStart='',forecastLength=30,billsSavingsContext=null,billsToolRequests={savings:0},billsDepositDrafts={},savingExtraDeposits=false;
  const chartColors=['#5ca9a0','#c69a61','#8aa9bd','#b96c63','#8caa87','#d4be92','#648d92'];
  const billCategories={electric:'Electric',rent:'Rent',utility:'Utility','car-payment':'Car payment',insurance:'Insurance','phone-internet':'Phone & internet',subscription:'Subscription','credit-card':'Credit card',loan:'Loan payment',other:'Other bill'};
  const pencil='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg>';
@@ -845,39 +845,34 @@
  }
  const fullForecastDate=d=>new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
  function billsTool(mode){
-  const name=mode==='reclaim'?'BillsReclaim':'BillsSavings',prefix=name[0].toLowerCase()+name.slice(1);
-  return {result:$('#'+prefix+'Result'),status:$('#'+prefix+'Status'),buffer:$('#'+prefix+'Buffer'),panel:$('#'+prefix+'Panel'),open:$('#open'+name),close:$('#close'+name),clear:$('#clear'+name),form:$('#'+prefix+'Form'),calculate:$(mode==='reclaim'?'#checkBillsReclaim':'#calculateBillsSavings')};
+  const name='BillsSavings',prefix='billsSavings';
+  return {result:$('#'+prefix+'Result'),status:$('#'+prefix+'Status'),buffer:$('#'+prefix+'Buffer'),panel:$('#'+prefix+'Panel'),open:$('#open'+name),close:$('#close'+name),clear:$('#clear'+name),form:$('#'+prefix+'Form'),calculate:$('#calculateBillsSavings')};
  }
  function resetBillsSavings(message='',only=null){
-  for(const mode of only?[only]:['savings','reclaim']){
-   if(mode==='reclaim')reclaimControls();
+  for(const mode of only?[only]:['savings']){
    billsToolRequests[mode]++;delete billsDepositDrafts[mode];
    const tool=billsTool(mode),hadResult=!tool.result.hidden;tool.result.hidden=true;tool.result.innerHTML='';
    tool.calculate.disabled=!billsSavingsContext;tool.clear.disabled=true;
    tool.status.textContent=message||(hadResult?'Forecast updated. Calculate again.':'');
   }
  }
- for(const mode of ['savings','reclaim']){
+ for(const mode of ['savings']){
   const tool=billsTool(mode);
-  tool.open.onclick=()=>{if(mode==='reclaim')reclaimControls();tool.panel.hidden=false;tool.open.hidden=true;tool.open.setAttribute('aria-expanded','true');tool.buffer.focus({preventScroll:true});};
+  tool.open.onclick=()=>{tool.panel.hidden=false;tool.open.hidden=true;tool.open.setAttribute('aria-expanded','true');tool.buffer.focus({preventScroll:true});};
   tool.close.onclick=()=>{resetBillsSavings('',mode);tool.status.textContent='';tool.panel.hidden=true;tool.open.hidden=false;tool.open.setAttribute('aria-expanded','false');tool.open.focus({preventScroll:true});};
   tool.clear.onclick=()=>resetBillsSavings('Results cleared.',mode);
   tool.buffer.addEventListener('input',()=>resetBillsSavings('Calculate again with this cushion.',mode));
   tool.form.onsubmit=e=>calculateBillsTool(e,mode);
  }
- function reclaimControls(){
-  const h=planner.household||{},own=h.personalAmount||0,spouse=h.spouseAmount||0;
-  $('#billsReclaimDescription').textContent='Automatically find each person’s next two three-paycheck months from the saved payday schedules. Reclaim '+money(own)+' for you and '+money(spouse)+' for your spouse on each person’s third payday, then check one full year beyond the last reclaim.';
- }
  async function calculateBillsTool(e,mode){
-  e.preventDefault();const reclaim=mode==='reclaim',tool=billsTool(mode);
+  e.preventDefault();const tool=billsTool(mode);
   if(billsSavingsContext?.today!==iso(new Date()))await renderIncome();
   const c=billsSavingsContext,{status,result}=tool;resetBillsSavings('',mode);const request=billsToolRequests[mode];
   if(!c){status.textContent='Wait for your forecast to load, then try again.';return;}
   if(!model.householdEnabled(c.household)||!c.account){status.textContent='Choose your bills account using Account above, then set its contributions and bills.';return;}
   const a=c.account,updated=Date.parse(a.balanceUpdated||a.balanceRetrieved||'');
   if(a.balanceUnavailable||a.providerUnavailable||a.balanceStale||!Number.isSafeInteger(a.balance)||!Number.isFinite(updated)||Date.now()-updated>2*86400000){status.textContent='Refresh Lunch Flow in Settings before calculating savings. This needs a usable bills balance retrieved within the last two days.';return;}
-  if((reclaim||c.household.personalAmount>0)&&!c.plan.state.startDate){status.textContent='Set your first payday in Income so your Fixed Bills transfers can be included.';return;}
+  if(c.household.personalAmount>0&&!c.plan.state.startDate){status.textContent='Set your first payday in Income so your Fixed Bills transfers can be included.';return;}
   if(!c.household.spouseStartDate||!c.plan.state.startDate){status.textContent='Set both payday dates using Income and Account above so the calculator can find two third paychecks per person.';return;}
   const buffer=Math.round(Number(tool.buffer.value)*100);
   if(!Number.isSafeInteger(buffer)||buffer<0){status.textContent='Enter a valid amount to keep in the bills account.';return;}
@@ -887,22 +882,16 @@
    if(request!==billsToolRequests[mode]||billsSavingsContext!==c)return;
    const horizon=math.reclaimHorizon(c.today,c.plan.state.startDate,c.household.spouseStartDate);
    if(!horizon){status.textContent='Review both payday dates so the calculator can find two third paychecks per person.';return;}
-   const periodStart=c.today,end=horizon.lastReclaim,guardEnd=horizon.end,guardLength=Math.round((Date.parse(guardEnd+'T12:00:00Z')-Date.parse(c.today+'T12:00:00Z'))/86400000);
+   const end=horizon.lastReclaim,guardEnd=horizon.end,guardLength=Math.round((Date.parse(guardEnd+'T12:00:00Z')-Date.parse(c.today+'T12:00:00Z'))/86400000);
    const household=c.household;
-   if(reclaim&&(household.spouseRepeat||'biweekly')!=='biweekly'){status.textContent='This reclaim check needs biweekly payday schedules for both people. Review Household settings.';return;}
    const bills=model.billEvents(c.billPlan,c.paymentsPlanner,c.linked,c.today,guardEnd);
    const f=model.scenarioForecast(c.accounts,c.plan,bills,c.today,{debtMode:'none',length:guardLength,household,scope:'shared',transactions:c.transactions});
    if(!f.rows.some(r=>r.type==='bill'&&r.delta<0)){status.textContent='Add your upcoming bills and set Paid from to Shared bills account before calculating savings.';return;}
-   const funding=math.coverBillShortfalls(f,c.today,{buffer,minimum:reclaim?buffer:0});
+   const funding=math.coverBillShortfalls(f,c.today,{buffer});
    if(!funding){status.textContent='The forecast needs a usable balance and scheduled amounts.';return;}
-   if(reclaim){
-    const options={end,periodStart,buffer,personalStart:c.plan.state.startDate,spouseStart:household.spouseStartDate,personalContribution:household.personalAmount,spouseContribution:household.spouseAmount};
-    const original=math.billsReclaimPlan(f,c.today,options),check=math.billsReclaimPlan(funding.forecast,c.today,options);
-    renderBillsReclaim(check,c,updated,funding,original);return;
-   }
    const savings=math.billsSavingsPlan(funding.forecast,c.today,{end,buffer});
    if(savings.status!=='ready'){status.textContent='The adjusted forecast could not be calculated. Review the account balance and bill amounts.';return;}
-   status.textContent='Savings dates through '+fullForecastDate(end)+'. Checked through '+fullForecastDate(guardEnd)+' — one year after both second reclaims. Uses '+connectedAccountName(a)+' balance retrieved '+new Date(updated).toLocaleString()+'.';
+   status.textContent='Savings dates through '+fullForecastDate(end)+'. Checked through '+fullForecastDate(guardEnd)+' — one year after each person’s second three-paycheck month. Uses '+connectedAccountName(a)+' balance retrieved '+new Date(updated).toLocaleString()+'.';
    result.innerHTML='<div class="bills-savings-summary"><div><small>'+(funding.conditionalNow?'After today’s extra deposit clears':'Potential savings now')+'</small><strong>'+money(savings.now)+'</strong></div><div><small>Total to savings through '+esc(fullForecastDate(end))+'</small><strong>'+money(savings.total)+'</strong></div></div>'+
     (savings.schedule.length?'<p class="subtle">Each amount below is an additional transfer, taken once. Wait for all required deposits and bills to clear.</p><ol class="bills-savings-list" tabindex="0" aria-label="Suggested savings transfers">'+savings.schedule.map(row=>'<li><span>'+esc(row.now?(funding.conditionalNow?'After today’s extra deposit':'Now'):fullForecastDate(row.date))+'<small>'+esc(row.now&&!funding.conditionalNow?'From the reported balance':'After deposits and bills clear')+' · '+money(row.balanceAfter)+' left in bills</small></span><strong>'+money(row.amount)+'</strong></li>').join('')+'</ol><p class="subtle">Lowest projected balance after funding gaps and saving: '+money(savings.lowAfter)+'. Cushion: '+money(buffer)+'.</p>':'<p class="subtle">No extra money is projected to be available through '+esc(fullForecastDate(end))+' while protecting upcoming bills and your '+money(buffer)+' cushion.</p>');
    renderFundingPlan(funding,c,mode,savings.total);
@@ -914,52 +903,6 @@
   const {result}=billsTool(mode),newFunding=funding.deposits.reduce((n,d)=>n+d.amount,0);
   if(funding.extraFunding>0)result.insertAdjacentHTML('afterbegin','<div class="extra-deposit-plan"><h5>Funding gaps first</h5><p>Extra deposits in this forecast: <strong>'+money(funding.extraFunding)+'</strong>. Net amount released after those deposits: <strong>'+money(total-funding.extraFunding)+'</strong>.</p>'+(total<funding.extraFunding?'<p class="subtle">This plan needs more added money than it releases. The deposits cover bills; they do not create a net savings gain.</p>':'')+(newFunding>0?'<p class="subtle">The savings below assume these one-time deposits arrive before the affected bills. Each deposit covers the gap and restores your cushion.</p><ol class="bills-savings-list">'+funding.deposits.map(d=>'<li><span>Deposit by '+esc(fullForecastDate(d.date))+'<small>'+esc(d.reason)+' · gap '+money(d.shortfall)+' on '+esc(fullForecastDate(d.neededBy))+'</small></span><strong>'+money(d.amount)+'</strong></li>').join('')+'</ol><label>Extra deposits come from<select data-extra-source="'+mode+'"><option value="personal">My personal checking</option><option value="other">Spouse or other funds</option></select></label><button type="button" data-plan-extra="'+mode+'">Add deposits to forecast</button><p class="subtle">Add them only if you can supply the money. They remain planned until you mark them received in your bank balance.</p>':'<p class="subtle">Your saved extra deposits are included. No further deposits are needed for the original bill shortfalls.</p>')+'</div>');
   if(newFunding>0)billsDepositDrafts[mode]={context,deposits:funding.deposits};
- }
- function reclaimScheduleMarkup(schedule,label){
-  return '<p class="subtle">'+esc(label)+'. Wait until that day’s contributions and bills clear.</p><ol class="bills-savings-list" tabindex="0" aria-label="Contribution reclaim dates">'+schedule.map(row=>'<li><span>'+esc(fullForecastDate(row.date))+'<small>'+[row.mine?'You: '+money(row.mine):'',row.spouse?'Spouse: '+money(row.spouse):''].filter(Boolean).join(' · ')+'</small><small>'+money(row.balanceAfter)+' left in bills</small></span><strong>'+money(row.amount)+'</strong></li>').join('')+'</ol>';
- }
- function reclaimWorstExplanation(row){
-  if(row.low>=0)return '';
-  const cause=row.withoutAtLow>=0?'The reclaim creates this deepest shortfall.':row.withoutAtLow===row.low?'This deepest shortfall already exists without reclaiming.':'The reclaim makes this existing gap deeper.';
-  return '<p><strong>Deepest shortfall with full reclaims: '+money(row.low)+'</strong> on '+esc(fullForecastDate(row.lowDate))+'. At that same point, the balance without reclaiming would be '+money(row.withoutAtLow)+'. '+cause+'</p>';
- }
- function reclaimDepositOption(plan,funding,context,{total,target,buffer,schedule=null}){
-  const grouped=new Map();
-  for(const d of [...funding.deposits,...plan.deposits]){const previous=grouped.get(d.date);if(previous)previous.amount+=d.amount;else grouped.set(d.date,{date:d.date,amount:d.amount});}
-  const deposits=[...grouped.values()].sort((a,b)=>a.date.localeCompare(b.date)),extra=funding.extraFunding+plan.additionalFunding,net=total-extra;
-  let html='<section class="extra-deposit-plan reclaim-funded-option"><h5>Full reclaims with one-time deposits</h5><p>If these deposits arrive on time, <strong>'+esc(target)+' fits</strong> while keeping your '+money(buffer)+' cushion through the full checked period.</p><p>Total reclaimed: <strong>'+money(total)+'</strong><br>Extra funding: <strong>'+money(extra)+'</strong><br>Net kept after that funding: <strong>'+money(net)+'</strong></p>';
-  if(net<=0)html+='<p class="forecast-warning">This needs as much or more money added than you reclaim. It does not release extra money overall.</p>';
-  html+='<p class="subtle">'+money(funding.extraFunding)+' is already saved or needed without reclaiming. The full reclaims need '+money(plan.additionalFunding)+' more. Lowest projected balance after deposits and reclaims: '+money(plan.lowAfterReclaim)+'.</p>';
-  if(deposits.length){
-   html+='<ol class="bills-savings-list" aria-label="One-time deposits needed for reclaims">'+deposits.map(d=>'<li><span>Deposit by '+esc(fullForecastDate(d.date))+'<small>Funds must clear before the affected bills or reclaim</small></span><strong>'+money(d.amount)+'</strong></li>').join('')+'</ol><label>These deposits come from<select data-extra-source="reclaim"><option value="personal">My personal checking</option><option value="other">Spouse or other funds</option></select></label><button type="button" data-plan-extra="reclaim">Schedule these one-time deposits</button>';
-   billsDepositDrafts.reclaim={context,deposits,recalculate:true};
-  }
-  if(schedule)html+=reclaimScheduleMarkup(schedule,'Full reclaim dates, conditional on these deposits');
-  return html+'<p class="subtle">Only schedule deposits you can fund from outside the bills account. Scheduling adds them to the forecast and recalculates the reclaim plan. It does not transfer money or schedule a bank payment. Reclaims remain a preview.</p></section>';
- }
- function renderBillsReclaim(check,context,updated,funding,original=check){
-  const tool=billsTool('reclaim'),{status,result}=tool;
-  if(check.status==='unavailable'||original.status==='unavailable'){status.textContent='The reclaim check needs a usable balance, valid payday dates, and scheduled amounts.';return;}
-  if(check.status==='dates'){status.textContent='Found '+check.own.length+' of your third paychecks and '+check.spouse.length+' of your spouse’s in the calculated period. Two per person are needed. Review the payday dates under Account.';return;}
-  status.textContent='Automatic third-payday reclaims for both of you through '+fullForecastDate(check.end)+'. Bills checked from today through '+fullForecastDate(check.checkedThrough)+' — one year after the last reclaim. Balance retrieved '+new Date(updated).toLocaleString()+'.';
-  const problem=check.firstShortfall||check.firstBelowBuffer;
-  const target=check.perPerson===check.spouseTotal?money(check.perPerson)+' each':money(check.perPerson)+' for you and '+money(check.spouseTotal)+' for your spouse';
-  let message=check.safe?'<strong>Yes — '+target+' fits this forecast'+(funding.extraFunding>0?' after the planned extra deposits':'')+'</strong><p>Reclaim '+money(check.personalContribution)+' for you and '+money(check.spouseContribution)+' for your spouse on each person’s two third-paycheck dates below. The lowest projected balance afterward is '+money(check.lowAfterReclaim)+', including the following year.</p>':
-   '<div class="forecast-warning"><strong>The full '+target+' needs extra funding on these dates</strong><span>'+(check.firstShortfall?'First projected shortfall':'First dip below your '+money(check.buffer)+' cushion')+' '+esc(fullForecastDate(problem.date))+': '+money(problem.balance)+'.</span></div>';
-  message+='<table class="reclaim-comparison"><caption>Before new deposits: deepest shortfall or lowest positive balance</caption><thead><tr><th scope="col">Scenario</th><th scope="col">Lowest balance</th></tr></thead><tbody><tr><th scope="row">Without reclaiming</th><td>'+money(original.baselineLow)+'<small>'+esc(fullForecastDate(original.baselineLowDate))+'</small></td></tr><tr><th scope="row">With full reclaims</th><td>'+money(original.low)+'<small>'+esc(fullForecastDate(original.lowDate))+'</small></td></tr></tbody></table>';
-  message+=reclaimWorstExplanation(original);
-  if(original.baselineShortfall)message+='<p>There is already a gap in the bill/deposit schedule without reclaiming: the first is '+money(original.baselineShortfall.balance)+' on '+esc(fullForecastDate(original.baselineShortfall.date))+'. Its deepest point is '+money(original.baselineLow)+'. Those gaps are not caused by reclaiming.</p>';
-  const impact=original.impact;
-  if(impact)message+='<p>'+({created:'Reclaiming creates a new shortfall',worsened:'Reclaiming worsens an existing shortfall',cushion:'Reclaiming uses part of your cushion without going negative at that point'})[impact.kind]+' on '+esc(fullForecastDate(impact.date))+': '+money(impact.before)+' without reclaiming, '+money(impact.after)+' with it.</p>';
-  else message+='<p>The reclaims create no new shortfall or cushion breach in this comparison.</p>';
-  message+='<p class="subtle">Both scenarios use the same bills, contribution dates, and saved pending deposits. New deposits below are excluded from this comparison.</p>';
-  const plan=check.depositPlan?.safe?check.depositPlan:null,smaller=!check.safe&&check.safeTotal>0;
-  if(plan)message+=reclaimDepositOption(plan,funding,context,{total:check.total,target,buffer:check.buffer,schedule:plan.schedule});
-  if(smaller){
-   message+='<details class="extra-deposit-plan"><summary>Or reclaim less without the additional deposits</summary><p><strong>A smaller amount fits: '+money(check.safePerPerson)+' for you and '+money(check.safeSpouseTotal)+' for your spouse.</strong> That is '+money(check.safePerContribution)+' for you and '+money(check.safeSpouseContribution)+' for your spouse per third paycheck, keeping the '+money(check.buffer)+' cushion. '+(funding.extraFunding>0?'This still assumes existing-gap and saved deposits are funded.':'')+'</p>'+reclaimScheduleMarkup(check.safeSchedule,'Smaller alternative')+'</details>';
-  }else if(!plan)message+=reclaimScheduleMarkup(check.schedule,check.safe?'Suggested reclaim dates':'Requested dates — these amounts do not fit the forecast');
-  message+='<p class="subtle">Preview uses your saved contribution amounts and payday dates. Use reclaim instead of taking the same money from Savings Finder as well. Confirm cleared funds and refresh Lunch Flow before moving money. This preview does not move money.</p>';
-  result.innerHTML=message;if(!plan)renderFundingPlan(funding,context,'reclaim',check.safe?check.total:check.safeTotal);result.hidden=false;tool.clear.disabled=false;
  }
  function renderExtraDeposits(){
   const deposits=[...(planner.household.additionalDeposits||[])].sort((a,b)=>a.date.localeCompare(b.date)),box=$('#plannedExtraDeposits');
@@ -979,7 +922,7 @@
    if(planButton){const source=document.querySelector('[data-extra-source="'+mode+'"]').value;for(const d of draft.deposits)planner.household.additionalDeposits.push({id:crypto.randomUUID(),date:d.date,amount:d.amount,source,received:false});}
    else if(received){const d=planner.household.additionalDeposits.find(d=>d.id===received.dataset.extraReceived);if(d)d.received=!d.received;}
    else planner.household.additionalDeposits=planner.household.additionalDeposits.filter(d=>d.id!==remove.dataset.extraRemove);
-   await save(planButton?'Deposits added to forecast':'Deposit updated');if(planButton){if(draft.recalculate&&!billsTool(mode).panel.hidden)await calculateBillsTool({preventDefault(){}},mode);else billsTool(mode).status.textContent='Extra deposits added to the forecast. Calculate again to refresh the savings plan.';}
+   await save(planButton?'Deposits added to forecast':'Deposit updated');if(planButton)billsTool(mode).status.textContent='Extra deposits added to the forecast. Calculate again to refresh the savings plan.';
   }catch(err){planner.household=before;if(planButton)billsTool(mode).status.textContent=err.message;else $('#extraDepositStatus').textContent=err.message;}
   finally{button.disabled=false;savingExtraDeposits=false;}
  });
