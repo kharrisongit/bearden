@@ -55,7 +55,7 @@ for(const [width,theme]of [[390,'light'],[320,'dark']])test(`${width}px ${theme}
 test('a missing balance blocks savings without preventing account loading',async({page})=>{
  await fixture(page,{unavailable:true});await expect(page.locator('#billTrackerBalance')).toHaveText('Unavailable');
  await page.locator('#nav-accounts').click();await page.locator('#openBillsSavings').click();await page.locator('#calculateBillsSavings').click();
- await expect(page.locator('#billsSavingsStatus')).toContainText('Refresh Lunch Flow');await expect(page.locator('#billsSavingsResult')).toBeHidden();
+ await expect(page.locator('#billsSavingsStatus')).toContainText('Refresh your bank connection');await expect(page.locator('#billsSavingsResult')).toBeHidden();
 });
 
 
