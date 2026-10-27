@@ -17,7 +17,7 @@ export function resolveDebtDetails({card,primary=null,backup=null,issuers=[],sta
  for(const [i,bank]of banks.entries()){
   if(bank.currency!=='USD')continue;
   const item=items.find(item=>item.id===bank.itemId),updated=bank.balanceUpdated||bank.balanceRetrieved||null;
-  const stale=!!bank.balanceUnavailable||!!item?.balanceError||!timestamp(updated)||now-timestamp(updated)>48*3600000;
+  const stale=!!bank.balanceUnavailable||!!bank.balanceStale||!!item?.balanceError||!timestamp(updated)||now-timestamp(updated)>48*3600000;
   const source=(bank.source==='simplefin'?'SimpleFIN':'Plaid')+(i?' backup':'');
   const value=bank.zeroUnconfirmed&&!(bank.balance>0)?null:cents(bank.balance);
   // ELGA and other institutions can return an unconfirmed zero during outages.

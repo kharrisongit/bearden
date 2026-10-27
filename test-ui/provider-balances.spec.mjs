@@ -1,0 +1,26 @@
+import {test,expect} from '@playwright/test';
+import {readFileSync} from 'node:fs';
+import {blank} from '../public/engine.mjs';
+test('mobile balance diagnostics show provider evidence and enable loans on the existing Plaid connection',async({page})=>{
+ await page.setViewportSize({width:390,height:844});const requests=[],errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const accounts=[{id:'plaid-auto',itemId:'bank',source:'plaid',name:'Auto',type:'loan',currency:'USD',balance:0,zeroUnconfirmed:true,balanceUnavailable:true,reportedCurrent:0,reportedLiveCurrent:0,reportedCachedCurrent:0},...['missing','undated'].map(id=>({id:'simplefin-'+id,itemId:'simplefin',source:'simplefin',name:id==='missing'?'Card One':'Card Two',institution:'Issuer',type:'credit',currency:'USD',debtSign:'positive',balance:0,rawBalance:id==='missing'?null:32500,providerUnavailable:true,balanceUnavailable:true,balanceObservation:{amount:id==='missing'?null:32500,amountStatus:id==='missing'?'missing':'reported',date:null,dateStatus:'missing',errors:[{code:'act.failed',reason:'SimpleFIN could not refresh this account.'}]}}))];
+ const item={id:'bank',name:'ELGA'},connections={items:[item],transactions:[],creditCards:[],simplefin:{connected:true,status:'Two balances need attention.'}};
+ await page.addInitScript(()=>{window.Plaid={create:options=>{window.testPlaid=options;return {open(){},destroy(){}};}};});
+ await page.route('https://bearden.test/**',async route=>{
+  const req=route.request(),path=new URL(req.url()).pathname,body=req.method()==='POST'?req.postDataJSON():null;requests.push({path,body});
+  if(path==='/api/config')return route.fulfill({json:{authenticated:true,accountId:'member',plaidConfigured:true}});
+  if(path==='/api/classic')return route.fulfill({json:{state:{version:1,values:{'app-state':JSON.stringify({cards:[],budgetItems:[],budgetSetupVersion:2,takeHome:1000,savingsGoals:[]}),onboarding:JSON.stringify({completed:true})}},revision:0}});
+  if(path==='/api/state')return route.fulfill({json:{state:{...blank(),accounts},connections,revision:0}});
+  if(path==='/api/plaid/diagnose'){item.diagnostics={itemId:'bank',institutionId:'ins_elga',requestId:'check-id',loanDetailsSupported:true,consentedProducts:['transactions'],errorCode:null};return route.fulfill({json:{diagnostic:item.diagnostics}});}
+  if(path==='/api/plaid/link')return route.fulfill({json:{link_token:'existing-loan-update'}});
+  if(path==='/api/plaid/updated'){expect(body).toEqual({itemId:'bank',kind:'loan'});Object.assign(accounts[0],{balance:712345,liabilityPrincipal:712345,balanceUnavailable:false,zeroUnconfirmed:false,balanceSource:'liabilities'});return route.fulfill({json:{itemId:'bank',status:'Loan details synced.'}});}
+  if(path.startsWith('/api/'))return route.fulfill({status:404,json:{}});
+  const name=path==='/'?'index.html':path.slice(1);try{return route.fulfill({body:readFileSync(new URL('../public/'+name,import.meta.url)),contentType:name.endsWith('.css')?'text/css':/\.(js|mjs)$/.test(name)?'text/javascript':'text/html'});}catch{return route.fulfill({status:404,body:''});}
+ });
+ await page.goto('https://bearden.test/');await page.evaluate(()=>window.classicReady);await page.locator('#nav-settings').click();await page.locator('#configurePlaid').click();await page.getByRole('button',{name:'Check balance connection',exact:true}).click();await expect(page.locator('#plaidConnections')).toContainText('Available; use Enable / repair loan details');
+ await page.getByRole('button',{name:'Enable / repair loan details',exact:true}).click();await expect.poll(()=>page.evaluate(()=>typeof window.testPlaid?.onSuccess)).toBe('function');expect(requests.find(r=>r.path==='/api/plaid/link').body).toEqual({kind:'loan',itemId:'bank'});await page.evaluate(()=>window.testPlaid.onSuccess('unused',{}));
+ await expect(page.locator('#tab-settings')).toBeVisible();await page.locator('#plaidAccountSummary').click();await page.locator('#classicBalances details summary').click();await expect(page.locator('#classicBalances details p')).toBeVisible();await expect(page.locator('#classicBalances details')).toContainText('Live current balance: $0.00');await expect(page.locator('#classicBalances details')).toContainText('Loan principal from Plaid Liabilities: $7,123.45');
+ await page.locator('#simplefinAccountSummary').click();const missing=page.locator('[data-simplefin-account="simplefin-missing"]'),undated=page.locator('[data-simplefin-account="simplefin-undated"]');await missing.locator('summary').click();await undated.locator('summary').click();await expect(missing.locator('details')).toContainText('Amount supplied by SimpleFIN: Not supplied');await expect(undated.locator('details')).toContainText('Amount supplied by SimpleFIN: $325.00');await expect(undated.locator('details')).toContainText('Balance date: Not supplied or invalid');await expect(undated.locator('details p').first()).toBeVisible();
+ expect(requests.some(r=>r.path==='/api/plaid/exchange')).toBe(false);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);expect(errors).toEqual([]);
+ await page.screenshot({path:'/tmp/provider-diagnostics-mobile.png',fullPage:true});
+});

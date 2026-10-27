@@ -84,7 +84,7 @@ test('credit refresh targets the requested bank, loads payments, stays private a
  if(url.endsWith('/liabilities/get'))return Response.json({accounts:[{account_id:'visa',name:'Visa',type:'credit',balances:{current:90,limit:1000,iso_currency_code:'USD'}}],liabilities:{credit:[{account_id:'visa',minimum_payment_amount:20,next_payment_due_date:'2099-11-05'}]}});
  if(url.endsWith('/transactions/sync'))return Response.json({added:[{transaction_id:'pay',account_id:'visa',name:'Payment thank you',date:'2099-10-20',amount:-40,iso_currency_code:'USD'}],modified:[],removed:[],next_cursor:'new',has_more:false});throw Error('Unexpected URL');});
  f.set('connections',{items:[{id:'checking',name:'Checking',token:'other'},{id:'card',name:'Card',token:'card-token',liabilities:true}],transactions:[],candidates:[],gmail:{refreshToken:'gmail'}});
- const result=await (await f.app.handle(f.req('/api/cards/refresh',{itemId:'card'}))).json();assert.match(result.status,/Card details synced/);
+ const result=await (await f.app.handle(f.req('/api/cards/refresh',{itemId:'card'}))).json();assert.match(result.status,/1 card\(s\) and 0 loan\(s\) returned by Plaid Liabilities/);
  const state=await (await f.app.handle(f.req('/api/state'))).json();assert.equal(state.connections.creditCards[0].minimum,2000);assert.equal(state.connections.creditCards[0].payments[0].amount,4000);assert.equal(state.connections.items.length,2);assert.ok(!JSON.stringify(state).includes('card-token'));assert.ok(f.queries+calls.length<50);assert.equal(calls.length,4);f.db.close();
 });
 test('enabling card details on an existing item never exchanges a new public token',async()=>{
@@ -424,4 +424,25 @@ test('Worker marks lock contention as retryable without bypassing the active loc
  const f=fixture();f.db.prepare('INSERT INTO locks VALUES(?,?,?)').run('sync','other',Date.now()+60000);
  const response=await worker.fetch(f.req('/api/rent/refresh',{}),f.env),data=await response.json();
  assert.equal(response.status,409);assert.equal(data.code,'SYNC_BUSY');assert.equal(f.db.prepare('SELECT owner FROM locks').get().owner,'other');f.db.close();
+});
+
+test('existing Plaid loan consent imports principal when general balances are zero and keeps transaction sync separate',async()=>{
+ const calls=[];const f=fixture(async(url,options)=>{
+  calls.push({path:new URL(url).pathname,body:JSON.parse(options.body)});
+  const account={account_id:'auto',name:'Auto',type:'loan',subtype:'auto',balances:{current:0,available:0,iso_currency_code:'USD'}};
+  if(url.endsWith('/accounts/get')||url.endsWith('/accounts/balance/get'))return Response.json({accounts:[account],request_id:'balance-request'});
+  if(url.endsWith('/liabilities/get'))return Response.json({accounts:[account],liabilities:{loan:[{account_id:'auto',principal_balance:7123.45,account_number:'do-not-expose'}]},request_id:'loan-request'});
+  if(url.endsWith('/transactions/sync'))return Response.json({added:[],modified:[],removed:[],next_cursor:'done',has_more:false});
+  throw Error('Unexpected endpoint');
+ });
+ f.set('connections',{items:[{id:'bank',name:'ELGA',token:'private-token'}],transactions:[],candidates:[]});
+ const result=await (await f.app.handle(f.req('/api/plaid/updated',{kind:'loan',itemId:'bank'}))).json();assert.match(result.status,/1 loan/);
+ const state=await(await f.app.handle(f.req('/api/state'))).json(),loan=state.state.accounts[0];assert.equal(loan.balance,712345);assert.equal(loan.balanceSource,'liabilities');assert.equal(loan.reportedCurrent,0);assert.equal(loan.balanceUnavailable,false);
+ assert.ok(calls.every(c=>c.body.access_token==='private-token'));assert.ok(!JSON.stringify(state).includes('private-token'));assert.ok(!JSON.stringify(state).includes('do-not-expose'));assert.equal(f.get('connections').items.length,1);f.db.close();
+});
+test('Plaid connection diagnosis is scoped, persisted, and excludes raw private payloads',async()=>{
+ const f=fixture(async url=>{assert.ok(url.endsWith('/item/get'));return Response.json({item:{institution_id:'ins_elga',available_products:['liabilities'],consented_products:['transactions'],access_token:'private-token',error:null},status:{transactions:{last_successful_update:'2026-10-26T12:00:00Z'}},request_id:'check-request'});});
+ f.set('connections',{items:[{id:'bank',name:'ELGA',token:'private-token'}],transactions:[],candidates:[]});
+ const response=await f.app.handle(f.req('/api/plaid/diagnose',{itemId:'bank'}));assert.equal(response.status,200);const diagnostic=(await response.json()).diagnostic;assert.equal(diagnostic.loanDetailsSupported,true);assert.ok(!JSON.stringify(diagnostic).includes('private-token'));
+ const state=await(await f.app.handle(f.req('/api/state'))).json();assert.equal(state.connections.items[0].diagnostics.requestId,'check-request');assert.equal((await f.app.handle(f.req('/api/plaid/diagnose',{itemId:'other'}))).status,404);f.db.close();
 });

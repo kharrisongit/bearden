@@ -1,3 +1,4 @@
+import {applyPlaidLoanBalances,diagnosePlaid} from '../plaid-loans.mjs';
 import {billSharingAction} from '../bill-sharing.mjs';
 import {microsoftAuthorization,exchangeMicrosoftToken,microsoftUser,requireMicrosoftMail} from '../microsoft.mjs';
 import {rentPortalUrl} from '../rent-portal.mjs';
@@ -43,7 +44,7 @@ export function runtime(env,fetcher=fetch){
  async function authorized(req){return !!await sessionIdentity(req);}
 
  async function locked(fn){const id=random(),now=Date.now();const r=await run("INSERT INTO locks VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET owner=excluded.owner,expires=excluded.expires WHERE locks.expires < ?",users.lock(),id,now+300000,now);if(!r.meta?.changes)throw Object.assign(Error('A sync or save is already running. Try again in a moment.'),{code:'SYNC_BUSY'});try{return await fn();}finally{await run("DELETE FROM locks WHERE id=? AND owner=?",users.lock(),id);}}
- async function request(url,options={}){const r=await fetcher(url,{...options,signal:AbortSignal.timeout(15000)});let d;try{d=await r.json();}catch{throw Error('Provider response unreadable');}if(!r.ok){const error=Error(d.error_code||d.error?.status||'Provider request failed ('+r.status+')');error.code=d.error_code;throw error;}return d;}
+ async function request(url,options={}){const r=await fetcher(url,{...options,signal:AbortSignal.timeout(15000)});let d;try{d=await r.json();}catch{throw Error('Provider response unreadable');}if(!r.ok){const error=Error(d.error_code||d.error?.status||'Provider request failed ('+r.status+')');error.code=d.error_code;error.requestId=d.request_id;throw error;}return d;}
  async function plaid(path,data){if(!env.PLAID_CLIENT_ID||!env.PLAID_SECRET)throw Error('Plaid is not configured');const mode=env.PLAID_ENV||'sandbox';if(!['sandbox','production'].includes(mode))throw Error('Invalid Plaid environment');return request(`https://${mode}.plaid.com${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:env.PLAID_CLIENT_ID,secret:env.PLAID_SECRET,...data})});}
  const microsoftToken=params=>exchangeMicrosoftToken(request,env.MICROSOFT_CLIENT_ID,env.MICROSOFT_CLIENT_SECRET,params);
  const googleToken=data=>request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,...data})});
@@ -58,13 +59,13 @@ export function runtime(env,fetcher=fetch){
  async function syncBalances(c,item,live=false){
    item.balanceAttempt=Date.now();
    try{const accounts=await bankAccounts(plaid,item,live);
-   await updatePlan(s=>{s.accounts=mergePlaidAccounts(s.accounts,accounts,item);});
+   await updatePlan(s=>{s.accounts=applyPlaidLoanBalances(mergePlaidAccounts(s.accounts,accounts,item),c,item);});
   item.balancesUpdated=Date.now();delete item.balanceError;c.bankUpdated=new Date().toISOString();
    }catch(error){item.balanceError=error.code||error.message;throw error;}
  }
  async function syncBank(c,item,force=false,transactionsOnly=false){
   item.lastSyncAttempt=Date.now();
-  if(!transactionsOnly)await syncCredit(c,item,plaid,force);
+  if(!transactionsOnly){await syncCredit(c,item,plaid,force);if(c.loanDetails?.some(l=>l.itemId===item.id))await updatePlan(s=>{s.accounts=applyPlaidLoanBalances(s.accounts,c,item);});}
   // Stage a complete cursor update; manual refresh drains several pages at once.
   if(!item.pending)item.pending={original:item.cursor||'',cursor:item.cursor||'',transactions:c.transactions.filter(t=>t.itemId===item.id)};
   try{
@@ -232,6 +233,7 @@ export function runtime(env,fetcher=fetch){
      if(item.balanceWarning)c.status+=' '+item.balanceWarning;
      await write('connections',c);return json({status:c.status,itemId:item.id,transactionsPending:!!item.pending&&!item.transactionsError,transactionsLoading:!!item.transactionsLoading});
     }
+    if(path==='/api/plaid/diagnose'){const c=await connections(),item=c.items.find(i=>i.id===b.itemId);if(!item)return json({error:'Bank connection not found'},404);const diagnostic=await diagnosePlaid(item,plaid);await write('connections',c);return json({diagnostic});}
     if(path==='/api/plaid/combine'){
      const before={connections:await connections(),plan:await plan(),classic:await read('classic',null)};
      if(b.revision!==(before.classic?.revision??0))return json({error:'Your saved data changed. Reload before combining connections.'},409);
@@ -240,7 +242,7 @@ export function runtime(env,fetcher=fetch){
      try{await write('plan',merged.plan);if(merged.classic)await write('classic',merged.classic);await write('connections',merged.connections);}catch(e){await write('plan',before.plan);if(before.classic)await write('classic',before.classic);await write('connections',before.connections);throw e;}
      return json({ok:true});
     }
-    if(path==='/api/plaid/disconnect'){const c=await connections(),item=c.items.find(i=>i.id===b.id);if(!item)return json({error:'Bank not found'},404);await plaid('/item/remove',{access_token:item.token});c.items=c.items.filter(i=>i.id!==b.id);c.transactions=c.transactions.filter(t=>t.itemId!==b.id);c.creditCards=(c.creditCards||[]).filter(card=>card.itemId!==b.id);await write('connections',c);await updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.itemId!==b.id);});return json({ok:true});}
+    if(path==='/api/plaid/disconnect'){const c=await connections(),item=c.items.find(i=>i.id===b.id);if(!item)return json({error:'Bank not found'},404);await plaid('/item/remove',{access_token:item.token});c.items=c.items.filter(i=>i.id!==b.id);c.transactions=c.transactions.filter(t=>t.itemId!==b.id);c.creditCards=(c.creditCards||[]).filter(card=>card.itemId!==b.id);c.loanDetails=(c.loanDetails||[]).filter(loan=>loan.itemId!==b.id);await write('connections',c);await updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.itemId!==b.id);});return json({ok:true});}
     if(path==='/api/gmail/message'){
      const c=await connections();let message;try{message=await refreshSelectedEmail(c,b,{request,googleToken,microsoftToken,owner:users.current().email});}finally{await write('connections',c);}return json({message});
     }

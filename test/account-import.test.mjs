@@ -32,15 +32,15 @@ const stamp=Math.floor(Date.now()/1000)-60;
 const sf=(id,conn='healthy')=>({id,conn_id:conn,name:id,currency:'USD',balance:'123.45','balance-date':stamp,transactions:[{id:'tx',posted:stamp,amount:'-12.00',description:'Purchase'}]});
 test('SimpleFIN structured errors affect only their connection/account and legacy duplicate messages do not poison healthy accounts',()=>{
  const data={accounts:[sf('one'),sf('one','broken'),sf('other')],errlist:[{code:'con.auth',conn_id:'broken'}],errors:['Authentication required']};
- const rows=mergeSimplefinAccounts([],data);assert.deepEqual(rows.map(a=>a.providerUnavailable),[false,true,false]);
+ const rows=mergeSimplefinAccounts([],data);assert.deepEqual(rows.map(a=>a.balanceStale),[false,true,false]);
  assert.equal(mergeSimplefinTransactions([],data).length,3);
- const scoped={...data,errlist:[{code:'act.failed',conn_id:'broken',account_id:'one'}]};assert.deepEqual(mergeSimplefinAccounts([],scoped).map(a=>a.providerUnavailable),[false,true,false]);
+ const scoped={...data,errlist:[{code:'act.failed',conn_id:'broken',account_id:'one'}]};assert.deepEqual(mergeSimplefinAccounts([],scoped).map(a=>a.balanceStale),[false,true,false]);
 });
 test('SimpleFIN transaction completeness errors do not suppress balances, and absent IDs never match one another',()=>{
  const a=sf('one');delete a.conn_id;
  assert.equal(mergeSimplefinAccounts([],{accounts:[a],errlist:[{code:'con.auth'}]})[0].providerUnavailable,false);
  const data={accounts:[sf('one')],errlist:[{code:'act.missingdata',account_id:'one'}]};assert.equal(mergeSimplefinAccounts([],data)[0].balance,12345);assert.equal(mergeSimplefinTransactions([],data).length,1);
- assert.equal(mergeSimplefinAccounts([],{accounts:[sf('one')],errlist:[{code:'gen.auth'}]})[0].providerUnavailable,true);
+ assert.equal(mergeSimplefinAccounts([],{accounts:[sf('one')],errlist:[{code:'gen.auth'}]})[0].balanceStale,true);
 });
 test('SimpleFIN legacy warnings preserve usable amounts and merge transactions without deleting saved history',()=>{
  const a=sf('one'),data={accounts:[a],errors:['Another bank needs login']},old=mergeSimplefinTransactions([],{accounts:[{...a,transactions:[{...a.transactions[0],id:'old'}]}]});

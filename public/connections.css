@@ -53,3 +53,5 @@ dialog.rent-browser[open]{display:flex;flex-direction:column;gap:9px;max-height:
 #rentCredentialsForm label{display:block;margin:12px 0 6px;font-size:.76rem}
 #rentCredentialsForm input{display:block;box-sizing:border-box;width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
 #rentCredentialsSummary{font-weight:650;color:var(--accent);cursor:pointer}
+
+#connectionDialog .provider-diagnostics{margin-top:10px;overflow-wrap:anywhere}#connectionDialog .provider-diagnostics>summary{cursor:pointer;padding:10px 0}#connectionDialog .provider-diagnostics>div{padding:4px 0}#connectionDialog .provider-diagnostics p{margin:8px 0;font-size:.75rem;line-height:1.5}
