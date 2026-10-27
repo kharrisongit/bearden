@@ -38,8 +38,17 @@ export function householdForecast(accounts,plan,paydays,bills,start,{household:h
   const delta=own?(view==='combined'?0:view==='shared'?event.amount:-event.amount):event.amount;
   events.push({...event,delta,incoming:delta>0?delta:0,outgoing:delta<0?-delta:0});
  }
+ const extraIds=new Set();
+ for(const deposit of Array.isArray(h.additionalDeposits)?h.additionalDeposits:[]){
+  if(!deposit.id||extraIds.has(deposit.id)||!/^\d{4}-\d{2}-\d{2}$/.test(deposit.date)||!Number.isFinite(Date.parse(deposit.date+'T12:00:00Z'))||!Number.isSafeInteger(deposit.amount)||deposit.amount<=0||deposit.date>end)continue;
+  extraIds.add(deposit.id);if(deposit.received)continue;
+  const own=deposit.source==='personal';if(!own&&view==='personal')continue;
+  const delta=own?(view==='combined'?0:view==='shared'?deposit.amount:-deposit.amount):deposit.amount;
+  events.push({id:'extra:'+deposit.id,date:deposit.date<start?start:deposit.date,scheduledDate:deposit.date,overdue:deposit.date<start,name:'One-time extra deposit',type:'extra-deposit',amount:deposit.amount,delta,incoming:Math.max(0,delta),outgoing:Math.max(0,-delta)});
+ }
  for(const b of bills)if(!b.covered&&b.date<=end&&(view==='combined'||(view==='shared')===!!b.shared))events.push({...b,date:b.date<start?start:b.date,delta:-b.amount,incoming:0,outgoing:b.amount});
- events.sort((a,b)=>a.date.localeCompare(b.date)||(a.type==='bill'?-1:1));
+ const rank=e=>e.type==='extra-deposit'&&e.delta>0?0:e.delta<0?1:2;
+ events.sort((a,b)=>a.date.localeCompare(b.date)||rank(a)-rank(b));
  let running=opening,low=opening,income=0,outgoing=0;
  const rows=events.map(e=>{income+=e.incoming;outgoing+=e.outgoing;if(running!==null){running+=e.delta;low=Math.min(low,running);}return {...e,balance:running};});
  return {opening,endBalance:running,low,income,outgoing,rows,end,scope:view};

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {billsSavingsPlan,billsReclaimPlan,thirdPaycheckDates} from '../public/bills-savings.mjs';
+import {billsSavingsPlan,billsReclaimPlan,thirdPaycheckDates,coverBillShortfalls,reclaimHorizon} from '../public/bills-savings.mjs';
 import {occurrences} from '../public/engine.mjs';
 
 const start='2026-11-01',end='2027-11-01',checkedThrough='2027-12-06';
@@ -61,4 +61,45 @@ test('general savings suggestions are incremental and reserve later bills',()=>{
  const r=billsSavingsPlan(f,start,{end:'2026-11-30',buffer:10000});
  assert.equal(r.now,40000);assert.equal(r.total,140000);assert.deepEqual(r.schedule.map(s=>s.amount),[40000,100000]);assert.equal(r.lowAfter,10000);
  assert.equal(billsSavingsPlan({...f,opening:null},start).status,'unavailable');
+});
+
+test('the horizon follows both second reclaims and protects a full calendar year afterward',()=>{
+ const h=reclaimHorizon(start,'2026-01-02','2026-01-09');
+ assert.deepEqual(h.own,['2027-01-29','2027-07-30']);assert.deepEqual(h.spouse,['2027-04-30','2027-10-29']);
+ assert.equal(h.lastReclaim,'2027-10-29');assert.equal(h.end,'2028-10-29');
+ assert.equal(reclaimHorizon(start,options.personalStart,''),null);
+ const later=reclaimHorizon(start,options.personalStart,'2027-09-03');assert.ok(later.lastReclaim>'2027-11-01');assert.equal(later.end.slice(0,4),String(Number(later.lastReclaim.slice(0,4))+1));
+});
+
+test('a bill nearly a year after the last reclaim still blocks an unsafe withdrawal',()=>{
+ const h=reclaimHorizon(start,options.personalStart,'2026-01-09');
+ const result=billsReclaimPlan({opening:400000,end:h.end,rows:[{date:'2028-09-01',delta:-150000}]},start,{...options,end:h.lastReclaim,spouseStart:'2026-01-09'});
+ assert.equal(result.safe,false);assert.equal(result.firstShortfall.date,'2028-09-01');assert.equal(result.firstShortfall.balance,-50000);
+});
+
+test('small gaps receive one-time deposits and later savings continue, with extra funding deducted from the gain',()=>{
+ const f=ledger(10000,[{date:'2026-11-05',name:'Water',delta:-12500},{date:'2026-11-10',delta:30000}]),copy=structuredClone(f);
+ const funded=coverBillShortfalls(f,start,{buffer:10000});
+ assert.deepEqual(funded.deposits,[{date:'2026-11-04',amount:12500,shortfall:2500,neededBy:'2026-11-05',reason:'Water'}]);
+ const savings=billsSavingsPlan(funded.forecast,start,{end:'2026-11-30',buffer:10000});
+ assert.equal(savings.total,30000);assert.equal(savings.now,0);assert.equal(savings.lowAfter,10000);assert.equal(savings.total-funded.extraFunding,17500);
+ assert.deepEqual(f,copy);
+});
+
+test('multiple gaps only request the additional funding needed, not the same deficit twice',()=>{
+ const funded=coverBillShortfalls(ledger(10000,[{date:'2026-11-05',delta:-15000},{date:'2026-11-07',delta:-12000},{date:'2026-11-20',delta:50000}]),start,{buffer:10000});
+ assert.deepEqual(funded.deposits.map(d=>[d.date,d.amount]),[['2026-11-04',15000],['2026-11-06',12000]]);
+ assert.equal(funded.extraFunding,27000);assert.equal(billsSavingsPlan(funded.forecast,start,{end,buffer:10000}).total,50000);
+});
+
+test('saved deposits and today’s negative balance are handled without asking for the same top-up twice',()=>{
+ const f=ledger(-5000,[{date:start,type:'extra-deposit',delta:15000},{date:'2026-11-10',delta:20000}]);
+ const funded=coverBillShortfalls(f,start,{buffer:10000});assert.deepEqual(funded.deposits,[]);assert.equal(funded.extraFunding,15000);assert.equal(funded.conditionalNow,true);
+ assert.equal(billsSavingsPlan(funded.forecast,start,{end,buffer:10000}).total,20000);
+ const gap=coverBillShortfalls(ledger(-5000),start,{buffer:10000});assert.equal(gap.deposits[0].amount,15000);assert.equal(billsSavingsPlan(gap.forecast,start,{end,buffer:10000}).total,0);
+});
+
+test('repairing original bill gaps never adds more funding merely to finance reclaiming money',()=>{
+ const funded=coverBillShortfalls(ledger(400000,[{date:'2027-10-15',delta:-150000}]),start,{buffer:10000});
+ assert.deepEqual(funded.deposits,[]);assert.equal(billsReclaimPlan(funded.forecast,start,options).safe,false);
 });

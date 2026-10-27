@@ -39,12 +39,20 @@
  // Run synchronously so closing a dialog before changing tabs restores the
  // old tab's position before navigation chooses the new tab's position.
  const prototype=HTMLDialogElement.prototype,showModal=prototype.showModal,close=prototype.close;
- prototype.showModal=function(...args){lock();try{return showModal.apply(this,args);}finally{sync();}};
+ prototype.showModal=function(...args){this.setAttribute('closedby','none');lock();try{return showModal.apply(this,args);}finally{sync();}};
  prototype.close=function(...args){try{return close.apply(this,args);}finally{sync();}};
  new MutationObserver(changes=>{
   if(changes.some(change=>change.type==='childList'||change.target.matches('dialog,#celebrationOverlay')))sync();
  }).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['open','class']});
- // Escape, native form submission and removal also release the lock.
+ // Closing requires an explicit control in the popup; backdrop clicks and
+ // Escape must not discard an editor's unsaved changes.
+ document.addEventListener('cancel',event=>{if(event.target instanceof HTMLDialogElement)event.preventDefault();},true);
+ document.addEventListener('click',event=>{
+  const dialog=event.target;if(!(dialog instanceof HTMLDialogElement)||!dialog.open)return;
+  const r=dialog.getBoundingClientRect();
+  if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom){event.preventDefault();event.stopImmediatePropagation();}
+ },true);
+ // Explicit close, native form submission and removal release the lock.
  document.addEventListener('close',sync,true);
  sync();
 })();

@@ -53,6 +53,16 @@ test('only a posted pair in the selected accounts confirms your transfer; equal 
 test('a missing selected account produces an unknown balance instead of using unrelated money',()=>{
  assert.equal(householdForecast(accounts.slice(0,1),plan,[],[],'2026-11-06',{household:h,scope:'shared'}).opening,null);
 });
+
+test('one-time extra deposits conserve own transfers, retain overdue plans, and stop when received',()=>{
+ const household={...h,personalAmount:0,spouseAmount:0,additionalDeposits:[{id:'extra',date:'2026-11-05',amount:3000,source:'personal'}]};
+ const run=scope=>householdForecast(accounts,plan,[],[],'2026-11-06',{household,scope});
+ assert.equal(run('shared').endBalance,23000);assert.equal(run('personal').endBalance,97000);assert.equal(run('combined').endBalance,120000);
+ assert.equal(run('shared').rows.find(r=>r.type==='extra-deposit').overdue,true);
+ household.additionalDeposits[0].received=true;assert.equal(run('shared').endBalance,20000);
+ household.additionalDeposits[0].received=false;household.additionalDeposits[0].source='other';
+ assert.equal(run('personal').endBalance,100000);assert.equal(run('combined').endBalance,123000);
+});
 test('shared bill choices exclude old budget categories and the Fixed Bills contribution while preserving actual Accounts bills',async()=>{
  const {householdBillChoices}=await import('../public/household-model.mjs');
  const oldBudget=['Fixed bills','Medications','Food','Gas','Personal spending'].map((name,i)=>({id:'budget-'+i,name,source:i%2?'budget':'baby-bear-budget',amount:10000}));

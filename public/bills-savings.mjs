@@ -1,4 +1,45 @@
-import {occurrences} from './engine.mjs';
+import {day,monthly,occurrences} from './engine.mjs';
+const cashOrder=r=>r.type==='extra-deposit'&&r.delta>0?0:r.delta<0?1:2;
+
+export function reclaimHorizon(start,personalStart,spouseStart){
+ const valid=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&Number.isFinite(Date.parse(s+'T12:00:00Z'))&&day(s,0)===s;
+ if(![start,personalStart,spouseStart].every(valid))return null;
+ const searchEnd=day([start,personalStart,spouseStart].sort().at(-1),366*3);
+ const own=thirdPaycheckDates(personalStart,start,searchEnd).slice(0,2),spouse=thirdPaycheckDates(spouseStart,start,searchEnd).slice(0,2);
+ if(own.length<2||spouse.length<2)return null;
+ const lastReclaim=[own[1],spouse[1]].sort().at(-1);
+ return {own,spouse,lastReclaim,end:monthly(lastReclaim,12)};
+}
+
+// Repair the original cash-flow gaps before looking for savings. Never add
+// funding just to finance a proposed savings withdrawal or reclaim.
+export function coverBillShortfalls(f,start,{buffer=10000}={}){
+ if(!Number.isSafeInteger(f.opening)||!Number.isSafeInteger(buffer)||buffer<0)return null;
+ const rows=f.rows.filter(r=>r.date>=start&&r.date<=f.end).map(r=>({...r}));
+ if(rows.some(r=>!Number.isSafeInteger(r.delta)))return null;
+ const rank=cashOrder;
+ rows.sort((a,b)=>a.date.localeCompare(b.date)||rank(a)-rank(b));
+ // Pending top-ups dated today are conditional funding, not current bank cash.
+ const todayFunding=rows.filter(r=>r.date===start&&r.type==='extra-deposit').reduce((n,r)=>n+r.delta,0);
+ let running=f.opening+todayFunding,opening=running;
+ const deposits=[],adjusted=rows.filter(r=>!(r.date===start&&r.type==='extra-deposit'));
+ if(running<0){const amount=buffer-running;deposits.push({date:start,amount,shortfall:-running,neededBy:start,reason:'Current balance'});running+=amount;opening=running;}
+ for(let i=0;i<rows.length;){
+  const date=rows[i].date;let delta=0,low=running,reason='Upcoming bills';
+  while(i<rows.length&&rows[i].date===date){const row=rows[i++];if(date===start&&row.type==='extra-deposit')continue;delta+=row.delta;if(running+delta<low){low=running+delta;reason=row.name||reason;}}
+  if(low<0){
+   const amount=buffer-low,depositDate=date===start?start:day(date,-1);
+   deposits.push({date:depositDate,amount,shortfall:-low,neededBy:date,reason});
+   running+=amount;
+   if(depositDate===start)opening+=amount;
+   else adjusted.push({date:depositDate,delta:amount,amount,incoming:amount,outgoing:0,type:'extra-deposit',name:'Planned extra deposit'});
+  }
+  running+=delta;if(!Number.isSafeInteger(running)||!Number.isSafeInteger(opening))return null;
+ }
+ adjusted.sort((a,b)=>a.date.localeCompare(b.date)||rank(a)-rank(b));
+ const extraFunding=rows.filter(r=>r.type==='extra-deposit'&&r.delta>0).reduce((n,r)=>n+r.delta,0)+deposits.reduce((n,d)=>n+d.amount,0);
+ return {forecast:{...f,opening,rows:adjusted},deposits,extraFunding,conditionalNow:todayFunding>0||deposits.some(d=>d.date===start)};
+}
 
 // All amounts are integer cents. The supplied ledger extends past the last
 // suggested transfer date so the end of a chart is not treated as a free balance.
@@ -9,7 +50,7 @@ export function billsSavingsPlan(f,start,{end=f.end,buffer=10000}={}){
  if(rows.some(r=>!Number.isSafeInteger(r.delta)))return unavailable;
  // Bills may settle before a same-day contribution. Preserve those temporary
  // lows instead of using only the chart's end-of-day balances.
- rows.sort((a,b)=>a.date.localeCompare(b.date)||(a.delta<0?0:1)-(b.delta<0?0:1));
+ rows.sort((a,b)=>a.date.localeCompare(b.date)||cashOrder(a)-cashOrder(b));
  const states=[{date:start,balance:f.opening,now:true}];let running=f.opening;
  for(const row of rows){running+=row.delta;if(!Number.isSafeInteger(running))return unavailable;states.push({date:row.date,balance:running,name:row.name});}
  const shortfall=states.find(s=>s.balance<0);
@@ -41,15 +82,15 @@ export function thirdPaycheckDates(anchor,start,end){
 
 // Compare a specific annual reclaim plan, rather than calling the third
 // paycheck spare. Each person's next two third paydays are counted separately.
-export function billsReclaimPlan(f,start,{end,buffer=10000,personalStart,spouseStart,contribution=75000}={}){
+export function billsReclaimPlan(f,start,{end,periodStart=start,buffer=10000,personalStart,spouseStart,contribution=75000}={}){
  const unavailable={status:'unavailable'};
  if(!Number.isSafeInteger(f.opening)||!Number.isSafeInteger(buffer)||buffer<0||!Number.isSafeInteger(contribution)||contribution<=0||!end||end<start||end>f.end||!personalStart||!spouseStart)return unavailable;
- const own=thirdPaycheckDates(personalStart,start,end).slice(0,2),spouse=thirdPaycheckDates(spouseStart,start,end).slice(0,2);
+ const own=thirdPaycheckDates(personalStart,periodStart,end).slice(0,2),spouse=thirdPaycheckDates(spouseStart,periodStart,end).slice(0,2);
  if(own.length<2||spouse.length<2)return {status:'dates',own,spouse,end};
  const rows=f.rows.filter(r=>r.date>=start&&r.date<=f.end);
  if(rows.some(r=>!Number.isSafeInteger(r.delta)))return unavailable;
  const dates=[...new Set([...own,...spouse])].sort(),planned=dates.map(date=>({date,mine:own.includes(date),spouse:spouse.includes(date),reclaim:true}));
- const rank=e=>e.reclaim?2:e.delta<0?0:1;
+ const rank=e=>e.reclaim?3:cashOrder(e);
  const events=[...rows,...planned].sort((a,b)=>a.date.localeCompare(b.date)||rank(a)-rank(b));
  function evaluate(amount){
   let balance=f.opening,low=f.opening,reclaimed=0,lowAfterReclaim=null,firstShortfall=balance<0?{date:start,balance}:null,firstBelowBuffer=null;
@@ -69,5 +110,5 @@ export function billsReclaimPlan(f,start,{end,buffer=10000,personalStart,spouseS
  if(!requested||!baseline)return unavailable;
  let low=0,high=contribution;
  while(low<high){const mid=Math.ceil((low+high)/2),result=evaluate(mid);if(result?.safe)low=mid;else high=mid-1;}
- return {status:'ready',...requested,baselineLow:baseline.low,baselineShortfall:baseline.firstShortfall,perPerson:contribution*2,safePerContribution:low,safePerPerson:low*2,safeTotal:low*4,safeSchedule:evaluate(low).schedule,buffer,end,checkedThrough:f.end};
+ return {status:'ready',...requested,baselineLow:baseline.low,baselineShortfall:baseline.firstShortfall,perPerson:contribution*2,safePerContribution:low,safePerPerson:low*2,safeTotal:low*4,safeSchedule:evaluate(low).schedule,buffer,periodStart,end,checkedThrough:f.end};
 }

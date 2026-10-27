@@ -26,13 +26,26 @@
   const n=e.key==='ArrowRight'?(i+1)%3:e.key==='ArrowLeft'?(i+2)%3:e.key==='Home'?0:e.key==='End'?2:-1;if(n<0)return;
   e.preventDefault();selectAccountView(accountViews[n]);$('#accounts-nav-'+accountViews[n]).focus();
  });
+ let expandedAccountView=null;
+ function restoreExpandedAccountView(){
+  if(!expandedAccountView)return;
+  const {card,marker,button}=expandedAccountView;expandedAccountView=null;marker.replaceWith(card);button.hidden=false;button.focus({preventScroll:true});
+ }
+ $('#closeExpandedAccountView').onclick=()=>{restoreExpandedAccountView();$('#expandedAccountView').close();};
+ $('#expandedAccountView').addEventListener('close',restoreExpandedAccountView);
+ document.addEventListener('click',e=>{
+  const button=e.target.closest('[data-expand-card]');if(!button||expandedAccountView)return;
+  const card=document.getElementById(button.dataset.expandCard);if(!card)return;
+  const marker=document.createComment('expanded account view');card.before(marker);expandedAccountView={card,marker,button};
+  $('#expandedAccountTitle').textContent=card.querySelector('h3').textContent;button.hidden=true;$('#expandedAccountView').append(card);$('#expandedAccountView').showModal();
+ });
  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const money=(n,c='USD')=>new Intl.NumberFormat('en-US',{style:'currency',currency:c||'USD'}).format(n/100);
  const amountOrder=(a,b)=>(Number.isFinite(a.amount)?a.amount:Infinity)-(Number.isFinite(b.amount)?b.amount:Infinity)||String(a.name||'').localeCompare(String(b.name||''));
  const modelDay=(s,n)=>{const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);return iso(d);};
  const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
  const dateLabel=d=>new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
- let editingBill=null,spendingCategory=null,billsSpendingCategory=null,billsSpendingView=null,forecastViews={},householdBills=[],forecastStart='',forecastLength=30,billsSavingsContext=null,billsSavingsRequest=0;
+ let editingBill=null,spendingCategory=null,billsSpendingCategory=null,billsSpendingView=null,forecastViews={},householdBills=[],forecastStart='',forecastLength=30,billsSavingsContext=null,billsToolRequests={savings:0,reclaim:0},billsDepositDrafts={},savingExtraDeposits=false;
  const chartColors=['#5ca9a0','#c69a61','#8aa9bd','#b96c63','#8caa87','#d4be92','#648d92'];
  const billCategories={electric:'Electric',rent:'Rent',utility:'Utility','car-payment':'Car payment',insurance:'Insurance','phone-internet':'Phone & internet',subscription:'Subscription','credit-card':'Credit card',loan:'Loan payment',other:'Other bill'};
  const pencil='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg>';
@@ -148,7 +161,7 @@
  async function save(){if(!ready)throw Error('Accounts have not loaded. Reload before saving changes.');await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();}
  let initializing;
  $('#configureHousehold').disabled=true;$('#billTrackerChooseAccount').disabled=true;$('#sharedBillsToggle').disabled=true;$('#carPaymentsInDebtToggle').disabled=true;
- function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=bills-reclaim1'),import('./email-model.mjs?v=connections-audit1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=short-share1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#billTrackerChooseAccount').disabled=false;$('#sharedBillsToggle').disabled=false;$('#carPaymentsInDebtToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
+ function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=bills-topups1'),import('./email-model.mjs?v=connections-audit1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=short-share1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#billTrackerChooseAccount').disabled=false;$('#sharedBillsToggle').disabled=false;$('#carPaymentsInDebtToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
  window.addEventListener('load',initialize,{once:true});
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});
@@ -513,7 +526,6 @@
   try{const fallbackLimit=form.elements.creditLimit.readOnly?planner.debtCreditLimits?.[editingDebt]??null:enteredCreditLimit(form.elements.creditLimit);const accountId=String(d.get('plaidDebtAccount')||''),backupId=String(d.get('backupDebtAccount')||'');if(backupId&&backupId===accountId)throw Error('Choose a different provider for the backup.');for(const linkedId of [accountId,backupId].filter(Boolean)){if(Object.entries(planner.debtBackupLinks||{}).some(([id,a])=>a===linkedId&&id!==String(editingDebt))||Object.entries(planner.debtAccountLinks||{}).some(([id,a])=>a===linkedId&&id!==String(editingDebt))||Object.values(planner.loanLinks||{}).includes(linkedId))throw Error('This connected account is already linked to another debt or car payment.');}if(accountId&&Object.entries(planner.debtAccountLinks||{}).some(([id,a])=>a===accountId&&id!==String(editingDebt)))throw Error('This connected account is already linked to another debt.');if(accountId&&Object.values(planner.loanLinks||{}).includes(accountId))throw Error('This loan is already linked to a car-payment bill. Unlink that bill first.');const message=linkError('debt:'+editingDebt,linkDrafts.debt?.link);if(message)throw Error(message);editingDebt=await window.saveDebtAccount({id:editingDebt,...Object.fromEntries(d)});debtSaved=true;planner.debtFutureMinimums??={};const future=Number(form.elements.futureMinimum.value);if(future>0)planner.debtFutureMinimums[editingDebt]=Math.round(future*100);else delete planner.debtFutureMinimums[editingDebt];planner.debtCreditLimits??={};if(fallbackLimit!==null)planner.debtCreditLimits[editingDebt]=fallbackLimit;else delete planner.debtCreditLimits[editingDebt];planner.debtBackupLinks??={};if(backupId)planner.debtBackupLinks[editingDebt]=backupId;else delete planner.debtBackupLinks[editingDebt];planner.debtAutoDetails??={};planner.debtAutoDetails[editingDebt]=d.has('autoDebtDetails');planner.debtAccountLinks??={};if(accountId)planner.debtAccountLinks[editingDebt]=accountId;else delete planner.debtAccountLinks[editingDebt];storeEditorLink('debt','debt:'+editingDebt,String(d.get('name')).trim());await save();$('#debtEditor').close();discoverMail('debt:'+editingDebt,String(d.get('name')));sessionStorage.removeItem('bearden-debt-draft');$('#accountStatus').textContent='Debt saved to your payoff plan.';}
   catch(e){planner=snapshot;$('#debtEditorError').textContent=(debtSaved?'Debt details saved, but the transaction link could not be saved. Retry Save debt. ':'')+e.message;}finally{button.disabled=false;}
  };
- for(const id of ['accountTypePicker','debtEditor','creditEditor','debtHistoryDialog','debtProgressDialog'])$('#'+id).addEventListener('click',e=>{if(e.target!==e.currentTarget)return;const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close();});
  let editingCredit=null;
  function openCreditEditor(id,draftName=''){
   const card=window.BearDen.plan?.connections?.creditCards?.find(c=>c.id===id);if(!card)return;editingCredit=card;
@@ -799,7 +811,7 @@
    renderBillsSpending(model.billsAccountSpending(connections.transactions||[],billsAccount,currentDay,planner.bankRules,planner.transactionLinks,planner.transactionCategories),billsAccount);
    renderAccountForecast(f,today,plan,'personal');renderAccountForecast(billsForecast,today,plan,'bills');
    billsSavingsContext={accounts,plan,billPlan,paymentsPlanner,linked:structuredClone(linked),today,end:future,length:forecastLength,household:structuredClone(planner.household),transactions:connections.transactions||[],account:billsAccount};
-   resetBillsSavings();
+   resetBillsSavings();renderExtraDeposits();
    paymentDisplaySignature=mailDisplaySignature();
   }catch(e){error(e);}
  }
@@ -831,70 +843,107 @@
   billsSpendingCategory=key;renderBillsSpendingTransactions();
   const details=$('#billsSpendingDetails');details.open=true;details.scrollIntoView({behavior:'smooth',block:'nearest'});
  }
- function resetBillsSavings(message=''){
-  billsSavingsRequest++;
-  const result=$('#billsSavingsResult'),hadResult=!result.hidden;
-  result.hidden=true;result.innerHTML='';
-  $('#calculateBillsSavings').disabled=!billsSavingsContext;$('#checkBillsReclaim').disabled=!billsSavingsContext;$('#clearBillsSavings').disabled=true;
-  $('#billsSavingsStatus').textContent=message||(hadResult?'Forecast updated. Run Find safe savings again.':'');
+ const fullForecastDate=d=>new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+ function billsTool(mode){
+  const name=mode==='reclaim'?'BillsReclaim':'BillsSavings',prefix=name[0].toLowerCase()+name.slice(1);
+  return {result:$('#'+prefix+'Result'),status:$('#'+prefix+'Status'),buffer:$('#'+prefix+'Buffer'),panel:$('#'+prefix+'Panel'),open:$('#open'+name),close:$('#close'+name),clear:$('#clear'+name),form:$('#'+prefix+'Form'),calculate:$(mode==='reclaim'?'#checkBillsReclaim':'#calculateBillsSavings')};
  }
- $('#openBillsSavings').onclick=()=>{$('#billsSavingsPanel').hidden=false;$('#openBillsSavings').hidden=true;$('#openBillsSavings').setAttribute('aria-expanded','true');$('#billsSavingsBuffer').focus({preventScroll:true});};
- $('#clearBillsSavings').onclick=()=>resetBillsSavings('Results cleared.');
- $('#closeBillsSavings').onclick=()=>{resetBillsSavings();$('#billsSavingsStatus').textContent='';$('#billsSavingsPanel').hidden=true;$('#openBillsSavings').hidden=false;$('#openBillsSavings').setAttribute('aria-expanded','false');$('#openBillsSavings').focus({preventScroll:true});};
- $('#billsSavingsBuffer').addEventListener('input',()=>resetBillsSavings('Run Find safe savings with this cushion.'));
- $('#billsSavingsForm').onsubmit=async e=>{
-  e.preventDefault();const reclaim=e.submitter?.id==='checkBillsReclaim';
+ function resetBillsSavings(message='',only=null){
+  for(const mode of only?[only]:['savings','reclaim']){
+   billsToolRequests[mode]++;delete billsDepositDrafts[mode];
+   const tool=billsTool(mode),hadResult=!tool.result.hidden;tool.result.hidden=true;tool.result.innerHTML='';
+   tool.calculate.disabled=!billsSavingsContext;tool.clear.disabled=true;
+   tool.status.textContent=message||(hadResult?'Forecast updated. Calculate again.':'');
+  }
+ }
+ for(const mode of ['savings','reclaim']){
+  const tool=billsTool(mode);
+  tool.open.onclick=()=>{tool.panel.hidden=false;tool.open.hidden=true;tool.open.setAttribute('aria-expanded','true');tool.buffer.focus({preventScroll:true});};
+  tool.close.onclick=()=>{resetBillsSavings('',mode);tool.status.textContent='';tool.panel.hidden=true;tool.open.hidden=false;tool.open.setAttribute('aria-expanded','false');tool.open.focus({preventScroll:true});};
+  tool.clear.onclick=()=>resetBillsSavings('Results cleared.',mode);
+  tool.buffer.addEventListener('input',()=>resetBillsSavings('Calculate again with this cushion.',mode));
+  tool.form.onsubmit=e=>calculateBillsTool(e,mode);
+ }
+ async function calculateBillsTool(e,mode){
+  e.preventDefault();const reclaim=mode==='reclaim',tool=billsTool(mode);
   if(billsSavingsContext?.today!==iso(new Date()))await renderIncome();
-  const c=billsSavingsContext,status=$('#billsSavingsStatus'),result=$('#billsSavingsResult');
-  resetBillsSavings();const request=billsSavingsRequest;
+  const c=billsSavingsContext,{status,result}=tool;resetBillsSavings('',mode);const request=billsToolRequests[mode];
   if(!c){status.textContent='Wait for your forecast to load, then try again.';return;}
   if(!model.householdEnabled(c.household)||!c.account){status.textContent='Choose your bills account using Account above, then set its contributions and bills.';return;}
   const a=c.account,updated=Date.parse(a.balanceUpdated||a.balanceRetrieved||'');
   if(a.balanceUnavailable||a.providerUnavailable||a.balanceStale||!Number.isSafeInteger(a.balance)||!Number.isFinite(updated)||Date.now()-updated>2*86400000){status.textContent='Refresh Lunch Flow in Settings before calculating savings. This needs a usable bills balance retrieved within the last two days.';return;}
   if((reclaim||c.household.personalAmount>0)&&!c.plan.state.startDate){status.textContent='Set your first payday in Income so your Fixed Bills transfers can be included.';return;}
-  if(reclaim&&!c.household.spouseStartDate){status.textContent='Set your spouse’s first contribution date using Account above before checking a full year.';return;}
-  const buffer=Math.round(Number($('#billsSavingsBuffer').value)*100);
+  if(!c.household.spouseStartDate||!c.plan.state.startDate){status.textContent='Set both payday dates using Income and Account above so the calculator can find two third paychecks per person.';return;}
+  const buffer=Math.round(Number(tool.buffer.value)*100);
   if(!Number.isSafeInteger(buffer)||buffer<0){status.textContent='Enter a valid amount to keep in the bills account.';return;}
   try{
-   // This optional tool must never prevent accounts or balances from loading.
-   const savingsMath=await import('./bills-savings.mjs?v=bills-reclaim1');
-   if(request!==billsSavingsRequest)return;
-   if(billsSavingsContext!==c){status.textContent='The forecast changed while loading. Calculate again using the updated balances.';return;}
-   const length=reclaim?365:c.length,end=modelDay(c.today,length),guardLength=length+35,guardEnd=modelDay(c.today,guardLength);
+   // Optional calculators must never prevent accounts or balances from loading.
+   const math=await import('./bills-savings.mjs?v=bills-topups1');
+   if(request!==billsToolRequests[mode]||billsSavingsContext!==c)return;
+   const horizon=math.reclaimHorizon(c.today,c.plan.state.startDate,c.household.spouseStartDate);
+   if(!horizon){status.textContent='Review both payday dates so the calculator can find two third paychecks per person.';return;}
+   const periodStart=c.today,end=horizon.lastReclaim,guardEnd=horizon.end,guardLength=Math.round((Date.parse(guardEnd+'T12:00:00Z')-Date.parse(c.today+'T12:00:00Z'))/86400000);
    const household=reclaim?{...c.household,personalAmount:75000,spouseAmount:75000,spouseRepeat:'biweekly'}:c.household;
    const bills=model.billEvents(c.billPlan,c.paymentsPlanner,c.linked,c.today,guardEnd);
    const f=model.scenarioForecast(c.accounts,c.plan,bills,c.today,{debtMode:'none',length:guardLength,household,scope:'shared',transactions:c.transactions});
    if(!f.rows.some(r=>r.type==='bill'&&r.delta<0)){status.textContent='Add your upcoming bills and set Paid from to Shared bills account before calculating savings.';return;}
-   if(reclaim){renderBillsReclaim(savingsMath.billsReclaimPlan(f,c.today,{end,buffer,personalStart:c.plan.state.startDate,spouseStart:household.spouseStartDate}),c,updated);return;}
-   const savings=savingsMath.billsSavingsPlan(f,c.today,{end:c.end,buffer});
-   const fullDate=d=>new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-   if(savings.status==='unavailable'){status.textContent='The forecast is missing a usable balance or scheduled amount. Check the bills account and contributions.';return;}
-   status.textContent='Checked through '+fullDate(guardEnd)+' — 35 days beyond your selected forecast. Uses '+connectedAccountName(a)+' balance retrieved '+new Date(updated).toLocaleString()+'.';
-   if(savings.status==='shortfall'){
-    result.innerHTML='<div class="forecast-warning"><strong>No savings suggested yet</strong><span>The bills account is projected below zero on '+esc(fullDate(savings.shortfall.date))+': '+money(savings.shortfall.balance)+'.</span><span>The plan needs at least '+money(savings.needed)+' more to cover its lowest balance. Adjust contributions or bills, then calculate again.</span></div>';
-   }else{
-    result.innerHTML='<div class="bills-savings-summary"><div><small>Potential savings now</small><strong>'+money(savings.now)+'</strong></div><div><small>Total through '+esc(fullDate(c.end))+'</small><strong>'+money(savings.total)+'</strong></div></div>'+
-     (savings.schedule.length?'<p class="subtle">Each amount below is an additional transfer, taken once. Later dates assume that day’s deposits and bills have cleared.</p><ol class="bills-savings-list" tabindex="0" aria-label="Suggested savings transfers">'+savings.schedule.map(row=>'<li><span>'+esc(row.now?'Now':fullDate(row.date))+'<small>'+esc(row.now?'From the reported balance':row.date===c.today?'After today’s deposits and bills clear':'After deposits and bills clear')+' · '+money(row.balanceAfter)+' left in bills</small></span><strong>'+money(row.amount)+'</strong></li>').join('')+'</ol><p class="subtle">Lowest projected bills balance after these transfers: '+money(savings.lowAfter)+'. Cushion: '+money(buffer)+'.</p>':'<p class="subtle">No extra money is projected to be available through '+esc(fullDate(c.end))+' while protecting upcoming bills and your '+money(buffer)+' cushion.</p>');
+   const funding=math.coverBillShortfalls(f,c.today,{buffer});
+   if(!funding){status.textContent='The forecast needs a usable balance and scheduled amounts.';return;}
+   if(reclaim){
+    const check=math.billsReclaimPlan(funding.forecast,c.today,{end,periodStart,buffer,personalStart:c.plan.state.startDate,spouseStart:household.spouseStartDate});
+    renderBillsReclaim(check,c,updated,funding);return;
    }
-   result.insertAdjacentHTML('beforeend','<p class="subtle">Estimates use scheduled bills and contributions. Pending charges, untracked bills, and timing changes can reduce what is available. Confirm cleared funds before transferring, then refresh Lunch Flow before recalculating. This calculation does not move money.</p>');
-   result.hidden=false;$('#clearBillsSavings').disabled=false;
-  }catch(err){if(request===billsSavingsRequest)status.textContent='Could not calculate savings. '+err.message;}
- };
- function renderBillsReclaim(check,context,updated){
-  const status=$('#billsSavingsStatus'),result=$('#billsSavingsResult');
-  const fullDate=d=>new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+   const savings=math.billsSavingsPlan(funding.forecast,c.today,{end,buffer});
+   if(savings.status!=='ready'){status.textContent='The adjusted forecast could not be calculated. Review the account balance and bill amounts.';return;}
+   status.textContent='Savings dates through '+fullForecastDate(end)+'. Checked through '+fullForecastDate(guardEnd)+' — one year after both second reclaims. Uses '+connectedAccountName(a)+' balance retrieved '+new Date(updated).toLocaleString()+'.';
+   result.innerHTML='<div class="bills-savings-summary"><div><small>'+(funding.conditionalNow?'After today’s extra deposit clears':'Potential savings now')+'</small><strong>'+money(savings.now)+'</strong></div><div><small>Total to savings through '+esc(fullForecastDate(end))+'</small><strong>'+money(savings.total)+'</strong></div></div>'+
+    (savings.schedule.length?'<p class="subtle">Each amount below is an additional transfer, taken once. Wait for all required deposits and bills to clear.</p><ol class="bills-savings-list" tabindex="0" aria-label="Suggested savings transfers">'+savings.schedule.map(row=>'<li><span>'+esc(row.now?(funding.conditionalNow?'After today’s extra deposit':'Now'):fullForecastDate(row.date))+'<small>'+esc(row.now&&!funding.conditionalNow?'From the reported balance':'After deposits and bills clear')+' · '+money(row.balanceAfter)+' left in bills</small></span><strong>'+money(row.amount)+'</strong></li>').join('')+'</ol><p class="subtle">Lowest projected balance after funding gaps and saving: '+money(savings.lowAfter)+'. Cushion: '+money(buffer)+'.</p>':'<p class="subtle">No extra money is projected to be available through '+esc(fullForecastDate(end))+' while protecting upcoming bills and your '+money(buffer)+' cushion.</p>');
+   renderFundingPlan(funding,c,mode,savings.total);
+   result.insertAdjacentHTML('beforeend','<p class="subtle">Savings depend on the deposits in this plan. Pending charges, untracked bills, and timing changes can affect the result. Confirm cleared funds before transferring, then refresh Lunch Flow. Calculating a plan does not move money.</p>');
+   result.hidden=false;tool.clear.disabled=false;
+  }catch(err){if(request===billsToolRequests[mode])status.textContent='Could not calculate savings. '+err.message;}
+ }
+ function renderFundingPlan(funding,context,mode,total){
+  const {result}=billsTool(mode),newFunding=funding.deposits.reduce((n,d)=>n+d.amount,0);
+  if(funding.extraFunding>0)result.insertAdjacentHTML('afterbegin','<div class="extra-deposit-plan"><h5>Funding gaps first</h5><p>Extra deposits in this forecast: <strong>'+money(funding.extraFunding)+'</strong>. Net amount released after those deposits: <strong>'+money(total-funding.extraFunding)+'</strong>.</p>'+(total<funding.extraFunding?'<p class="subtle">This plan needs more added money than it releases. The deposits cover bills; they do not create a net savings gain.</p>':'')+(newFunding>0?'<p class="subtle">The savings below assume these one-time deposits arrive before the affected bills. Each deposit covers the gap and restores your cushion.</p><ol class="bills-savings-list">'+funding.deposits.map(d=>'<li><span>Deposit by '+esc(fullForecastDate(d.date))+'<small>'+esc(d.reason)+' · gap '+money(d.shortfall)+' on '+esc(fullForecastDate(d.neededBy))+'</small></span><strong>'+money(d.amount)+'</strong></li>').join('')+'</ol><label>Extra deposits come from<select data-extra-source="'+mode+'"><option value="personal">My personal checking</option><option value="other">Spouse or other funds</option></select></label><button type="button" data-plan-extra="'+mode+'">Add deposits to forecast</button><p class="subtle">Add them only if you can supply the money. They remain planned until you mark them received in your bank balance.</p>':'<p class="subtle">Your saved extra deposits are included. No further deposits are needed for the original bill shortfalls.</p>')+'</div>');
+  if(newFunding>0)billsDepositDrafts[mode]={context,deposits:funding.deposits};
+ }
+ function renderBillsReclaim(check,context,updated,funding){
+  const tool=billsTool('reclaim'),{status,result}=tool;
   if(check.status==='unavailable'){status.textContent='The reclaim check needs a usable balance, valid payday dates, and scheduled amounts.';return;}
-  if(check.status==='dates'){status.textContent='Found '+check.own.length+' of your third paychecks and '+check.spouse.length+' of your spouse’s through '+fullDate(check.end)+'. Two per person are needed for this $1,500-each check. Review the payday dates under Account.';return;}
-  status.textContent='One-year reclaim check through '+fullDate(check.end)+', with bills protected through '+fullDate(check.checkedThrough)+'. Uses '+connectedAccountName(context.account)+' balance retrieved '+new Date(updated).toLocaleString()+'.';
+  if(check.status==='dates'){status.textContent='Found '+check.own.length+' of your third paychecks and '+check.spouse.length+' of your spouse’s in the calculated period. Two per person are needed for this $1,500-each check. Review the payday dates under Account.';return;}
+  status.textContent='Next two reclaims per person through '+fullForecastDate(check.end)+'. Bills checked from today through '+fullForecastDate(check.checkedThrough)+' — one year after the last reclaim. Balance retrieved '+new Date(updated).toLocaleString()+'.';
   const problem=check.firstShortfall||check.firstBelowBuffer;
-  let message=check.safe?'<strong>Yes — $1,500 each fits this forecast</strong><p>Reclaim $750 per person on the two third-paycheck dates below. The lowest projected balance after reclaiming is '+money(check.lowAfterReclaim)+', including the extra 35 days.</p>':
-   '<div class="forecast-warning"><strong>Not the full $1,500 each on these dates</strong><span>'+(check.firstShortfall?'The balance would fall below zero':'The balance would fall below your '+money(check.buffer)+' cushion')+' on '+esc(fullDate(problem.date))+': '+money(problem.balance)+'.</span>'+(check.baselineShortfall?'<span>There is already a projected shortfall before reclaiming anything. Adjust bill funding first.</span>':'')+'</div>';
+  let message=check.safe?'<strong>Yes — $1,500 each fits this forecast'+(funding.extraFunding>0?' after the planned extra deposits':'')+'</strong><p>Reclaim $750 per person on the two third-paycheck dates below. The lowest projected balance afterward is '+money(check.lowAfterReclaim)+', including the following year.</p>':
+   '<div class="forecast-warning"><strong>Not the full $1,500 each on these dates</strong><span>'+(check.firstShortfall?'The balance would fall below zero':'The balance would fall below your '+money(check.buffer)+' cushion')+' on '+esc(fullForecastDate(problem.date))+': '+money(problem.balance)+'.</span></div>';
   const smaller=!check.safe&&check.safeTotal>0,schedule=smaller?check.safeSchedule:check.schedule;
   if(smaller)message+='<p><strong>A smaller amount fits: '+money(check.safePerPerson)+' each over the year.</strong> That is '+money(check.safePerContribution)+' each per third paycheck, keeping the '+money(check.buffer)+' cushion.</p>';
-  message+='<p class="subtle">'+(check.safe?'Suggested reclaim dates':smaller?'Smaller alternative at the same dates':'Requested dates — these amounts do not fit the forecast')+'. Wait until that day’s contributions and bills clear.</p><ol class="bills-savings-list" tabindex="0" aria-label="Annual contribution reclaim dates">'+schedule.map(row=>'<li><span>'+esc(fullDate(row.date))+'<small>'+[row.mine?'You: '+money(row.mine):'',row.spouse?'Spouse: '+money(row.spouse):''].filter(Boolean).join(' · ')+'</small><small>'+money(row.balanceAfter)+' left in bills</small></span><strong>'+money(row.amount)+'</strong></li>').join('')+'</ol>';
-  message+='<p class="subtle">Preview assumes $750 per person every two weeks on your saved payday dates. Reclaiming is counted once, after each person’s next two third paychecks. Use this instead of taking the same money from Find safe savings as well. Pending charges and changing bills can affect the result; confirm cleared funds and refresh Lunch Flow before moving money. No money is moved or budget settings changed by this preview.</p>';
-  result.innerHTML=message;result.hidden=false;$('#clearBillsSavings').disabled=false;
+  message+='<p class="subtle">'+(check.safe?'Suggested reclaim dates':smaller?'Smaller alternative at the same dates':'Requested dates — these amounts do not fit the forecast')+'. Wait until that day’s contributions and bills clear.</p><ol class="bills-savings-list" tabindex="0" aria-label="Annual contribution reclaim dates">'+schedule.map(row=>'<li><span>'+esc(fullForecastDate(row.date))+'<small>'+[row.mine?'You: '+money(row.mine):'',row.spouse?'Spouse: '+money(row.spouse):''].filter(Boolean).join(' · ')+'</small><small>'+money(row.balanceAfter)+' left in bills</small></span><strong>'+money(row.amount)+'</strong></li>').join('')+'</ol>';
+  message+='<p class="subtle">Preview assumes $750 per person every two weeks on your saved payday dates. Use reclaim instead of taking the same money from Savings Finder as well. Confirm cleared funds and refresh Lunch Flow before moving money. This preview does not move money.</p>';
+  result.innerHTML=message;renderFundingPlan(funding,context,'reclaim',check.safe?check.total:check.safeTotal);result.hidden=false;tool.clear.disabled=false;
  }
+ function renderExtraDeposits(){
+  const deposits=[...(planner.household.additionalDeposits||[])].sort((a,b)=>a.date.localeCompare(b.date)),box=$('#plannedExtraDeposits');
+  if(!deposits.length){box.innerHTML='';return;}
+  box.innerHTML='<details class="extra-deposit-plan" open><summary>One-time extra deposits ('+deposits.filter(d=>!d.received).length+' planned)</summary><p class="subtle">Mark received only after the deposit appears in the synced bank balance. An overdue deposit stays planned until you confirm or remove it.</p>'+deposits.map(d=>'<div class="planned-extra-row"><strong>'+money(d.amount)+'</strong> · '+esc(fullForecastDate(d.date))+'<small>'+esc(d.received?'Received — already in bank balance':(d.date<iso(new Date())?'Overdue · ':'')+(d.source==='personal'?'From my personal checking':'From spouse or other funds'))+'</small><div class="extra-deposit-actions"><button type="button" data-extra-received="'+esc(d.id)+'">'+(d.received?'Undo received':'Mark received')+'</button><button type="button" data-extra-remove="'+esc(d.id)+'">Remove</button></div></div>').join('')+'<p id="extraDepositStatus" class="subtle" role="status"></p></details>';
+ }
+ document.addEventListener('click',async e=>{
+  const planButton=e.target.closest('[data-plan-extra]'),received=e.target.closest('[data-extra-received]'),remove=e.target.closest('[data-extra-remove]');
+  if((!planButton&&!received&&!remove)||savingExtraDeposits)return;
+  const button=planButton||received||remove,mode=planButton?.dataset.planExtra,draft=mode?billsDepositDrafts[mode]:null;
+  if(planButton&&(!draft||draft.context!==billsSavingsContext)){billsTool(mode).status.textContent='Calculate again before adding these deposits.';return;}
+  if(remove&&!confirm('Remove this planned extra deposit from the forecast?'))return;
+  if(received&&!planner.household.additionalDeposits?.find(d=>d.id===received.dataset.extraReceived)?.received&&!confirm('Is this deposit already included in your synced bank balance?'))return;
+  const before=structuredClone(planner.household);button.disabled=true;savingExtraDeposits=true;
+  try{
+   planner.household.additionalDeposits??=[];
+   if(planButton){const source=document.querySelector('[data-extra-source="'+mode+'"]').value;for(const d of draft.deposits)planner.household.additionalDeposits.push({id:crypto.randomUUID(),date:d.date,amount:d.amount,source,received:false});}
+   else if(received){const d=planner.household.additionalDeposits.find(d=>d.id===received.dataset.extraReceived);if(d)d.received=!d.received;}
+   else planner.household.additionalDeposits=planner.household.additionalDeposits.filter(d=>d.id!==remove.dataset.extraRemove);
+   await save();if(planButton)billsTool(mode).status.textContent='Extra deposits added to the forecast. Calculate again to refresh the savings plan.';
+  }catch(err){planner.household=before;if(planButton)billsTool(mode).status.textContent=err.message;else $('#extraDepositStatus').textContent=err.message;}
+  finally{button.disabled=false;savingExtraDeposits=false;}
+ });
  function renderAccountForecast(f,today,plan,scope){
   const prefix=scope==='bills'?'billsForecast':'forecast';
    const forecastPoints=model.forecastTimeline(f,today);
@@ -938,7 +987,7 @@
    '<div class="forecast-stats"><div class="forecast-incoming"><small>'+(scope==='bills'?'Expected deposits':'Expected income')+'</small><strong>'+money(f.income)+'</strong></div><div class="forecast-outgoing"><small>Planned outflow</small><strong>'+money(f.outgoing)+'</strong></div><div class="forecast-lowest'+(!unknown&&f.low<0?' is-negative':'')+'"><small>Lowest balance</small><strong>'+(unknown?'—':money(f.low))+'</strong></div></div>'+shortfall+
    (!plan.state.startDate?'<p class="forecast-warning">Set your first payday and take-home pay in Income to include income in this forecast.</p>':'')+
    '<p class="forecast-ledger-heading">Schedule through '+esc(forecastDate(f.end))+'</p><div class="forecast-ledger-scroll" role="region" aria-label="'+(scope==='bills'?'Bills':'Personal')+' forecast schedule" tabindex="0">'+
-   (rows.slice(0,view.rowLimit).map(r=>'<div class="forecast-row forecast-ledger-row'+(r.balance!==null&&r.balance<0?' is-negative':'')+'" data-forecast-date="'+esc(r.date)+'"><span>'+esc(r.name)+'<small>'+esc(forecastDate(r.date)+(r.type==='income'?' · after planned allocations':r.received?' · already in bank balance':r.type==='transfer'?' · between your accounts':r.type==='contribution'?' · to shared bills account':r.overdue?' · overdue bill':' · bill'))+'</small></span><strong class="'+(r.delta>0?'cash-incoming':r.delta<0?'cash-outgoing':'cash-neutral')+'">'+(r.delta>0?'+':r.delta<0?'−':'')+money(Math.abs(r.delta))+'</strong>'+(r.balance===null?'':'<div class="forecast-running-balance"><span>Projected balance'+(r.balance<0?' · Below zero':'')+'</span><strong>'+money(r.balance)+'</strong></div>')+'</div>').join('')||'<p class="subtle">No scheduled entries through this day.</p>')+
+   (rows.slice(0,view.rowLimit).map(r=>'<div class="forecast-row forecast-ledger-row'+(r.balance!==null&&r.balance<0?' is-negative':'')+'" data-forecast-date="'+esc(r.date)+'"><span>'+esc(r.name)+'<small>'+esc(forecastDate(r.date)+(r.type==='extra-deposit'?(r.overdue?' · extra deposit overdue':' · extra deposit before bills'):r.type==='income'?' · after planned allocations':r.received?' · already in bank balance':r.type==='transfer'?' · between your accounts':r.type==='contribution'?' · to shared bills account':r.overdue?' · overdue bill':' · bill'))+'</small></span><strong class="'+(r.delta>0?'cash-incoming':r.delta<0?'cash-outgoing':'cash-neutral')+'">'+(r.delta>0?'+':r.delta<0?'−':'')+money(Math.abs(r.delta))+'</strong>'+(r.balance===null?'':'<div class="forecast-running-balance"><span>Projected balance'+(r.balance<0?' · Below zero':'')+'</span><strong>'+money(r.balance)+'</strong></div>')+'</div>').join('')||'<p class="subtle">No scheduled entries through this day.</p>')+
    (rows.length>view.rowLimit?'<button type="button" data-more-forecast="'+scope+'">Show next 100 entries ('+(rows.length-view.rowLimit)+' remaining)</button>':'')+'</div>';
   container.querySelector('.forecast-ledger-scroll').scrollTop=scrollTop;
  }
@@ -952,7 +1001,6 @@
  });
  $('#restoreBankEstimates').onclick=async()=>{try{planner.dismissedEstimates=[];await save();}catch(e){error(e);}};
  $('#closeAccountPicker').onclick=()=>$('#accountPicker').close();
- $('#accountPicker').addEventListener('click',e=>{if(e.target===$('#accountPicker')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close();}});
  document.addEventListener('change',async e=>{const input=e.target.closest('[data-account-visible]');if(!input)return;input.disabled=true;const id=input.dataset.accountVisible,old=planner.accountVisibility[id];planner.accountVisibility[id]=input.checked;try{await save();$('#accountPickerStatus').textContent='Saved';}catch(e){if(old===undefined)delete planner.accountVisibility[id];else planner.accountVisibility[id]=old;input.checked=!input.checked;$('#accountPickerStatus').textContent=e.message;}finally{input.disabled=false;}});
 
 
@@ -972,7 +1020,6 @@
   $('#connectedAccountNameError').textContent='';$('#connectedAccountNameEditor').showModal();
  });
  $('#closeConnectedAccountName').onclick=()=>$('#connectedAccountNameEditor').close();
- $('#connectedAccountNameEditor').addEventListener('click',e=>{if(e.target!==e.currentTarget)return;const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close();});
  $('#connectedAccountNameForm').onsubmit=async e=>{
   e.preventDefault();const id=editingConnectedAccount,name=$('#connectedAccountName').value.trim(),button=e.currentTarget.querySelector('[type=submit]'),before={...planner.accountNames};
   if(!name||name.length>100){$('#connectedAccountNameError').textContent='Enter a name up to 100 characters.';return;}
@@ -1063,7 +1110,6 @@
  $('#billEditorForm').elements.funding.onchange=e=>{$('#billEditorForm').elements.covered.closest('label').hidden=e.target.value==='shared';};
  $('#billCategory').onchange=e=>{if(e.target.value==='rent'){$('#billEditorForm').elements.date.value=rentModel.nextRentDate();$('#billEditorForm').elements.sunRent.checked=!!sunConnection()?.snapshot&&!planner.sunRentDisabled?.[editingBill?.id]&&(!planner.sunRent||planner.sunRent.billId===editingBill?.id);}renderBillRentInfo(true);renderBillLoanInfo();const electric=e.target.value==='electric';$('#electricLinkOption').hidden=!electric;if(electric&&!planner.electricBillId)$('#billEditorForm').elements.gmailElectric.checked=true;if(emailDrafts.bill)renderEmailDraft('bill');};
  $('#closeBillEditor').onclick=()=>$('#billEditor').close();
- $('#billEditor').addEventListener('click',e=>{if(e.target===e.currentTarget){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close();}});
  $('#billEditorForm').onsubmit=async e=>{
   e.preventDefault();if(deletingAccount||!editingBill)return;const form=e.currentTarget,d=new FormData(form),name=String(d.get('name')).trim(),amount=Math.round(Number(d.get('amount'))*100),billKind=d.get('billKind'),selectedDate=String(d.get('date')),date=billKind==='rent'?(!editingBill.newManual&&selectedDate===rentModel.nextRentDate()&&editingBill.base.date<selectedDate?editingBill.base.date:selectedDate).slice(0,7)+'-01':selectedDate,repeat=billKind==='rent'?'monthly':d.get('repeat');
   if(!name||!Number.isSafeInteger(amount)||amount<=0||!date||!billCategories[billKind])return;
