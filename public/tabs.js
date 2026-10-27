@@ -38,6 +38,89 @@
  const pencil='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg>';
  let review={rows:[],bills:[],spending:{categories:[],total:0}};
  let month=new Date(new Date().getFullYear(),new Date().getMonth(),1),selected=null,agendaOpen=false,model,mailModel,rentModel,sharingModel,planner={manual:[],covered:{},paid:[],accountVisibility:{},dismissedEstimates:[],estimates:{},bankRules:{},transactionCategories:{},creditCards:{},transactionLinks:{},emailLinks:{},billFunding:{},household:{},forecastDebtMode:'full'},linked={},ready=false;
+
+ const accountSortModes=new Set(['amount-asc','amount-desc','date-asc','date-desc','name-asc','name-desc','custom']);
+ const accountSortRows={bills:[],debts:[]};let accountOrderDraft=null,accountSortSaving=false;
+ const accountSortMode=kind=>accountSortModes.has(planner.accountSorting?.[kind]?.mode)?planner.accountSorting[kind].mode:'amount-asc';
+ const accountSavedOrder=kind=>Array.isArray(planner.accountSorting?.[kind]?.order)?planner.accountSorting[kind].order:[];
+ function sortedAccountRows(kind,rows){
+  const mode=accountSortMode(kind),rank=new Map(accountSavedOrder(kind).map((id,i)=>[id,i]));
+  const text=(a,b)=>String(a||'').localeCompare(String(b||''),undefined,{numeric:true,sensitivity:'base'});
+  const numeric=(a,b,reverse=false)=>Number.isFinite(a)?Number.isFinite(b)?(reverse?b-a:a-b):-1:Number.isFinite(b)?1:0;
+  const sorted=[...rows].sort((a,b)=>{
+   let comparison=0;
+   if(mode==='custom')comparison=numeric(rank.get(a.sortKey),rank.get(b.sortKey));
+   else if(mode.startsWith('amount'))comparison=numeric(a.amount,b.amount,mode==='amount-desc');
+   else if(mode.startsWith('date'))comparison=numeric(Date.parse(a.sortDate||''),Date.parse(b.sortDate||''),mode==='date-desc');
+   else comparison=mode==='name-desc'?text(b.name,a.name):text(a.name,b.name);
+   return comparison||(mode==='custom'?amountOrder(a,b):text(a.name,b.name))||text(a.sortKey,b.sortKey);
+  });
+  accountSortRows[kind]=sorted;renderAccountSortControls();return sorted;
+ }
+ function renderAccountSortControls(){
+  for(const kind of ['bills','debts']){
+   const select=$('#'+kind+'Sort');select.value=accountSortMode(kind);select.disabled=!ready||accountSortSaving;
+   document.querySelector('[data-organize-accounts="'+kind+'"]').disabled=!ready||accountSortSaving||!accountSortRows[kind].length;
+  }
+ }
+ async function saveAccountSort(kind,mode,order=null){
+  if(!ready||accountSortSaving||!accountSortModes.has(mode))return false;
+  const before=planner.accountSorting;
+  planner.accountSorting={...before,[kind]:{...before?.[kind],mode,...(order?{order}:{})}};
+  accountSortSaving=true;renderAccountSortControls();$('#'+kind+'SortStatus').textContent='Saving order…';
+  try{await save();$('#'+kind+'SortStatus').textContent='Order saved.';return true;}
+  catch(e){planner.accountSorting=before;await renderIncome();$('#'+kind+'SortStatus').textContent=e.message;$('#accountOrderStatus').textContent=e.message;return false;}
+  finally{accountSortSaving=false;renderAccountSortControls();}
+ }
+ document.querySelectorAll('[data-account-sort]').forEach(select=>select.addEventListener('change',()=>saveAccountSort(select.dataset.accountSort,select.value)));
+ function renderAccountOrder(){
+  const rows=accountOrderDraft.rows,scrollTop=$('#accountOrderList').scrollTop;
+  $('#accountOrderList').innerHTML=rows.map((row,index)=>'<li class="account-order-row" draggable="true" tabindex="-1" data-account-order-row="'+esc(row.sortKey)+'"><span class="account-order-grip" aria-hidden="true">☰</span><span class="account-order-name"><strong>'+esc(row.name)+'</strong><small>'+esc(Number.isFinite(row.amount)?money(row.amount,row.currency||'USD'):'Amount unavailable')+'</small></span><span class="account-order-buttons"><button type="button" data-order-step="-1" '+(!index?'disabled':'')+' aria-label="Move '+esc(row.name)+' up">↑</button><button type="button" data-order-step="1" '+(index===rows.length-1?'disabled':'')+' aria-label="Move '+esc(row.name)+' down">↓</button></span></li>').join('');
+  $('#accountOrderList').scrollTop=scrollTop;
+ }
+ document.querySelectorAll('[data-organize-accounts]').forEach(button=>button.addEventListener('click',()=>{
+  if(!ready||accountSortSaving)return;const kind=button.dataset.organizeAccounts;
+  accountOrderDraft={kind,rows:accountSortRows[kind].map(({sortKey,name,amount,currency})=>({sortKey,name,amount,currency})),dragKey:null};
+  $('#accountOrderTitle').textContent=kind==='bills'?'Organize bills':'Organize debts';$('#accountOrderStatus').textContent='';renderAccountOrder();$('#accountOrderEditor').showModal();
+ }));
+ function moveAccountOrder(key,to){
+  if(!accountOrderDraft||accountSortSaving)return;
+  const rows=accountOrderDraft.rows,from=rows.findIndex(r=>r.sortKey===key);if(from<0||to<0||to>=rows.length||from===to)return;
+  const [row]=rows.splice(from,1);rows.splice(to,0,row);renderAccountOrder();
+  $('#accountOrderStatus').textContent=row.name+' moved to position '+(to+1)+' of '+rows.length+'.';
+  const element=[...$('#accountOrderList').children].find(el=>el.dataset.accountOrderRow===key);element?.focus({preventScroll:true});
+ }
+ $('#accountOrderList').addEventListener('click',e=>{
+  const button=e.target.closest('[data-order-step]');if(!button||!accountOrderDraft)return;const key=button.closest('[data-account-order-row]').dataset.accountOrderRow;
+  moveAccountOrder(key,accountOrderDraft.rows.findIndex(r=>r.sortKey===key)+Number(button.dataset.orderStep));
+ });
+ $('#accountOrderList').addEventListener('dragstart',e=>{
+  const row=e.target.closest('[data-account-order-row]');if(!row||!accountOrderDraft||accountSortSaving){e.preventDefault();return;}
+  accountOrderDraft.dragKey=row.dataset.accountOrderRow;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',accountOrderDraft.dragKey);
+ });
+ $('#accountOrderList').addEventListener('dragover',e=>{
+  const row=e.target.closest('[data-account-order-row]');if(!row||!accountOrderDraft?.dragKey||accountSortSaving)return;
+  e.preventDefault();e.dataTransfer.dropEffect='move';for(const other of $('#accountOrderList').children)other.classList.toggle('order-drop-target',other===row);
+ });
+ $('#accountOrderList').addEventListener('drop',e=>{
+  const row=e.target.closest('[data-account-order-row]');if(!row||!accountOrderDraft?.dragKey)return;e.preventDefault();
+  const key=accountOrderDraft.dragKey;accountOrderDraft.dragKey=null;moveAccountOrder(key,accountOrderDraft.rows.findIndex(r=>r.sortKey===row.dataset.accountOrderRow));
+ });
+ $('#accountOrderList').addEventListener('dragend',()=>{if(accountOrderDraft)accountOrderDraft.dragKey=null;for(const row of $('#accountOrderList').children)row.classList.remove('order-drop-target');});
+ function closeAccountOrder(){if(!accountSortSaving)$('#accountOrderEditor').close();}
+ $('#closeAccountOrder').onclick=closeAccountOrder;$('#cancelAccountOrder').onclick=closeAccountOrder;
+ $('#accountOrderEditor').addEventListener('cancel',e=>{if(accountSortSaving)e.preventDefault();});
+ $('#accountOrderEditor').addEventListener('close',()=>{accountOrderDraft=null;});
+ $('#saveAccountOrder').onclick=async()=>{
+  if(!accountOrderDraft||accountSortSaving)return;
+  const {kind,rows}=accountOrderDraft,live=accountSortRows[kind],present=new Set(live.map(r=>r.sortKey));
+  const ids=[...new Set([...rows.map(r=>r.sortKey).filter(id=>present.has(id)),...live.map(r=>r.sortKey)])];
+  // Retain positions for temporarily hidden accounts and use stable IDs across renames and syncs.
+  let index=0;const order=[...new Set(accountSavedOrder(kind))].map(id=>present.has(id)?ids[index++]:id);order.push(...ids.slice(index));
+  const buttons=[...$('#accountOrderEditor').querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
+  try{if(await saveAccountSort(kind,'custom',order))$('#accountOrderEditor').close();}
+  finally{buttons.forEach(b=>b.disabled=false);if(accountOrderDraft)renderAccountOrder();}
+ };
  let paymentSaveRunning=false,lastPaidAction=null;
  function showPaymentUndo(key,name){
   lastPaidAction={key,name};$('#paymentUndoText').textContent=name+' marked paid.';
@@ -281,7 +364,7 @@
    const paymentLabel=paid?.paidByPaycheck?'Paid from checked paychecks':paid?.paidByBank?'Matched bank payment':paid?'Marked paid':c.minimum===0?'No minimum due':dueDate?'Due '+dateLabel(dueDate)+(c.emailDue?' · Email':c.dueDate?'':' (est.)'):'Due date not shared';
    const action=paid?.paidByPaycheck||paid?.paidByBank||status?.paidOff?'':!p.tracking?'<button data-edit-credit="'+esc(c.id)+'">Track payment</button>':paid?'<button data-bill-unpaid="'+esc(paid.key)+'">Mark unpaid</button>':due?'<button data-bill-paid="'+esc(due.key)+'">✓ Mark paid</button>':'';
    let spark='';if(c.history?.length>1){const values=c.history.map(p=>p.balance),low=Math.min(...values),range=Math.max(...values)-low||1,points=values.map((v,i)=>(i/(values.length-1)*280+5).toFixed(1)+','+(52-(v-low)/range*40).toFixed(1)).join(' ');spark='<svg class="credit-spark" viewBox="0 0 290 60" role="img" aria-label="Balance history since connection"><title>Balance history since connection</title><polyline points="'+points+'" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>';}
-   return {amount:displayBalance,name:p.name||c.name,html:'<article class="debt-account connected-debt'+(paidOff?' is-paid-off':'')+'" data-account-id="'+esc(c.id)+'">'
+   return {sortKey:'credit:'+c.id,sortDate:dueDate,currency:c.currency,amount:displayBalance,name:p.name||c.name,html:'<article class="debt-account connected-debt'+(paidOff?' is-paid-off':'')+'" data-account-id="'+esc(c.id)+'">'
     +'<div class="debt-card-header"><div class="debt-account-tools">'+action+'<button type="button" class="bill-icon-button" data-show-debt-details="credit:'+esc(c.id)+'" aria-label="Details and progress for '+esc(c.name)+'" aria-haspopup="dialog" aria-controls="debtProgressDialog">'+detailsIcon+'</button><button type="button" class="bill-icon-button account-edit" data-edit-credit="'+esc(c.id)+'" aria-label="Edit '+esc(c.name)+'">'+pencil+'</button></div>'
     +'<div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(p.name||c.name)+'</h4><small>'+esc(c.institution+(c.mask?' · ••'+c.mask:''))+'</small>'+state+'</div></div></div>'
     +'<div class="debt-key-amounts"><div><span>'+(status?.paidOff?'Remaining in plan':c.emailBalance?'Statement balance · Email':'Current balance')+'</span><strong>'+esc(value(displayBalance,c))+'</strong></div><div class="minimum-due"><span>'+(c.emailMinimum?'Monthly due · Email':c.minimum===null&&p.fallbackAmount!=null?'Est. monthly due':'Monthly due')+'</span><strong>'+esc(value(c.minimum??p.fallbackAmount,c))+'</strong></div></div>'
@@ -305,18 +388,18 @@
    const capacityAccount=resolvedDebts[c.id]?.balance.stale?null:resolvedDebts[c.id]?.balance.source.includes('backup')?accounts.find(a=>a.id===planner.debtBackupLinks?.[c.id]):resolvedDebts[c.id]?.balance.source==='Lunch Flow'?account:null;
    const capacity=isCredit?model.creditCapacity({account:capacityAccount,enteredLimit:resolvedDebts[c.id]?.creditLimit.value??planner.debtCreditLimits?.[c.id]??planner.creditCards[issuer?.id]?.fallbackLimit,balance:displayBalance}):null;
    const starting=Math.round(c.balance*100),progress=starting>0?Math.min(100,Math.max(0,(starting-status.balance)/starting*100)):100;
-   return {amount:displayBalance,name:c.name,html:'<article class="debt-account manual-debt'+(status.paidOff?' is-paid-off':'')+'" data-tracker-account="'+esc(c.id)+'"><div class="debt-card-header"><div class="debt-account-tools"><button type="button" class="bill-icon-button" data-show-debt-details="debt:'+esc(c.id)+'" aria-label="Details and progress for '+esc(c.name)+'" aria-haspopup="dialog" aria-controls="debtProgressDialog">'+detailsIcon+'</button><button type="button" class="bill-icon-button account-edit" data-edit-debt="'+esc(c.id)+'" aria-label="Edit '+esc(c.name)+'">'+pencil+'</button></div><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(c.name)+'</h4><small>'+esc(debtKinds[c.debtKind]||'Debt')+'</small>'+(status.paidOff?badge('Paid off'):status.lastPayment?badge('Payment paid · '+dateLabel(status.lastPayment.date)):bankHistory.length?badge('Bank payment · '+dateLabel(bankHistory[0].date)):'')+'</div></div></div>'
+   return {sortKey:'debt:'+c.id,sortDate:status.paidOff?null:dueDate||next?.date,currency:account?.currency,amount:displayBalance,name:c.name,html:'<article class="debt-account manual-debt'+(status.paidOff?' is-paid-off':'')+'" data-tracker-account="'+esc(c.id)+'"><div class="debt-card-header"><div class="debt-account-tools"><button type="button" class="bill-icon-button" data-show-debt-details="debt:'+esc(c.id)+'" aria-label="Details and progress for '+esc(c.name)+'" aria-haspopup="dialog" aria-controls="debtProgressDialog">'+detailsIcon+'</button><button type="button" class="bill-icon-button account-edit" data-edit-debt="'+esc(c.id)+'" aria-label="Edit '+esc(c.name)+'">'+pencil+'</button></div><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(c.name)+'</h4><small>'+esc(debtKinds[c.debtKind]||'Debt')+'</small>'+(status.paidOff?badge('Paid off'):status.lastPayment?badge('Payment paid · '+dateLabel(status.lastPayment.date)):bankHistory.length?badge('Bank payment · '+dateLabel(bankHistory[0].date)):'')+'</div></div></div>'
     +'<div class="debt-key-amounts"><div><span>'+(synced?(synced.stale?'Last reported balance':'Current balance'):statement?.balance!=null&&!status.paidOff?'Statement balance · Email':'Remaining balance')+'</span><strong>'+money(displayBalance)+'</strong></div><div class="minimum-due"><span>'+(minimum!=null||Number.isFinite(c.monthlyMinimum)?'Monthly due':'Est. monthly due')+'</span><strong>'+money(status.paidOff?0:minimum??Math.round(model.monthlyMinimum(c)*100))+'</strong></div></div>'
     +'<div class="debt-account-footer"><span class="debt-due-date">'+esc(status.paidOff?'Paid from checked paychecks':dueDate?'Due '+dateLabel(dueDate):next?'Next payment '+dateLabel(next.date):'Set up paydays in Income')+'</span></div>'
     +debtAccountMarkup(c.id)+'<template class="debt-detail-template">'+debtSourceMarkup(resolvedDebts[c.id])+paymentMarkup('debt:'+c.id)+'<div class="debt-progress"><span style="width:'+progress+'%"></span></div><p class="subtle">'+Math.round(progress)+'% paid down · '+money(status.paid)+' in checked payments</p>'+bankPaymentHistoryMarkup(bankHistory)+'<button type="button" data-edit-debt="'+esc(c.id)+'">Account details &amp; history</button></template>'+cardFooterMarkup('debt:'+c.id,null,capacity,account?.currency||'USD')+'</article>'};
   });
-  const paymentOnly=payments.filter(b=>model.isDebtPayment(b)&&!['tracker-debt','plaid-credit'].includes(b.source)).map(b=>({amount:b.amount,name:b.name,html:'<article class="debt-account payment-only-debt"><div class="debt-card-header"><div class="debt-account-tools"><button data-bill-paid="'+esc(b.key)+'">✓ Mark paid</button><button type="button" class="bill-icon-button account-edit" data-edit-bill="'+esc(b.id)+'" aria-label="Edit '+esc(b.name)+'">'+pencil+'</button></div><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(b.name)+'</h4><small>Scheduled payment · '+esc(dateLabel(b.date))+'</small></div><div class="debt-compact-amount"><strong>'+money(b.amount)+'</strong></div></div></div><div class="debt-account-footer"><span>Payment tracking only</span></div>'+cardFooterMarkup('bill:'+b.id,b)+'</article>'}));
+  const paymentOnly=payments.filter(b=>model.isDebtPayment(b)&&!['tracker-debt','plaid-credit'].includes(b.source)).map(b=>({sortKey:'bill:'+b.id,sortDate:b.date,amount:b.amount,name:b.name,html:'<article class="debt-account payment-only-debt"><div class="debt-card-header"><div class="debt-account-tools"><button data-bill-paid="'+esc(b.key)+'">✓ Mark paid</button><button type="button" class="bill-icon-button account-edit" data-edit-bill="'+esc(b.id)+'" aria-label="Edit '+esc(b.name)+'">'+pencil+'</button></div><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(b.name)+'</h4><small>Scheduled payment · '+esc(dateLabel(b.date))+'</small></div><div class="debt-compact-amount"><strong>'+money(b.amount)+'</strong></div></div></div><div class="debt-account-footer"><span>Payment tracking only</span></div>'+cardFooterMarkup('bill:'+b.id,b)+'</article>'}));
   const carPayments=(window.carDebtForecast||[]).map(loan=>{
    totalBalances.push({name:loan.name,amount:loan.balance,startingBalance:loan.startingBalance,currency:loan.currency});
    const due=payments.find(b=>b.id===loan.id),bill={...loan,billKind:'car-payment'};
-   return {name:loan.name,amount:loan.balance,html:'<article class="debt-account car-payment-debt" data-car-payment="'+esc(loan.id)+'"><div class="debt-card-header"><div class="debt-account-tools"><button type="button" class="bill-icon-button account-edit" data-edit-bill="'+esc(loan.id)+'" aria-label="Edit '+esc(loan.name)+'">'+pencil+'</button></div><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(loan.name)+'</h4><small>Car loan</small></div></div></div><div class="debt-key-amounts"><div><span>Remaining balance</span><strong>'+esc(loan.balance===null?'Not set':money(loan.balance,loan.currency))+'</strong></div><div class="minimum-due"><span>'+esc(({monthly:'Monthly',biweekly:'Biweekly',weekly:'Weekly',once:'Scheduled'})[loan.repeat]||'Scheduled')+' payment</span><strong>'+money(loan.amount)+'</strong></div></div><div class="debt-account-footer"><span class="debt-due-date">'+esc(due?'Due '+dateLabel(due.date):loan.balance===0?'Paid off':'Payment scheduled')+'</span></div>'+(loan.needsDetails?'<button type="button" data-edit-bill="'+esc(loan.id)+'">Add loan details</button>':'')+cardFooterMarkup('bill:'+loan.id,bill)+'</article>'};
+   return {sortKey:'car:'+loan.id,sortDate:due?.date,currency:loan.currency,name:loan.name,amount:loan.balance,html:'<article class="debt-account car-payment-debt" data-car-payment="'+esc(loan.id)+'"><div class="debt-card-header"><div class="debt-account-tools"><button type="button" class="bill-icon-button account-edit" data-edit-bill="'+esc(loan.id)+'" aria-label="Edit '+esc(loan.name)+'">'+pencil+'</button></div><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(loan.name)+'</h4><small>Car loan</small></div></div></div><div class="debt-key-amounts"><div><span>Remaining balance</span><strong>'+esc(loan.balance===null?'Not set':money(loan.balance,loan.currency))+'</strong></div><div class="minimum-due"><span>'+esc(({monthly:'Monthly',biweekly:'Biweekly',weekly:'Weekly',once:'Scheduled'})[loan.repeat]||'Scheduled')+' payment</span><strong>'+money(loan.amount)+'</strong></div></div><div class="debt-account-footer"><span class="debt-due-date">'+esc(due?'Due '+dateLabel(due.date):loan.balance===0?'Paid off':'Payment scheduled')+'</span></div>'+(loan.needsDetails?'<button type="button" data-edit-bill="'+esc(loan.id)+'">Add loan details</button>':'')+cardFooterMarkup('bill:'+loan.id,bill)+'</article>'};
   });
-  const all=[...connected,...manual,...paymentOnly,...carPayments].sort(amountOrder);$('#debtAccounts').innerHTML=all.map(account=>account.html).join('')||'<p class="subtle">Add a debt to track a balance, or link a Lunch Flow account.</p>';$('#debtAccountCount').textContent=all.length;
+  const all=sortedAccountRows('debts',[...connected,...manual,...paymentOnly,...carPayments]);$('#debtAccounts').innerHTML=all.map(account=>account.html).join('')||'<p class="subtle">Add a debt to track a balance, or link a Lunch Flow account.</p>';$('#debtAccountCount').textContent=all.length;
   const debtBalances=[...totalBalances,...paymentOnly.map(()=>({amount:null}))];
   renderAccountTotal('#debtTotalAmount',debtBalances);
   window.setDebtAccountSummary(model.debtAccountSummary(debtBalances));
@@ -663,7 +746,7 @@
    const upcomingBills=model.billEvents(billPlan,paymentsPlanner,linked,today,yearEnd);
    for(const bill of [...billPlan.bills,...planner.manual])if(bill.source!=='tracker-debt'&&bill.date>yearEnd&&!upcomingBills.some(b=>b.id===bill.id))upcomingBills.push(...model.billEvents({bills:[bill]},{...planner,manual:[]},linked,bill.date,bill.date));
    upcomingBills.sort((a,b)=>a.date.localeCompare(b.date));
-   const payments=model.accountPaymentRows(upcomingBills),list=payments.filter(b=>!model.isDebtPayment(b)).sort(amountOrder);
+   const payments=model.accountPaymentRows(upcomingBills),list=sortedAccountRows('bills',payments.filter(b=>!model.isDebtPayment(b)).map(b=>({...b,sortKey:'bill:'+b.id,sortDate:b.date})));
    const accountPaid=model.billEvents({...billPlan,paid:[]},{...paymentsPlanner,paid:[]},linked,today,yearEnd).filter(b=>paymentsPlanner.paid.includes(b.key));
    renderDebtAccounts(plan,connections,accounts,payments,accountPaid);
    const calendarRows=[...bills,...paidBills.map(b=>({...b,isPaid:true}))].filter(b=>!selected||b.date===selected).sort((a,b)=>a.date.localeCompare(b.date));
