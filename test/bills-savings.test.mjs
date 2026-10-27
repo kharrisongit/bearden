@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {billsSavingsPlan,billsReclaimPlan,thirdPaycheckDates,coverBillShortfalls,reclaimHorizon} from '../public/bills-savings.mjs';
+import {billsSavingsPlan,billsReclaimPlan,thirdPaycheckDates,coverBillShortfalls,reclaimHorizon,singleReclaimPlan} from '../public/bills-savings.mjs';
 import {occurrences} from '../public/engine.mjs';
 
 const start='2026-11-01',end='2027-11-01',checkedThrough='2027-12-06';
-const options={end,buffer:10000,personalStart:'2026-01-02',spouseStart:'2026-01-02'};
+const options={end,buffer:10000,contribution:75000,personalStart:'2026-01-02',spouseStart:'2026-01-02'};
 const ledger=(opening,rows=[])=>({opening,end:checkedThrough,rows});
 
 test('third paychecks count the full first month and independent spouse dates',()=>{
@@ -102,4 +102,54 @@ test('saved deposits and today’s negative balance are handled without asking f
 test('repairing original bill gaps never adds more funding merely to finance reclaiming money',()=>{
  const funded=coverBillShortfalls(ledger(400000,[{date:'2027-10-15',delta:-150000}]),start,{buffer:10000});
  assert.deepEqual(funded.deposits,[]);assert.equal(billsReclaimPlan(funded.forecast,start,options).safe,false);
+});
+
+const singleOptions={date:start,searchEnd:end,buffer:10000,amount:75000};
+const longLedger=(opening,rows=[])=>({opening,rows,end:'2028-11-01'});
+test('one contribution can fit even when two per person do not, with identical baseline bills',()=>{
+ const f=longLedger(100000),copy=structuredClone(f),r=singleReclaimPlan(f,start,singleOptions);
+ assert.equal(r.safe,true);assert.equal(r.baseline.low,100000);assert.equal(r.requested.low,25000);assert.equal(r.earliest.date,start);
+ assert.equal(r.additionalFunding,0);assert.equal(r.netReclaim,75000);assert.deepEqual(f,copy);
+ assert.equal(billsReclaimPlan(f,start,options).safe,false);
+});
+test('a new shortfall shows the smaller safe amount, exact additional funding, and a later date',()=>{
+ const f=longLedger(100000,[{date:'2026-11-05',delta:-40000,name:'Rent'},{date:'2026-11-10',delta:100000}]);
+ const r=singleReclaimPlan(f,start,singleOptions);
+ assert.equal(r.safe,false);assert.equal(r.baseline.low,60000);assert.equal(r.requested.low,-15000);assert.equal(r.impact.kind,'created');
+ assert.equal(r.maxOnDate,50000);assert.equal(r.additionalFunding,25000);assert.equal(r.netReclaim,50000);
+ assert.equal(r.additionalDeposits[0].date,'2026-11-04');assert.equal(r.earliest.date,'2026-11-10');
+});
+test('existing gaps remain separate from the extra funding caused by the reclaim',()=>{
+ const f=longLedger(10000,[{date:'2026-11-05',delta:-20000},{date:'2026-11-10',delta:100000}]);
+ const r=singleReclaimPlan(f,start,{...singleOptions,date:'2026-11-06'});
+ assert.equal(r.baseline.firstShortfall.balance,-10000);assert.equal(r.impact.kind,'worsened');
+ assert.equal(r.funding.extraFunding,20000);assert.equal(r.additionalFunding,75000);assert.equal(r.netReclaim,0);assert.equal(r.netAfterAllFunding,-20000);
+ assert.equal(r.earliest.date,'2026-11-10');
+ // Applying exactly the disclosed deposits makes the requested plan retain the cushion.
+ const funded={...f,rows:[...f.rows,...r.funding.deposits,...r.additionalDeposits].map(row=>row.delta===undefined?{...row,type:'extra-deposit',delta:row.amount}:row)};
+ const verified=singleReclaimPlan(funded,start,{...singleOptions,date:'2026-11-06'});assert.equal(verified.safe,true);assert.equal(verified.additionalFunding,0);
+});
+test('a cushion breach is distinct from a negative balance, including same-day bill ordering',()=>{
+ const r=singleReclaimPlan(longLedger(80000),start,singleOptions);assert.equal(r.requested.firstShortfall,null);assert.equal(r.impact.kind,'cushion');assert.equal(r.additionalFunding,5000);assert.equal(r.maxOnDate,70000);
+ const same=singleReclaimPlan(longLedger(10000,[{date:start,delta:100000},{date:start,delta:-20000}]),start,singleOptions);
+ assert.equal(same.baseline.firstShortfall.balance,-10000);assert.equal(same.funding.extraFunding,20000);assert.equal(same.safe,true);
+});
+test('saved funding is not requested twice and the full year beyond a later reclaim is protected',()=>{
+ const f=longLedger(60000,[{date:'2026-11-10',type:'extra-deposit',delta:50000},{date:'2028-10-01',delta:-50000}]);
+ const r=singleReclaimPlan(f,start,singleOptions);assert.equal(r.earliest,null);assert.equal(r.funding.extraFunding,50000);assert.deepEqual(r.funding.deposits,[]);assert.equal(r.maxOnDate,50000);
+ assert.equal(singleReclaimPlan({...f,end:'2027-12-01'},start,singleOptions).status,'unavailable');
+ assert.equal(singleReclaimPlan({...f,opening:null},start,singleOptions).status,'unavailable');
+ assert.equal(singleReclaimPlan(f,start,{...singleOptions,date:'2026-11-31'}).status,'unavailable');
+});
+test('single and annual reclaims use different saved contribution amounts for each person',()=>{
+ const f=longLedger(500000);
+ assert.equal(singleReclaimPlan(f,start,{...singleOptions,amount:72500}).requested.low,427500);
+ const r=billsReclaimPlan(f,start,{...options,personalContribution:72500,spouseContribution:60000});
+ assert.equal(r.total,265000);assert.equal(r.perPerson,145000);assert.equal(r.spouseTotal,120000);
+ assert.equal(r.schedule.reduce((n,row)=>n+row.mine,0),145000);assert.equal(r.schedule.reduce((n,row)=>n+row.spouse,0),120000);
+ const smaller=billsReclaimPlan(longLedger(150000),start,{...options,personalContribution:72500,spouseContribution:60000});
+ assert.equal(smaller.safe,false);assert.ok(smaller.safeTotal<=140000);assert.ok(smaller.safeSpouseContribution<smaller.safePerContribution);
+ assert.equal(billsReclaimPlan(f,start,{...options,personalContribution:0,spouseContribution:60000}).status,'unavailable');
+ assert.equal(billsReclaimPlan(f,start,{...options,contribution:undefined}).status,'unavailable');
+ assert.equal(singleReclaimPlan(f,start,{...singleOptions,amount:undefined}).status,'unavailable');
 });

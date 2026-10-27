@@ -3,11 +3,11 @@ import {readFileSync} from 'node:fs';
 import {runtime} from '../cloudflare/worker.mjs';
 import {blank} from '../public/engine.mjs';
 
-async function fixture(page,{unavailable=false,blockSavings=false,holdSavings=false,shortfall=false}={}){
+async function fixture(page,{unavailable=false,blockSavings=false,holdSavings=false,shortfall=false,opening=500000,personalAmount=75000,spouseAmount=75000}={}){
  let releaseSavings;const savingsWait=holdSavings?new Promise(resolve=>releaseSavings=resolve):null;
  await page.clock.setFixedTime(new Date('2026-10-27T16:00:00Z'));
- const accounts=[{id:'lunchflow-personal',name:'Personal checking',balance:120025},{id:'lunchflow-bills',name:'Bills checking',balance:shortfall?199000:500000,balanceUnavailable:unavailable}].map(a=>({...a,source:'lunchflow',type:'depository',subtype:'checking',currency:'USD',include:true,balanceUpdated:'2026-10-27T15:00:00Z'}));
- const planner={accountVisibility:{'lunchflow-personal':true,'lunchflow-bills':true},manual:[{id:'rent',name:'Rent',date:'2026-11-01',amount:200000,repeat:'monthly',source:'manual',billKind:'rent'}],billFunding:{rent:'shared'},household:{enabled:true,personalAccountId:accounts[0].id,billsAccountId:accounts[1].id,personalAmount:75000,spouseAmount:75000,spouseStartDate:'2026-11-06',spouseRepeat:'biweekly'}};
+ const accounts=[{id:'lunchflow-personal',name:'Personal checking',balance:120025},{id:'lunchflow-bills',name:'Bills checking',balance:shortfall?199000:opening,balanceUnavailable:unavailable}].map(a=>({...a,source:'lunchflow',type:'depository',subtype:'checking',currency:'USD',include:true,balanceUpdated:'2026-10-27T15:00:00Z'}));
+ const planner={accountVisibility:{'lunchflow-personal':true,'lunchflow-bills':true},manual:[{id:'rent',name:'Rent',date:'2026-11-01',amount:200000,repeat:'monthly',source:'manual',billKind:'rent'}],billFunding:{rent:'shared'},household:{enabled:true,personalAccountId:accounts[0].id,billsAccountId:accounts[1].id,personalAmount,spouseAmount,spouseStartDate:'2026-11-06',spouseRepeat:'biweekly'}};
  let tracker={state:{version:1,values:{'app-state':JSON.stringify({cards:[],budgetItems:[],budgetSetupVersion:2,startDate:'2026-11-06',takeHome:'2000',savingsGoals:[]}),onboarding:JSON.stringify({completed:true}),'income-planner':JSON.stringify(planner)}},revision:0};
  // Browser requests go through the production allowlist, not straight to disk.
  const app=runtime({APP_URL:'https://bearden.test',ASSETS:{fetch:async req=>{
@@ -40,8 +40,8 @@ for(const [width,theme]of [[390,'light'],[320,'dark']])test(`${width}px ${theme}
  await expect(page.locator('#debtIncomeSummary .income-total')).toHaveText('$1,200.25');await expect(page.locator('#billTrackerBalance')).toHaveText('$5,000.00');
  await page.locator('#nav-accounts').click();await expect(page.locator('#billsForecast')).toContainText('Rent');
  const before=structuredClone(data.planner.household);
- await page.locator('#openBillsReclaim').click();await page.locator('#checkBillsReclaim').click();
- await expect(page.locator('#billsReclaimResult')).toContainText('Yes — $1,500 each fits');await expect(page.locator('#billsReclaimStatus')).toContainText('Jul 30, 2028');
+ await page.locator('#openBillsReclaim').click();await page.locator('#billsReclaimMode').selectOption('annual');await page.locator('#checkBillsReclaim').click();
+ await expect(page.locator('#billsReclaimResult')).toContainText('Yes — $1,500.00 each fits');await expect(page.locator('#billsReclaimStatus')).toContainText('Jul 30, 2028');
  await expect(page.locator('#billsReclaimResult li')).toHaveCount(2);await expect(page.locator('#billsReclaimResult li').first()).toContainText('You: $750.00 · Spouse: $750.00');
  expect(data.planner.household).toEqual(before);
  await page.locator('#openBillsSavings').click();await page.locator('#calculateBillsSavings').click();await expect(page.locator('#billsSavingsResult')).toContainText('Potential savings now');await expect(page.locator('#billsSavingsStatus')).toContainText('Jul 30, 2028');
@@ -57,7 +57,7 @@ for(const [width,theme]of [[390,'light'],[320,'dark']])test(`${width}px ${theme}
 
 test('a missing balance blocks the reclaim check without preventing account loading',async({page})=>{
  await fixture(page,{unavailable:true});await expect(page.locator('#billTrackerBalance')).toHaveText('Unavailable');
- await page.locator('#nav-accounts').click();await page.locator('#openBillsReclaim').click();await page.locator('#checkBillsReclaim').click();
+ await page.locator('#nav-accounts').click();await page.locator('#openBillsReclaim').click();await page.locator('#billsReclaimMode').selectOption('annual');await page.locator('#checkBillsReclaim').click();
  await expect(page.locator('#billsReclaimStatus')).toContainText('Refresh Lunch Flow');await expect(page.locator('#billsReclaimResult')).toBeHidden();
 });
 
@@ -67,7 +67,7 @@ test('an unavailable optional calculator cannot prevent bank balances and accoun
  await expect(page.locator('#debtIncomeSummary .income-total')).toHaveText('$1,200.25');
  await expect(page.locator('#billTrackerBalance')).toHaveText('$5,000.00');
  await page.locator('#nav-accounts').click();await expect(page.locator('#billsForecast')).toContainText('Rent');
- await page.locator('#openBillsReclaim').click();await page.locator('#checkBillsReclaim').click();
+ await page.locator('#openBillsReclaim').click();await page.locator('#billsReclaimMode').selectOption('annual');await page.locator('#checkBillsReclaim').click();
  await expect(page.locator('#billsReclaimStatus')).toContainText('Could not calculate savings');
  await page.locator('#accounts-nav-bills').click();await expect(page.locator('#billAgenda')).toContainText('Rent');
 });
@@ -75,11 +75,11 @@ test('an unavailable optional calculator cannot prevent bank balances and accoun
 
 test('closing while the calculator loads cancels the pending result',async({page})=>{
  const data=await fixture(page,{holdSavings:true});await page.locator('#nav-accounts').click();await page.locator('#openBillsReclaim').click();
- const requested=page.waitForRequest(/bills-savings.mjs/);await page.locator('#checkBillsReclaim').click();await requested;
+ await page.locator('#billsReclaimMode').selectOption('annual');const requested=page.waitForRequest(/bills-savings.mjs/);await page.locator('#checkBillsReclaim').click();await requested;
  await page.locator('#closeBillsReclaim').click();data.releaseSavings();
- await page.evaluate(()=>import('/bills-savings.mjs?v=bills-topups1'));
+ await page.evaluate(()=>import('/bills-savings.mjs?v=reclaim-impact1'));
  await page.locator('#openBillsReclaim').click();await expect(page.locator('#billsReclaimResult')).toBeHidden();await expect(page.locator('#billsReclaimStatus')).toHaveText('');
- await page.locator('#checkBillsReclaim').click();await expect(page.locator('#billsReclaimResult')).toContainText('Yes — $1,500 each fits');
+ await page.locator('#checkBillsReclaim').click();await expect(page.locator('#billsReclaimResult')).toContainText('Yes — $1,500.00 each fits');
 });
 
 
@@ -108,4 +108,23 @@ test('desktop expands the calendar and both live forecasts and restores them wit
  await page.locator('#nav-income').click();await page.locator('[data-expand-card="personalForecastCard"]').click();await expect(page.locator('#expandedAccountView #personalForecastCard')).toBeVisible();await page.locator('#closeExpandedAccountView').click();
  await expect(page.locator('#expandedAccountView')).toBeHidden();await expect(page.locator('#tab-income #personalForecastCard')).toBeVisible();
  for(const id of ['billCalendarCard','billsForecastCard','personalForecastCard'])await expect(page.locator('#'+id)).toHaveCount(1);
+});
+
+test('saved contribution amounts drive both single choices and the two-each reclaim plan',async({page})=>{
+ await page.setViewportSize({width:390,height:844});const data=await fixture(page,{personalAmount:72500,spouseAmount:60000});
+ await page.locator('#nav-accounts').click();await page.locator('#openBillsReclaim').click();
+ await expect(page.locator('#checkBillsReclaim')).toHaveText('Check this $725.00 reclaim');await page.locator('#checkBillsReclaim').click();
+ await expect(page.locator('#billsReclaimResult')).toContainText('Yes — $725.00 fits');await expect(page.locator('#billsReclaimResult .reclaim-comparison')).toContainText('Without reclaiming');
+ await page.locator('#billsReclaimMode').selectOption('spouse');await expect(page.locator('#billsReclaimResult')).toBeHidden();await expect(page.locator('#checkBillsReclaim')).toHaveText('Check this $600.00 reclaim');await page.locator('#checkBillsReclaim').click();await expect(page.locator('#billsReclaimResult')).toContainText('Yes — $600.00 fits');
+ await page.locator('#billsReclaimMode').selectOption('annual');await expect(page.locator('#billsReclaimDate')).toBeDisabled();await page.locator('#checkBillsReclaim').click();await expect(page.locator('#billsReclaimResult')).toContainText('$1,450.00 for you and $1,200.00 for your spouse fits');await expect(page.locator('#billsReclaimResult li').first()).toContainText('You: $725.00 · Spouse: $600.00');
+ expect(data.planner.household.personalAmount).toBe(72500);expect(data.planner.household.spouseAmount).toBe(60000);expect(data.planner.household.additionalDeposits).toBeUndefined();
+});
+
+test('single reclaim explains new gaps, offers a later date, and keeps the mobile comparison within the screen',async({page})=>{
+ await page.setViewportSize({width:320,height:844});const errors=[];page.on('pageerror',e=>errors.push(e.message));await fixture(page,{opening:250000});
+ await page.locator('#nav-accounts').click();await page.locator('#openBillsReclaim').click();await page.locator('#checkBillsReclaim').click();
+ const result=page.locator('#billsReclaimResult');await expect(result).toContainText('Wait until Nov 6, 2026');await expect(result).toContainText('up to $400.00 fits');await expect(result).toContainText('This reclaim creates a shortfall');await expect(result).toContainText('$350.00 more');await expect(result).toContainText('$400.00 stays out');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await result.scrollIntoViewIfNeeded();await page.screenshot({path:'test-results/reclaim-impact-mobile.png',fullPage:true});
+ await page.locator('[data-reclaim-date]').click();await expect(page.locator('#billsReclaimDate')).toHaveValue('2026-11-06');await expect(result).toContainText('Yes — $750.00 fits on Nov 6, 2026');await expect(result).not.toContainText('You need');
+ await page.locator('#billsReclaimBuffer').fill('200');await expect(result).toBeHidden();await page.locator('#checkBillsReclaim').click();await expect(result).toBeVisible();expect(errors).toEqual([]);
 });
