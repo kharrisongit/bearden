@@ -18,7 +18,7 @@ export function householdForecast(accounts,plan,paydays,bills,start,{household:h
  const end=day(start,length),view=['personal','shared','combined'].includes(scope)?scope:'personal';
  const ids=view==='combined'?[h.personalAccountId,h.billsAccountId]:[view==='shared'?h.billsAccountId:h.personalAccountId];
  const selected=ids.map(id=>accounts.find(a=>a.id===id&&(a.currency||'USD')==='USD'&&!['credit','loan'].includes(a.type)));
- const opening=selected.every(Boolean)?selected.reduce((sum,a)=>sum+a.balance,0):null,events=[];
+ const opening=selected.every(a=>a&&!a.balanceUnavailable&&!a.providerUnavailable&&Number.isSafeInteger(a.balance))?selected.reduce((sum,a)=>sum+a.balance,0):null,events=[];
  if(view!=='shared')for(const p of paydays)events.push({...p,delta:p.amount-p.allocations,incoming:p.amount,outgoing:p.allocations});
  // Checked checks have already been received; their transfers are in the bank balance.
  const ownDates=plan.state?.startDate?occurrences(plan.state.startDate,'biweekly',start,end):[];

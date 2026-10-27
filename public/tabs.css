@@ -203,8 +203,8 @@ body{background:radial-gradient(ellipse at 0 0,#bbaad316,transparent 38%),var(--
 #billsSpendingCategories [aria-pressed=true] .category-heading{color:var(--accent);font-weight:700}
 #clearBillsSpendingCategory{margin:12px 0 6px}
 
-.income-card #chooseBillsAccount{min-height:38px;padding:8px 12px;margin:2px 0 12px;border:1px solid var(--line);background:var(--accent-soft);color:var(--accent);border-radius:9px}
-.income-card #chooseBillsAccount:hover{border-color:var(--accent);text-decoration:none}
+.income-card #chooseBillsAccount{border:0;background:transparent;color:var(--muted);box-shadow:none;font-weight:400;border-radius:5px}
+.income-card #chooseBillsAccount:hover{color:var(--accent);text-decoration:underline}
 
 html.popup-scroll-locked{overflow:hidden;overscroll-behavior:none}
 .popup-scroll-locked body{position:fixed;top:var(--popup-scroll-top);left:var(--popup-scroll-left);width:100%;overflow:hidden;overscroll-behavior:none}
@@ -263,7 +263,7 @@ dialog::backdrop{touch-action:none}
 .paid-bill-row .bill-paid-button{flex:none;white-space:nowrap}
 
 #billsForecastCard>.card-heading{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
-.income-card #chooseBillsAccount{margin:0;min-height:36px;padding:7px 9px;font-size:.7rem;white-space:nowrap}
+.income-card #chooseBillsAccount{margin:0;min-height:32px;padding:4px 2px;font-size:.65rem;white-space:nowrap}
 
 .hero-balance-note{font-size:.75rem;color:#eae7ee;margin:8px 0 0;text-align:right}
 
@@ -356,3 +356,11 @@ dialog::backdrop{touch-action:none}
 .account-order-name{flex:1;min-width:0;overflow-wrap:anywhere}.account-order-name strong{display:block;font-size:.9rem}.account-order-name small{display:block;color:var(--muted);margin-top:4px}
 .account-order-buttons{display:flex;gap:4px;flex-shrink:0}.account-order-buttons button{width:44px;min-height:44px;padding:5px!important;font-size:1.2rem}
 .account-order-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}.account-order-actions button{min-height:44px}
+
+/* Forecast duration and the optional bills surplus calculator. */
+.forecast-range-controls .forecast-debt-modes{grid-template-columns:repeat(4,minmax(0,1fr))}
+.income-card .forecast-range-controls .forecast-debt-modes>button{padding:8px 3px;font-size:.66rem;min-height:40px}
+.bills-savings{border-block:1px solid var(--line);padding:18px 0;margin:20px 0}.bills-savings h4{margin:0;font-size:.9rem}
+.bills-savings-controls{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}.bills-savings-controls label{display:grid;gap:5px;font-size:.7rem;color:var(--muted);flex:1 1 150px}.bills-savings-controls input{min-width:0;width:100%;box-sizing:border-box}.bills-savings-controls button{min-height:44px}
+.bills-savings-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:15px 0}.bills-savings-summary small{display:block;color:var(--muted);font-size:.68rem}.bills-savings-summary strong{display:block;font-size:1.25rem;margin-top:5px;overflow-wrap:anywhere}
+.bills-savings-list{padding:0;list-style:none;max-height:350px;overflow:auto}.bills-savings-list li{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line);font-size:.78rem}.bills-savings-list li>span{min-width:0}.bills-savings-list small{display:block;color:var(--muted);font-size:.68rem;line-height:1.5;margin-top:4px}.bills-savings-list strong{white-space:nowrap}
