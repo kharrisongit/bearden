@@ -25,7 +25,7 @@ let paycheckOverrides = {};
 let savingsContributionOverrides = {}; // { [goalId]: { [paycheckNum]: amount } }
 let checkedPaychecks = {};
 let bonusInputOpenForPaycheck = null; // which paycheck's inline "add bonus" field is expanded
-let currentPayoffMethod = 'avalanche'; // avalanche, snowball, or minimum
+let currentPayoffMethod = 'avalanche'; // avalanche, snowball, minimum, or burn
 let budgetItemOverrides = {}; // { [itemId]: { [paycheckNum]: amount } } — per-check edits to a budget line item
 let paycheckSquashes = {}; // Full payoff selections, including projected interest for that paycheck.
 let paycheckSlices = {}; // { [paycheck]: { [cardId]: true } }; selections recalculate from that paycheck’s balance
@@ -924,26 +924,38 @@ function calculate(isInitialLoad){
     const committedTotal = cards.reduce((sum, c, i) => {
       return sum + (overridePayment[i] !== null ? overridePayment[i] : minApplied[i]);
     }, 0);
-    let leftover = Math.max(0, availAfterSavings - committedTotal);
+    const leftover = Math.max(0, availAfterSavings - committedTotal);
 
     const priorityOrder = cards.map((c,i)=>i).sort((a,b) => {
-      if (payoffMethod === 'snowball') {
+      if (payoffMethod === 'snowball' || payoffMethod === 'burn') {
         return balances[a] - balances[b];
       }
       return aprs[b] - aprs[a];
     });
 
-    const extra = new Array(cards.length).fill(0);
-    for (const i of sliceMode||payoffMethod==='minimum'?[]:priorityOrder) {
-      if (overridePayment[i] !== null) continue; // this account's payment is already fixed by the manual override
-      if (balances[i] <= 0 || !timing[i].scheduled) continue;
-      const remainingAfterMin = Math.max(0, balances[i] + interest[i] - minApplied[i]);
-      const e = Math.min(leftover, remainingAfterMin);
-      extra[i] = e;
-      leftover -= e;
+    // Use the same allocation for the plan and editable-payment baselines.
+    function allocateExtraPayments(available,fixedPayments){
+      const extras=new Array(cards.length).fill(0);
+      if(sliceMode||payoffMethod==='minimum')return extras;
+      const burn=payoffMethod==='burn';
+      let cash=Math.max(0,available);
+      // Round the half down to cents so Burn never spends more than half
+      // unless it can afford to clear a final balance of $10 or less.
+      let pool=burn?Math.floor(cash*50+1e-8)/100:cash;
+      for(const i of priorityOrder){
+        if(fixedPayments[i]!==null||balances[i]<=0||(!burn&&!timing[i].scheduled))continue;
+        const remainingAfterMin=Math.max(0,balances[i]+interest[i]-minApplied[i]);
+        let amount=Math.min(pool,remainingAfterMin);
+        if(burn&&remainingAfterMin-amount<=10+1e-8&&remainingAfterMin<=cash)amount=remainingAfterMin;
+        extras[i]=amount;
+        pool=Math.max(0,pool-amount);
+        cash=Math.max(0,cash-amount);
+      }
+      return extras;
     }
+    const extra=allocateExtraPayments(leftover,overridePayment);
 
-    // "Natural" payment per account: what avalanche/snowball would assign
+    // "Natural" payment per account: what the selected method would assign
     // THIS account this check if it alone had no override, while still
     // honoring every OTHER account's current override as fixed. This is
     // the baseline a reduced payment gets measured against when turning
@@ -961,7 +973,7 @@ function calculate(isInitialLoad){
     // Other accounts' auto-expenses (and any real manual ones) still
     // count against the pool as normal.
     const naturalPayments = cards.map((c, i) => {
-      if(sliceMode||payoffMethod==='minimum'||!timing[i].scheduled)return minApplied[i];
+      if(sliceMode||payoffMethod==='minimum'||(payoffMethod!=='burn'&&!timing[i].scheduled))return minApplied[i];
       const ownAutoExpense = extrasThisCheck.find(e => e.autoFromCardId === c.id);
       const ownAutoAmount = ownAutoExpense ? ownAutoExpense.amount : 0;
       let availExclOwn = thisCheckTakeHome - expensesThisCheck - (extrasTotal - ownAutoAmount) + bonusThisCheck;
@@ -972,23 +984,9 @@ function calculate(isInitialLoad){
         if (j === i) return sum + minApplied[j];
         return sum + (overridePayment[j] !== null ? overridePayment[j] : minApplied[j]);
       }, 0);
-      let loExcludingI = Math.max(0, availAfterSavingsExclOwn - committedExcludingI);
-      let extraForI = 0;
-      for (const j of priorityOrder) {
-        if(!timing[j].scheduled)continue;
-        if (j === i) {
-          if (balances[j] > 0) {
-            const remainingAfterMin = Math.max(0, balances[j] + interest[j] - minApplied[j]);
-            extraForI = Math.min(loExcludingI, remainingAfterMin);
-          }
-          break; // only need to reach i's own turn in priority order
-        }
-        if (overridePayment[j] !== null) continue; // fixed, doesn't draw from the leftover pool
-        if (balances[j] <= 0) continue;
-        const remainingAfterMinJ = Math.max(0, balances[j] + interest[j] - minApplied[j]);
-        loExcludingI -= Math.min(loExcludingI, remainingAfterMinJ);
-      }
-      return minApplied[i] + extraForI;
+      const loExcludingI = Math.max(0, availAfterSavingsExclOwn - committedExcludingI);
+      const fixedPayments=overridePayment.map((payment,j)=>j===i?null:payment);
+      return minApplied[i] + allocateExtraPayments(loExcludingI,fixedPayments)[i];
     });
 
     const payments = [];
@@ -1407,16 +1405,15 @@ function toggleIncomePanel(){setIncomePanel(document.getElementById('incomeDropd
 function toggleBudgetPanel(){setIncomePanel(document.getElementById('budgetDropdown').classList.contains('open')?null:'budgetDropdown');}
 
 function updatePayoffMethodExplain(){
-  const avalancheBtn = document.getElementById('pmBtnAvalanche');
-  const snowballBtn = document.getElementById('pmBtnSnowball');
-  if (avalancheBtn) avalancheBtn.classList.toggle('active', currentPayoffMethod === 'avalanche');
-  if (snowballBtn) snowballBtn.classList.toggle('active', currentPayoffMethod === 'snowball');
-  const minimumBtn=document.getElementById('pmBtnMinimum');if(minimumBtn)minimumBtn.classList.toggle('active',currentPayoffMethod==='minimum');
-  for(const [method,button]of [['avalanche',avalancheBtn],['snowball',snowballBtn],['minimum',minimumBtn]])button?.setAttribute('aria-pressed',String(currentPayoffMethod===method));
+  for(const [method,id]of [['avalanche','pmBtnAvalanche'],['snowball','pmBtnSnowball'],['minimum','pmBtnMinimum'],['burn','pmBtnBurn']]){
+    const button=document.getElementById(id),active=currentPayoffMethod===method;
+    button?.classList.toggle('active',active);button?.setAttribute('aria-pressed',String(active));
+  }
 }
 
 function setPayoffMethod(method){
-  if(!['avalanche','snowball','minimum'].includes(method))return;
+  if(!['avalanche','snowball','minimum','burn'].includes(method))return;
+  window.captureDebtHistory?.();
   currentPayoffMethod = method;
   updatePayoffMethodExplain();
   calculate();
@@ -1594,12 +1591,7 @@ let debtAccountSummary=null;
 window.setDebtAccountSummary=summary=>{debtAccountSummary=summary;updateDebtHeroProgress();};
 
 function updateDebtHeroProgress(){
-  const avalancheBtn = document.getElementById('pmBtnAvalanche');
-  const snowballBtn = document.getElementById('pmBtnSnowball');
-  if (avalancheBtn) avalancheBtn.classList.toggle('active', currentPayoffMethod === 'avalanche');
-  if (snowballBtn) snowballBtn.classList.toggle('active', currentPayoffMethod === 'snowball');
-  const minimumBtn=document.getElementById('pmBtnMinimum');if(minimumBtn)minimumBtn.classList.toggle('active',currentPayoffMethod==='minimum');
-  for(const [method,button]of [['avalanche',avalancheBtn],['snowball',snowballBtn],['minimum',minimumBtn]])button?.setAttribute('aria-pressed',String(currentPayoffMethod===method));
+  updatePayoffMethodExplain();
 
   const checkedNums = Object.keys(checkedPaychecks).filter(k => checkedPaychecks[k]).map(Number);
   const row=lastSchedule.find(r=>r.paycheck===Math.max(...checkedNums));
@@ -2143,7 +2135,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
   forecastNote.hidden=!forecastNote.textContent;
   const sliceNote=document.getElementById('sliceInterestNote');
   sliceNote.hidden=!sliceComparison;
-  if(sliceComparison){const difference=Math.round(sliceComparison.difference*100)/100,method={avalanche:'Avalanche',snowball:'Snowball',minimum:'Minimums'}[currentPayoffMethod];sliceNote.textContent=(Math.abs(difference)<.01?'No projected interest change':money(Math.abs(difference))+(difference>0?' less':' more')+' projected interest')+' vs '+method+' without '+sliceComparison.actions+(sliceComparison.through?' through '+fmtDate(sliceComparison.through):'')+'.';}
+  if(sliceComparison){const difference=Math.round(sliceComparison.difference*100)/100,method={avalanche:'Avalanche',snowball:'Snowball',minimum:'Minimums',burn:'Burn'}[currentPayoffMethod];sliceNote.textContent=(Math.abs(difference)<.01?'No projected interest change':money(Math.abs(difference))+(difference>0?' less':' more')+' projected interest')+' vs '+method+' without '+sliceComparison.actions+(sliceComparison.through?' through '+fmtDate(sliceComparison.through):'')+'.';}
 
 
   lastSchedule = schedule;

@@ -44,6 +44,27 @@ test('a manual car loan can supply missing balance and APR from its existing bil
  await page.locator('[name="carLoanBalance"]').fill('250');await page.locator('[name="carLoanApr"]').fill('0');await page.locator('#billEditorForm [type="submit"]').click();
  await expect(page.locator('#heroDate')).toContainText('Jan 12, 2027');await expect(page.locator('#heroTotal')).toHaveText('$350.00');await expect(page.locator('#debtForecastNote')).toBeHidden();
 });
+test('Burn reserves bills and savings, persists its selection, and preserves checked payments across method changes',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});await page.clock.setFixedTime(new Date('2026-10-26T12:00:00Z'));
+ const f=await fixture(page,{goalContribution:50,debtOverrides:{balance:2000,apr:0,min:100,monthlyMinimum:216.67},incomePlanner:{manual:[{id:'water',name:'Water',billKind:'water',amount:20000,date:'2026-11-12',repeat:'monthly',source:'manual'}]}});
+ await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().schedule[0]?.accountBillsThisCheck.reduce((sum,b)=>sum+b.amount,0))).toBe(20000);
+ const burn=page.getByRole('button',{name:'Burn',exact:true});await burn.click();
+ await expect(burn).toHaveAttribute('aria-pressed','true');await expect(page.locator('#pmBtnMinimum')).toHaveAttribute('aria-pressed','false');
+ await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().schedule[0].payments[0])).toBe(425);
+ expect(await page.evaluate(()=>window.getDebtPlan().schedule[0].cashAfterDebt)).toBe(325);
+ await expect(page.locator('#debtForecastNote')).toBeHidden();await expect(page.locator('#paycheck-card-1 input[aria-label="Payment for Visa"]')).toHaveValue('425.00');
+ await page.locator('#debtHeroBox').scrollIntoViewIfNeeded();await page.screenshot({path:'test-results/burn-mobile-light.png'});
+ await page.setViewportSize({width:320,height:700});await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));
+ expect(await page.locator('#debtHeroBox').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+ const box=await burn.boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(320);
+ await page.screenshot({path:'test-results/burn-mobile-dark.png'});
+ await page.locator('#chk-1').check();await page.locator('#pmBtnSnowball').click();
+ expect(await page.evaluate(()=>window.getDebtPlan().schedule[0].payments[0])).toBe(425);
+ await burn.click();await expect.poll(()=>JSON.parse(f.tracker.state.values['app-state']).payoffMethod).toBe('burn');
+ await page.reload();await page.evaluate(()=>window.classicReady);await expect(burn).toHaveAttribute('aria-pressed','true');
+ await expect(page.locator('#chk-1')).toBeChecked();expect(await page.evaluate(()=>window.getDebtPlan().schedule[0].payments[0])).toBe(425);
+ expect(errors).toEqual([]);
+});
 test('Minimums explains an unfinished forecast and restores valid totals when the method changes',async({page})=>{
  test.setTimeout(90000); // The capped fixture renders the full 780-paycheck schedule.
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
