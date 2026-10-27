@@ -50,6 +50,7 @@ async function app(page){
  await page.route('https://bearden.test/**',async route=>{
   const req=route.request(),path=new URL(req.url()).pathname;
   if(path==='/api/config')return route.fulfill({json:{authenticated:true,accountId:'member'}});
+  if(path==='/api/banks/retire')return route.fulfill({json:{}});
   if(path==='/api/classic'){
    if(req.method()==='POST'){tracker={state:req.postDataJSON().state,revision:tracker.revision+1};return route.fulfill({json:{revision:tracker.revision}});}
    return route.fulfill({json:tracker});

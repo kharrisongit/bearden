@@ -8,6 +8,7 @@ test('the paycheck reset clears the simulation and stays cleared after reload',a
  await page.route('https://bearden.test/**',async route=>{
   const req=route.request(),path=new URL(req.url()).pathname;
   if(path==='/api/config')return route.fulfill({json:{authenticated:true,accountId:'member'}});
+  if(path==='/api/banks/retire')return route.fulfill({json:{}});
   if(path==='/api/classic'){
    if(req.method()==='POST'){tracker={state:req.postDataJSON().state,revision:tracker.revision+1};return route.fulfill({json:{revision:tracker.revision}});}
    return route.fulfill({json:tracker});
@@ -19,6 +20,7 @@ test('the paycheck reset clears the simulation and stays cleared after reload',a
  });
  await page.goto('https://bearden.test/');await page.evaluate(()=>window.classicReady);
  const before=await page.evaluate(()=>gatherAppState());
+ expect(before.paycheckSlices).toEqual(state.paycheckSlices);expect(before.paycheckSquashes).toEqual(state.paycheckSquashes);
  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Reset paycheck simulation',exact:true}).click();
  const cleared=['checkedPaychecks','paycheckSlices','paycheckSquashes','paycheckOverrides','accountPaymentOverrides','savingsContributionOverrides','budgetItemOverrides','appliedBonuses','extraExpenses','debtPaymentHistory','debtInterestHistory'];
  await expect.poll(()=>JSON.parse(tracker.state.values['app-state']).paycheckSlices).toEqual({});
