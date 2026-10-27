@@ -35,14 +35,14 @@ async function fixture(page,{unavailable=false,blockSavings=false,holdSavings=fa
  return {releaseSavings,failSave:value=>failSave=value,get planner(){return JSON.parse(tracker.state.values['income-planner']);}};
 }
 
-for(const [width,theme]of [[390,'light'],[320,'dark']])test(`${width}px ${theme}: accounts load and Savings Finder protects a year beyond both second three-paycheck months`,async({page})=>{
+for(const [width,theme]of [[390,'light'],[320,'dark']])test(`${width}px ${theme}: accounts load and Contribution Reclamation searches through January 1 after next year`,async({page})=>{
  await page.setViewportSize({width,height:844});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const data=await fixture(page);await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
  await expect(page.locator('#debtIncomeSummary .income-total')).toHaveText('$1,200.25');await expect(page.locator('#billTrackerBalance')).toHaveText('$5,000.00');
  await page.locator('#nav-accounts').click();await expect(page.locator('#billsForecast')).toContainText('Rent');
  const before=structuredClone(data.planner.household);
  await expect(page.locator('#openBillsReclaim,#billsReclaimPanel')).toHaveCount(0);
- await page.locator('#openBillsSavings').click();await page.locator('#calculateBillsSavings').click();await expect(page.locator('#billsSavingsResult')).toContainText('Potential savings now');await expect(page.locator('#billsSavingsStatus')).toContainText('Jul 30, 2028');
+ await page.locator('#openBillsSavings').click();await page.locator('#calculateBillsSavings').click();await expect(page.locator('#billsSavingsResult')).toContainText('Reclaimable now');await expect(page.locator('#billsSavingsStatus')).toContainText('Jan 1, 2028');await expect(page.locator('#billsSavingsStatus')).toContainText('Later bills checked through Jan 1, 2029');await expect(page.locator('[data-reclaim-person=mine]')).not.toHaveCount(0);await expect(page.locator('[data-reclaim-person=spouse]')).not.toHaveCount(0);
  await page.locator('#clearBillsSavings').click();await expect(page.locator('#billsSavingsResult')).toBeHidden();
  await page.locator('#closeBillsSavings').click();await expect(page.locator('#billsSavingsPanel')).toBeHidden();await page.locator('#openBillsSavings').click();await expect(page.locator('#billsSavingsResult')).toBeHidden();
  expect(data.planner.household).toEqual(before);
@@ -65,7 +65,7 @@ test('an unavailable optional calculator cannot prevent bank balances and accoun
  await expect(page.locator('#billTrackerBalance')).toHaveText('$5,000.00');
  await page.locator('#nav-accounts').click();await expect(page.locator('#billsForecast')).toContainText('Rent');
  await page.locator('#openBillsSavings').click();await page.locator('#calculateBillsSavings').click();
- await expect(page.locator('#billsSavingsStatus')).toContainText('Could not calculate savings');
+ await expect(page.locator('#billsSavingsStatus')).toContainText('Could not calculate reclamation');
  await page.locator('#accounts-nav-bills').click();await expect(page.locator('#billAgenda')).toContainText('Rent');
 });
 
@@ -74,15 +74,15 @@ test('closing while the calculator loads cancels the pending result',async({page
  const data=await fixture(page,{holdSavings:true});await page.locator('#nav-accounts').click();await page.locator('#openBillsSavings').click();
  const requested=page.waitForRequest(/bills-savings.mjs/);await page.locator('#calculateBillsSavings').click();await requested;
  await page.locator('#closeBillsSavings').click();data.releaseSavings();
- await page.evaluate(()=>import('/bills-savings.mjs?v=reclaim-funding1'));
+ await page.evaluate(()=>import('/bills-savings.mjs?v=contribution-reclamation1'));
  await page.locator('#openBillsSavings').click();await expect(page.locator('#billsSavingsResult')).toBeHidden();await expect(page.locator('#billsSavingsStatus')).toHaveText('');
- await page.locator('#calculateBillsSavings').click();await expect(page.locator('#billsSavingsResult')).toContainText('Potential savings now');
+ await page.locator('#calculateBillsSavings').click();await expect(page.locator('#billsSavingsResult')).toContainText('Reclaimable now');
 });
 
 
 test('shortfalls become saved one-time deposits, preserve later savings, and can be removed or marked received',async({page})=>{
  const data=await fixture(page,{shortfall:true});await page.locator('#nav-accounts').click();await page.locator('#openBillsSavings').click();await page.locator('#calculateBillsSavings').click();
- await expect(page.locator('#billsSavingsResult')).toContainText('Funding gaps first');await expect(page.locator('#billsSavingsResult')).toContainText('$110.00');await expect(page.locator('#billsSavingsResult')).toContainText('Total to savings');
+ await expect(page.locator('#billsSavingsResult')).toContainText('Funding gaps first');await expect(page.locator('#billsSavingsResult')).toContainText('$110.00');await expect(page.locator('#billsSavingsResult')).toContainText('Total contributions reclaimable');
  expect(data.planner.household.additionalDeposits).toBeUndefined();
  await page.locator('[data-plan-extra="savings"]').click();await expect(page.locator('#plannedExtraDeposits')).toContainText('1 planned');
  expect(data.planner.household.additionalDeposits).toHaveLength(1);expect(data.planner.household.additionalDeposits[0]).toMatchObject({amount:11000,date:'2026-10-31',source:'personal',received:false});
@@ -110,4 +110,25 @@ test('desktop expands the calendar and both live forecasts and restores them wit
 test('a missing saved payday requires completing settings before calculating savings',async({page})=>{
  await fixture(page,{spouseStart:''});await page.locator('#nav-accounts').click();await page.locator('#openBillsSavings').click();await page.locator('#calculateBillsSavings').click();
  await expect(page.locator('#billsSavingsStatus')).toContainText('Set both payday dates');await expect(page.locator('#billsSavingsResult')).toBeHidden();await expect(page.locator('#billsSavingsForm input[type=date]')).toHaveCount(0);
+});
+
+
+
+test('an existing $4.35 dip below a $50 cushion is allowed without extra deposits',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const data=await fixture(page,{opening:200435});
+ await page.locator('#nav-accounts').click();await page.locator('#openBillsSavings').click();
+ await expect(page.locator('#billsSavingsTitle')).toHaveText('Contribution Reclamation');
+ await page.locator('#billsSavingsBuffer').fill('50');await page.locator('#calculateBillsSavings').click();
+ const result=page.locator('#billsSavingsResult');
+ await expect(result).toContainText('Lowest projected balance: $4.35');
+ await expect(result).toContainText('An existing dip below the cushion is allowed');
+ await expect(result).toContainText('No negative balance is projected');
+ await expect(result).not.toContainText('Funding gaps first');
+ await expect(result).not.toContainText('savings');
+ expect(data.planner.household.additionalDeposits).toBeUndefined();
+ await expect(page.locator('[data-reclaim-person=mine]').first()).toContainText('Yours');
+ await expect(page.locator('[data-reclaim-person=spouse]').first()).toContainText('Your spouse’s');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+
 });

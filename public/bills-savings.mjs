@@ -2,6 +2,74 @@ import {day,monthly,occurrences} from './engine.mjs';
 const cashOrder=r=>r.type==='reclaim'?3:r.type==='extra-deposit'&&r.delta>0?0:r.delta<0?1:2;
 const validDate=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&Number.isFinite(Date.parse(s+'T12:00:00Z'))&&day(s,0)===s;
 
+// Search through the end of the following calendar year, including January 1.
+// Retain a further year of bills so the search cutoff is not free money.
+export function contributionReclamationHorizon(start){
+ if(!validDate(start))return null;
+ const end=(Number(start.slice(0,4))+2)+'-01-01';
+ return {end,checkedThrough:monthly(end,12)};
+}
+
+// Release only identifiable third-paycheck contributions. Keep each person's
+// allowance separate even when a partial reclamation must wait for later cash.
+export function contributionReclamationPlan(f,start,{end=f.end,buffer=10000,personalStart,spouseStart,personalContribution,spouseContribution,spouseRepeat='biweekly'}={}){
+ const unavailable={status:'unavailable',now:0,total:0,schedule:[]};
+ if(![start,end,f.end,personalStart,spouseStart].every(validDate)||end<start||end>f.end||!Number.isSafeInteger(f.opening)||!Number.isSafeInteger(buffer)||buffer<0||![personalContribution,spouseContribution].every(n=>Number.isSafeInteger(n)&&n>=0))return unavailable;
+ const rows=f.rows.filter(r=>r.date>=start&&r.date<=f.end).map(r=>({...r}));
+ if(rows.some(r=>!validDate(r.date)||!Number.isSafeInteger(r.delta)))return unavailable;
+ const groups=new Map();
+ for(const [person,anchor,amount,repeat]of [['mine',personalStart,personalContribution,'biweekly'],['spouse',spouseStart,spouseContribution,spouseRepeat]]){
+  if(!amount||repeat!=='biweekly')continue;
+  for(const date of thirdPaycheckDates(anchor,start,end)){
+   if(!groups.has(date))groups.set(date,{date,mine:0,spouse:0});
+   groups.get(date)[person]=amount;
+  }
+ }
+ // Zero-value markers allow a contribution already in the opening balance to
+ // be considered on its payday, without depositing it a second time.
+ rows.push(...[...groups.keys()].map(date=>({date,delta:0,type:'reclamation-opportunity'})));
+ rows.sort((a,b)=>a.date.localeCompare(b.date)||cashOrder(a)-cashOrder(b));
+ const states=[{date:start,balance:f.opening}];let running=f.opening;
+ for(const row of rows){running+=row.delta;if(!Number.isSafeInteger(running))return unavailable;states.push({date:row.date,balance:running});}
+ const shortfall=states.find(s=>s.balance<0);
+ if(shortfall)return {...unavailable,status:'shortfall',shortfall,checkedThrough:f.end};
+ const floors=[];let floor=Infinity;
+ for(let i=states.length-1;i>=0;i--){floor=Math.min(floor,states[i].balance);floors[i]=floor;}
+ const pending=[...groups.values()].sort((a,b)=>a.date.localeCompare(b.date)),schedule=[];
+ let total=0,lowAfter=f.opening,lowDate=start;
+ for(let i=0;i<states.length;i++){
+  const state=states[i],dayComplete=i===states.length-1||states[i+1].date!==state.date;
+  if(dayComplete&&state.date<=end){
+   let available=Math.max(0,floors[i]-buffer-total);
+   for(const group of pending){
+    if(group.date>state.date||!available)break;
+    const remaining=group.mine+group.spouse;if(!Number.isSafeInteger(remaining))return unavailable;if(!remaining)continue;
+    const amount=Math.min(remaining,available);
+    // Proportional allocation prevents equal-date contributions from giving
+    // the first person all the available cash. Assign any odd cent once.
+    let mine=Number(BigInt(amount)*BigInt(group.mine)/BigInt(remaining));
+    let spouse=Number(BigInt(amount)*BigInt(group.spouse)/BigInt(remaining));
+    if(mine+spouse<amount){
+     if(BigInt(amount)*BigInt(group.mine)%BigInt(remaining)>=BigInt(amount)*BigInt(group.spouse)%BigInt(remaining))mine++;else spouse++;
+    }
+    for(const [person,value]of [['mine',mine],['spouse',spouse]]){
+     if(!value)continue;
+     total+=value;group[person]-=value;
+     if(!Number.isSafeInteger(total))return unavailable;
+     schedule.push({date:state.date,contributionDate:group.date,person,amount:value,total,balanceAfter:state.balance-total,now:state.date===start});
+    }
+    available-=amount;
+   }
+  }
+  const after=state.balance-total;
+  if(after<lowAfter){lowAfter=after;lowDate=state.date;}
+ }
+ // Existing nonnegative dips below the cushion are allowed. Never propose
+ // funding just to erase them or treat separate withdrawals as alternatives.
+ if(lowAfter<0)return unavailable;
+ return {status:'ready',now:schedule.filter(r=>r.now).reduce((sum,r)=>sum+r.amount,0),total,schedule,lowAfter,lowDate,buffer,checkedThrough:f.end};
+}
+
 export function reclaimHorizon(start,personalStart,spouseStart){
  const valid=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&Number.isFinite(Date.parse(s+'T12:00:00Z'))&&day(s,0)===s;
  if(![start,personalStart,spouseStart].every(valid))return null;
@@ -184,3 +252,4 @@ export function billsReclaimPlan(f,start,{end,periodStart=start,buffer=10000,per
  }
  return {status:'ready',...requested,depositPlan,baselineLow:baseline.low,baselineLowDate:baseline.lowDate,baselineEndBalance:baseline.endBalance,baselineShortfall:baseline.firstShortfall,personalContribution,spouseContribution,perPerson:personalContribution*2,spouseTotal:spouseContribution*2,safePerContribution:safeMine,safeSpouseContribution:safeSpouse,safePerPerson:safeMine*2,safeSpouseTotal:safeSpouse*2,safeTotal:smaller.total,safeSchedule:smaller.schedule,buffer,periodStart,end,checkedThrough:f.end};
 }
+
