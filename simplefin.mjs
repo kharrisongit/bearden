@@ -157,7 +157,7 @@ export async function syncSimplefin(c,readAccounts,saveAccounts,fetcher=fetch){
 // SimpleFIN deposits are positive; BearDen uses Plaid's positive-outflow convention.
 // Only a complete, successful account window may replace previous transactions.
 export function mergeSimplefinTransactions(existing,data,now=Date.now(),accounts=[]){
- const savedIds=new Set(existing.map(t=>t.transaction_id));
+ const savedIds=new Set(existing.map(t=>t.transaction_id)),supersededIds=new Set();
  const since=new Date(now-90*day).toISOString().slice(0,10),today=new Date(now).toISOString().slice(0,10),replace=new Set(),incoming=[];
  for(const account of data.accounts||[]){
   const failed=accountErrors(data,account,{transactions:true}).length>0;
@@ -168,7 +168,8 @@ export function mergeSimplefinTransactions(existing,data,now=Date.now(),accounts
    if(!t||typeof t.id!=='string'||!t.id||cents===null||!posted||typeof t.description!=='string'){if(!t?.pending)malformed=true;continue;}
    const date=posted.slice(0,10);if(t.pending||date<since||date>today)continue;
    const txId=accountId=>'simplefin-tx-'+createHash('sha256').update(JSON.stringify([accountId,t.id])).digest('hex').slice(0,32);
-   const savedId=aliases.map(txId).find(id=>savedIds.has(id));
+   const candidates=[...new Set([txId(id),...aliases.map(txId)])],savedId=candidates.find(id=>savedIds.has(id));
+   for(const candidate of candidates)if(candidate!==savedId)supersededIds.add(candidate);
    rows.push({transaction_id:savedId||txId(id),itemId:'simplefin',account_id:id,source:'simplefin',name:label(t.description,'Transaction'),date,amount:-cents/100,pending:false,currency:account.currency,category:''});
   }
   // Legacy warnings have no reliable account scope: merge valid rows, but do
@@ -178,7 +179,7 @@ export function mergeSimplefinTransactions(existing,data,now=Date.now(),accounts
  const aliasPairs=accounts.filter(a=>a.source==='simplefin').flatMap(a=>(a.identityAliases||[]).map(alias=>[alias,a.id]));
  const canonical=new Map(aliasPairs.filter(([alias,id])=>!accounts.some(a=>a.id===alias)&&!aliasPairs.some(([other,target])=>other===alias&&target!==id)));
  existing=existing.map(t=>t.source==='simplefin'&&canonical.has(t.account_id)?{...t,account_id:canonical.get(t.account_id)}:t);
- const map=new Map(existing.filter(t=>!(t.source==='simplefin'&&replace.has(t.account_id)&&t.date>=since)).map(t=>[t.transaction_id,t]));
+ const map=new Map(existing.filter(t=>!supersededIds.has(t.transaction_id)&&!(t.source==='simplefin'&&replace.has(t.account_id)&&t.date>=since)).map(t=>[t.transaction_id,t]));
  for(const t of incoming)map.set(t.transaction_id,t);
  return [...map.values()].filter(t=>t.date>=new Date(now-365*day).toISOString().slice(0,10)).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3000);
 }

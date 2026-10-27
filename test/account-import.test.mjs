@@ -124,3 +124,10 @@ test('legacy SimpleFIN responses cannot collapse or remap two known logins that 
  assert.deepEqual(remapConnectedAccountReferences(planner,rows),planner);
  assert.deepEqual(remapConnectedAccountReferences(planner,[...his,...hers]),planner);
 });
+
+test('repairing a duplicate during partial history cannot double-count a proven identical transaction',()=>{
+ const legacy={...sf('one'),conn_id:undefined,org:{id:'org'}},v2=sf('one'),data={accounts:[v2],connections:[{conn_id:'healthy',org_id:'org'}],errlist:[{code:'act.missingdata',account_id:'one'}]};
+ const saved=[...mergeSimplefinTransactions([],{accounts:[legacy]}),...mergeSimplefinTransactions([],{accounts:[v2]})];assert.equal(saved.length,2);
+ const accounts=mergeSimplefinAccounts(mergeSimplefinAccounts([],{accounts:[legacy]}),data),next=mergeSimplefinTransactions(saved,data,Date.now(),accounts);
+ assert.equal(next.length,1);assert.equal(next[0].transaction_id,saved[0].transaction_id);assert.equal(next[0].account_id,accounts[0].id);
+});
