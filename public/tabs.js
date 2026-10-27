@@ -20,7 +20,7 @@
    const button=$('#accounts-nav-'+view);button.setAttribute('aria-selected',String(view===name));button.tabIndex=view===name?0:-1;
   }
  }
- document.addEventListener('click',e=>{const button=e.target.closest('[data-account-view]');if(button)selectAccountView(button.dataset.accountView);});
+ document.addEventListener('click',e=>{const button=e.target.closest('[data-account-view]');if(button)selectAccountView(button.dataset.accountView);if(e.target.closest('[data-open-dashboard-bills]')){window.selectBearTab('accounts');selectAccountView('bills');window.scrollTo(0,0);}});
  $('.account-view-tabs').addEventListener('keydown',e=>{
   const i=accountViews.indexOf(e.target.dataset.accountView);if(i<0)return;
   const n=e.key==='ArrowRight'?(i+1)%3:e.key==='ArrowLeft'?(i+2)%3:e.key==='Home'?0:e.key==='End'?2:-1;if(n<0)return;
@@ -47,11 +47,25 @@
  $('#dismissPaymentUndo').onclick=dismissPaymentUndo;
  const connectedAccountName=a=>a?(planner.accountNames?.[a.id]||a.name):'';
  const accountShown=id=>!planner.hiddenConnectedAccounts?.[id];
+ function renderBillTracker(billPlan,paymentsPlanner,accounts,today){
+  const summary=model.billTrackerSummary(billPlan,paymentsPlanner,linked,today,{transactions:bankTransactions()});
+  const accountId=planner.household.billsAccountId,account=accounts.find(a=>a.id===accountId&&(a.currency||'USD')==='USD'&&!['credit','loan'].includes(a.type));
+  $('#billTrackerBalance').textContent=account&&!account.balanceUnavailable&&Number.isFinite(account.balance)?money(account.balance):accountId?'Unavailable':'—';
+  $('#billTrackerAccountName').textContent=account?connectedAccountName(account):accountId?'Bills account unavailable':'';
+  $('#billTrackerChooseAccount').hidden=!!account;
+  $('#billTrackerMonth').textContent=new Date(summary.start+'T12:00:00').toLocaleDateString('en-US',{month:'long'})+' bills';
+  $('#billTrackerPaidCount').textContent=summary.paidCount+' of '+summary.totalCount+' paid';
+  const progress=$('#billTrackerProgress');progress.max=summary.totalCount||1;progress.value=summary.paidCount;progress.setAttribute('aria-label',summary.paidCount+' of '+summary.totalCount+' bills paid this month');
+  $('#billTrackerTotal').textContent=money(summary.total);$('#billTrackerRemaining').textContent=money(summary.remaining);
+  $('#billTrackerUpcomingLabel').textContent=summary.overdueCount?'Next bills · '+summary.overdueCount+' overdue':'Next bills';
+  $('#billTrackerUpcoming').innerHTML=summary.upcoming.map(b=>'<li><span><strong>'+esc(b.name)+'</strong><small class="'+(b.date<today?'is-overdue':'')+'">'+esc((b.date<today?'Overdue · ':b.date===today?'Due today · ':'Due ')+dateLabel(b.date))+'</small></span><b>'+money(b.amount)+'</b></li>').join('');
+  $('#billTrackerEmpty').hidden=!!summary.upcoming.length;$('#billTrackerEmpty').textContent=summary.hasBills?'No upcoming bills.':'Add bills in Accounts to see them here.';
+ }
  function error(e){$('#incomeStatus').textContent=e.message||String(e);$('#accountStatus').textContent=e.message||String(e);$('#accountSaveStatus').textContent=e.message||String(e);}
  async function save(){if(!ready)throw Error('Accounts have not loaded. Reload before saving changes.');await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();}
  let initializing;
- $('#configureHousehold').disabled=true;$('#sharedBillsToggle').disabled=true;$('#carPaymentsInDebtToggle').disabled=true;
- function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=delete-accounts1'),import('./email-model.mjs?v=connections-audit1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=short-share1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#sharedBillsToggle').disabled=false;$('#carPaymentsInDebtToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
+ $('#configureHousehold').disabled=true;$('#billTrackerChooseAccount').disabled=true;$('#sharedBillsToggle').disabled=true;$('#carPaymentsInDebtToggle').disabled=true;
+ function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=bill-tracker1'),import('./email-model.mjs?v=connections-audit1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=short-share1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#billTrackerChooseAccount').disabled=false;$('#sharedBillsToggle').disabled=false;$('#carPaymentsInDebtToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
  window.addEventListener('load',initialize,{once:true});
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});
@@ -528,7 +542,7 @@
  }
  window.addEventListener('load',()=>openSharedBillLink().catch(error),{once:true});
  window.addEventListener('hashchange',()=>openSharedBillLink().catch(error));
- $('#configureHousehold').onclick=openHouseholdEditor;$('#closeHouseholdEditor').onclick=()=>$('#householdEditor').close();
+ $('#configureHousehold').onclick=openHouseholdEditor;$('#billTrackerChooseAccount').onclick=openHouseholdEditor;$('#closeHouseholdEditor').onclick=()=>$('#householdEditor').close();
  $('#householdForm').onsubmit=async e=>{
   e.preventDefault();const form=e.currentTarget,d=new FormData(form),old=structuredClone(planner),button=form.querySelector('[type=submit]'),h={...planner.household,enabled:d.has('enabled'),personalAccountId:String(d.get('personalAccountId')),billsAccountId:String(d.get('billsAccountId')),personalAmount:Math.round(Number(d.get('personalAmount'))*100),spouseAmount:Math.round(Number(d.get('spouseAmount'))*100),spouseStartDate:String(d.get('spouseStartDate')),spouseRepeat:String(d.get('spouseRepeat'))};
   if(h.enabled&&(!model.householdEnabled(h)||![h.personalAmount,h.spouseAmount].every(n=>Number.isSafeInteger(n)&&n>=0&&n<=1e11)||(h.spouseAmount>0&&!h.spouseStartDate))){$('#householdEditorStatus').textContent='Choose two different accounts, valid amounts, and your spouse’s first contribution date.';return;}
@@ -599,6 +613,7 @@
    if(window.setPaycheckBills(JSON.stringify(paycheckInputs),(date,n)=>model.paycheckBillItems(paycheckInputs,date,n),date=>model.paycheckBillsBalance(paycheckInputs,date)))return;
    householdBills=model.householdBillChoices([...billPlan.bills,...paymentsPlanner.manual]);
    const householdActive=model.householdEnabled(planner.household);
+   renderBillTracker(billPlan,paymentsPlanner,accounts,currentDay);
    $('#configureHousehold').textContent=householdActive?'Edit':'Set up';$('#sharedBillsToggle').checked=householdActive;
    $('#householdSummary').textContent=householdActive?'You: '+money(planner.household.personalAmount)+'/check · Spouse: '+money(planner.household.spouseAmount)+' '+({weekly:'weekly',biweekly:'every 2 weeks',monthly:'monthly'})[planner.household.spouseRepeat]:'Choose a bills account and contribution.';
    $('#bankBillStatus').textContent=estimates.length+' tracked bank bill'+(estimates.length===1?'':'s')+'. The calendar includes recurring bills and scheduled debt payments.';

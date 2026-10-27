@@ -21,6 +21,7 @@ let savingsGoals = [];
 let appliedBonuses = {};
 let bonusControlsEnabled=true;
 let payoffControlsEnabled=false;
+let showSavingsTracker=true;
 let paycheckOverrides = {};
 let savingsContributionOverrides = {}; // { [goalId]: { [paycheckNum]: amount } }
 let checkedPaychecks = {};
@@ -429,6 +430,7 @@ function gatherAppState(){
     appliedBonuses,
     bonusControlsEnabled,
     payoffControlsEnabled,
+    showSavingsTracker,
     savingsGoals: savingsGoals.map(g => ({ id: g.id, name: g.name, goal: g.goal, start: g.start, contribution: g.contribution, withdrawalHistory: g.withdrawalHistory || [] })),
     savingsGoalIdCounter,
     takeHome: document.getElementById('takeHome').value,
@@ -2145,6 +2147,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
   computeAndRenderSpendingTracker();
 
   const heroContainer = document.getElementById('savingsHeroContainer');
+  heroContainer.hidden=!showSavingsTracker;
   if (savingsEnabled && goalsInfo.length > 0) {
     const canDelete = true; // deleting the last goal is fine now — it just returns to the "start tracking" banner
     heroContainer.innerHTML = goalsInfo.map(g =>
@@ -6812,6 +6815,9 @@ window.classicReady=(async function init(){
   document.getElementById('bonusControlsToggle').checked=bonusControlsEnabled;
   payoffControlsEnabled=savedState?.payoffControlsEnabled===true;
   document.getElementById('payoffControlsToggle').checked=payoffControlsEnabled;
+  showSavingsTracker=savedState?.showSavingsTracker!==false;
+  document.getElementById('savingsTrackerToggle').checked=showSavingsTracker;
+  document.getElementById('savingsTrackerToggle').disabled=false;
   budgetSetupVersion=Number(savedState?.budgetSetupVersion)||0;
   if(window.BearDen.isNew&&!budgetSetupVersion&&!budgetItems.length){budgetItems=starterBudgetItems();budgetItemIdCounter=3;budgetSetupVersion=1;}
   if(budgetSetupVersion<2){
@@ -6915,6 +6921,14 @@ let paycheckBillSignature;
 window.setPaycheckBills=(signature,resolve,sharedForecast)=>{
  if(signature===paycheckBillSignature)return false;
  paycheckBillSignature=signature;window.accountBillsForPaycheck=resolve;window.sharedBillsForPaycheck=sharedForecast;calculate();return true;
+};
+
+document.getElementById('savingsTrackerToggle').onchange=async e=>{
+ const before=showSavingsTracker;showSavingsTracker=e.target.checked;e.target.disabled=true;
+ document.getElementById('savingsHeroContainer').hidden=!showSavingsTracker;
+ try{clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('featureSettingsStatus').textContent='Savings Tracker preference saved.';}
+ catch(error){showSavingsTracker=before;e.target.checked=before;document.getElementById('savingsHeroContainer').hidden=!before;document.getElementById('featureSettingsStatus').textContent=error.message;}
+ finally{e.target.disabled=false;}
 };
 
 document.getElementById('payoffControlsToggle').onchange=async e=>{

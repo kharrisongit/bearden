@@ -2,7 +2,8 @@ export {removeBillFromPlanner,removeDebtsFromPlanner} from './account-removal.mj
 export {carPaymentLoans} from './car-debt.mjs?v=car-debt1';
 export {transactionCategories,categorizeTransaction,transactionMerchantKey,setTransactionCategory} from './transaction-categories.mjs?v=auto-categories1';
 export {resolveDebtConnections,resolveDebtDetails} from './connection-model.mjs?v=paid-cycle1';
-import {transactionAccountId} from './transaction-links.mjs?v=connections-audit1';
+import {transactionAccountId,matchingPayments,postedPayment} from './transaction-links.mjs?v=connections-audit1';
+import {transactionKey} from './bank-activity.mjs?v=auto-categories1';
 import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=paid-cycle1';
 export {monthlyMinimum} from './debt-payments.mjs?v=paid-cycle1';
 import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-portal1';
@@ -49,6 +50,52 @@ export function trackerDebtBills(plan,cardBills=[],preferences={}, {includePaid=
  }));
 }
 export const isDebtPayment=b=>b.billKind!=='car-payment'&&(['tracker-debt','plaid-credit'].includes(b.source)||['credit-card','loan'].includes(b.billKind));
+
+// Dashboard totals use the current month, independently of the Accounts calendar.
+export function billTrackerSummary(legacy,planner,linked,today,{transactions=[]}={}){
+ const start=today.slice(0,7)+'-01',d=new Date(start+'T12:00:00Z');
+ const end=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0,12)).toISOString().slice(0,10);
+ const isBill=b=>!isDebtPayment(b)&&!['budget','baby-bear-budget'].includes(b.source)&&b.kind!=='household-bills'&&!b.transfer&&b.id!=='household-contribution';
+ const source={...legacy,bills:(legacy?.bills||[]).filter(isBill)},settings={...planner,manual:(planner.manual||[]).filter(isBill)};
+ const unique=events=>[...new Map(events.filter(b=>Number.isSafeInteger(b.amount)&&b.amount>0).map(b=>[b.key,b])).values()];
+ const horizon=day(today,366);
+ const all=unique(billEvents({...source,paid:[]},{...settings,paid:[]},linked,start,horizon));
+ const unpaid=unique(billEvents(source,settings,linked,start,horizon)),unpaidKeys=new Set(unpaid.map(b=>b.key));
+ const monthly=all.filter(b=>b.date>=start&&b.date<=end).map(b=>({...b,paid:!unpaidKeys.has(b.key)}));
+ const known=new Map([...source.bills,...settings.manual].filter(b=>!planner.deletedBills?.[b.id]).map(b=>[b.id,b]));
+ const activeIds=new Set(all.map(b=>b.id));
+ const restorePaid=(bill,date,amount=bill?.amount)=>{
+  if(!bill||!activeIds.has(bill.id)||date<start||date>end||!Number.isSafeInteger(bill.amount)||bill.amount<=0)return;
+  date=rentPaidKey(bill.id+':'+date,bill).slice(bill.id.length+1);
+  const sameCycle=monthly.find(b=>b.id===bill.id&&(b.date===date||bill.repeat==='monthly'&&b.date.slice(0,7)===date.slice(0,7)));
+  if(sameCycle){sameCycle.paid=true;unpaidKeys.delete(sameCycle.key);return;}
+  monthly.push({...rentOccurrence(bill,date),amount,date,key:bill.id+':'+date,paid:true});
+ };
+ // Retain a paid cycle when an edit or a new statement advances its due date.
+ for(const key of new Set([...(planner.paid||[]),...(legacy?.paid||[])])){
+  const date=key.slice(-10);if(/^\d{4}-\d{2}-\d{2}$/.test(date))restorePaid(known.get(key.slice(0,-11)),date);
+ }
+ // Bank tracking advances the anchor after payment. Include observed earlier
+ // cycles, grouping split payments so one monthly bill counts only once.
+ for(const bill of known.values())if(bill.source==='bank-tracked'&&activeIds.has(bill.id)){
+  const link=planner.transactionLinks?.['bill:'+bill.id],seen=new Set();
+  const history=(link?matchingPayments(transactions,link,today):transactions.filter(t=>postedPayment(t)&&transactionKey(t)===bill.groupKey)).filter(t=>{
+   if(t.date<start||t.date>today||t.date>=bill.date||seen.has(t.transaction_id))return false;
+   seen.add(t.transaction_id);return true;
+  });
+  const cycles=new Map(),days=bill.repeat==='weekly'?7:bill.repeat==='biweekly'?14:null;
+  for(const t of history){
+   const cycle=days?Math.round((Date.parse(t.date)-Date.parse(bill.lastPayment||bill.date))/86400000/days):bill.repeat==='once'?'once':t.date.slice(0,7);
+   const row=cycles.get(cycle)||{date:t.date,amount:0};row.amount+=Math.round(t.amount*100);if(t.date>row.date)row.date=t.date;cycles.set(cycle,row);
+  }
+  if(cycles.size)for(const row of cycles.values())restorePaid(bill,row.date,row.amount);
+  else if(bill.lastPayment&&bill.lastPayment<=today&&bill.lastPayment<bill.date)restorePaid(bill,bill.lastPayment);
+ }
+ const paid=monthly.filter(b=>b.paid),remaining=monthly.filter(b=>!b.paid),pending=unpaid.filter(b=>unpaidKeys.has(b.key));
+ const sum=rows=>rows.reduce((total,b)=>total+b.amount,0);
+ return {start,end,totalCount:monthly.length,paidCount:paid.length,total:sum(monthly),paidAmount:sum(paid),remaining:sum(remaining),
+  overdueCount:pending.filter(b=>b.date<today).length,upcoming:pending.slice(0,3),hasBills:[...known.values()].some(b=>b.date&&Number.isSafeInteger(b.amount)&&b.amount>0)};
+}
 // Calendar markers retain received paydays and paid bills; forecasts exclude them.
 export function calendarEvents(plan,household,payments,start,end){
  const days=new Map(),state=plan.state||{};

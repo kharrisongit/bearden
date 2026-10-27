@@ -37,7 +37,7 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark']) {
     page.on('pageerror', error => errors.push(error.message));
     await openFixture(page, theme);
     await expect(page.locator('#debtIncomeCard .hero-title')).toHaveText('Income Tracker');
-    await expect(page.locator('#tab-debt .tracker-header')).toHaveCount(4);
+    await expect(page.locator('#tab-debt .tracker-header')).toHaveCount(5);
     const inspectHeaders = () => [...document.querySelectorAll('.tracker-header')].filter(el => el.checkVisibility()).every(el => {
       const box = el.getBoundingClientRect();
       return getComputedStyle(el).borderTopStyle === 'none' && getComputedStyle(el.querySelector('.hero-title')).borderTopStyle === 'solid' && [...el.querySelectorAll('.hero-title,button')].every(child => {
@@ -77,3 +77,4 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark']) {
     expect(errors).toEqual([]);
   });
 }
+
