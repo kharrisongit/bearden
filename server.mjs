@@ -1,3 +1,4 @@
+import {connectLunchflow,publicLunchflow,syncLunchflow,configureLunchflowAccount} from './lunchflow.mjs';
 import {applyPlaidLoanBalances,diagnosePlaid} from './plaid-loans.mjs';
 import {billSharingAction} from './bill-sharing.mjs';
 import {microsoftAuthorization,exchangeMicrosoftToken,microsoftUser,requireMicrosoftMail} from './microsoft.mjs';
@@ -35,7 +36,7 @@ const read=(id,fallback)=>rawRead(users.key(id),fallback),write=(id,data)=>rawWr
 function getPlan(){return read('plan',{state:blank(),revision:0});}
 function updatePlan(fn){const p=getPlan();fn(p.state);p.revision++;write('plan',p);return p;}
 function connections(){return read('connections',{items:[],transactions:[],candidates:[],seen:[],gmail:null,status:'No connections yet.'});}
-function publicConnections(c){return {sun:publicSun(c.sun),simplefin:publicSimplefin(c),items:c.items.map(publicItem),creditCards:publicCredit(c),...publicMail(c,users.current().email),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates,bankUpdated:c.bankUpdated,status:c.status};}
+function publicConnections(c){return {sun:publicSun(c.sun),simplefin:publicSimplefin(c),lunchflow:publicLunchflow(c),items:c.items.map(publicItem),creditCards:publicCredit(c),...publicMail(c,users.current().email),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates,bankUpdated:c.bankUpdated,status:c.status};}
 function cookies(req){return Object.fromEntries((req.headers.cookie||'').split(';').map(x=>x.trim().split('=')).filter(x=>x.length===2));}
 function sessionIdentity(req){const s=cookies(req).bearden;if(!s)return null;const id=hash(s),r=db.prepare('SELECT expires FROM sessions WHERE hash=?').get(id);return r&&r.expires>Date.now()?rawRead('auth-session:'+id,s.startsWith('v2.')?null:users.legacy):null;}
 function authenticated(req){return !!sessionIdentity(req);}
@@ -46,6 +47,7 @@ async function body(req){let n=0,parts=[];for await(const p of req){n+=p.length;
 const microsoftToken=params=>exchangeMicrosoftToken(request,process.env.MICROSOFT_CLIENT_ID,process.env.MICROSOFT_CLIENT_SECRET,params);
 async function googleToken(params){return request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:process.env.GOOGLE_CLIENT_ID,client_secret:process.env.GOOGLE_CLIENT_SECRET,...params})});}
 const syncs=new Map();const runningSync=()=>syncs.get(users.current().accountId);
+async function syncLunchflowBalances(c){return syncLunchflow(c,()=>getPlan().state.accounts,accounts=>updatePlan(s=>{s.accounts=accounts;}));}
 async function syncSimplefinBalances(c){return syncSimplefin(c,()=>getPlan().state.accounts,accounts=>updatePlan(s=>{s.accounts=accounts;}));}
 async function doSync(bankOnly=false,targetId=null,gmailOnly=false){
  let c=connections(),errors=[],now=new Date().toISOString();
@@ -60,6 +62,7 @@ async function doSync(bankOnly=false,targetId=null,gmailOnly=false){
   catch(e){item.transactionsError=e.code||e.message;errors.push(item.name+' transactions: '+e.message);}
  }
  if(!gmailOnly&&!targetId&&c.simplefin&&(!c.simplefin.nextSync||c.simplefin.nextSync<=Date.now())){const status=await syncSimplefinBalances(c);if(!c.simplefin.updated||c.simplefin.updated<now||status.includes('attention'))errors.push(status);}
+ if(!gmailOnly&&!targetId&&c.lunchflow&&(c.lunchflow.pending?.length||!c.lunchflow.nextSync||c.lunchflow.nextSync<=Date.now())){const result=await syncLunchflowBalances(c);if(c.lunchflow.issues?.length)errors.push(result.status);}
  if(!bankOnly)for(const account of mailboxes(c,users.current().email)){try{await syncMailbox(c,account);}catch(e){account.status='Email needs attention: '+e.message;errors.push(account.email+': '+account.status);}}
  c.status=errors.length?'Sync needs attention — '+errors.join(' · '):'Last sync: '+now;c.lastAttempt=now;write('connections',c);return c;
 }
@@ -119,6 +122,19 @@ async function handle(req,res){
     syncs.set(identity,task);try{return json(res,200,await task);}finally{syncs.delete(identity);}
    }
    if(path.startsWith('/api/rent/'))return json(res,503,{error:'Rent sign-in runs on the deployed Cloudflare app. Open your hosted BearDen account to connect your rent portal.'});
+   if(path.startsWith('/api/lunchflow/')){
+    while(runningSync())await runningSync();const identity=users.current().accountId;
+    const task=(async()=>{const c=connections();
+     if(path==='/api/lunchflow/connect'){
+      if(c.lunchflow&&!b.replace)throw Error('Lunch Flow is already connected. Use Replace API key.');
+      c.lunchflow=await connectLunchflow(b.apiKey);write('connections',c);
+     }
+     if(path==='/api/lunchflow/connect'||path==='/api/lunchflow/refresh'){const result=await syncLunchflowBalances(c);c.status=result.status;write('connections',c);return result;}
+     if(path==='/api/lunchflow/account'){updatePlan(s=>configureLunchflowAccount(s.accounts,b));return {ok:true};}
+     if(path==='/api/lunchflow/disconnect'){delete c.lunchflow;c.transactions=c.transactions.filter(t=>t.source!=='lunchflow');write('connections',c);updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.source!=='lunchflow');});return {status:'Lunch Flow disconnected. Your entered debts and bills are kept.'};}
+     throw Error('Unknown Lunch Flow action.');
+    })();syncs.set(identity,task);try{return json(res,200,await task);}finally{syncs.delete(identity);}
+   }
    if(path.startsWith('/api/simplefin/')){
     while(runningSync())await runningSync();const identity=users.current().accountId;
     const task=(async()=>{const c=connections();
@@ -166,6 +182,6 @@ async function handle(req,res){
 const server=http.createServer((req,res)=>users.run(sessionIdentity(req),()=>handle(req,res)));
 server.listen(port,()=>console.log('BearDen listening on port '+port+' ('+(googleConfigured||microsoftConfigured?'secure connections configured':'manual mode')+')'));
 // An always-on single server is required. Sync continues with no browser open.
-const timer=setInterval(()=>{if(!googleConfigured&&!microsoftConfigured)return;const profiles=db.prepare("SELECT value FROM vault WHERE id LIKE 'user-index:%'").all().map(r=>decrypt(r.value));if(!profiles.some(p=>!p.scope))profiles.push(users.legacy);for(const profile of profiles)users.run(profile,()=>{const c=connections();if(c.lastAttempt&&Date.now()-Date.parse(c.lastAttempt)<6*3600000)return;if(mailboxes(c,users.current().email).length||c.items.length||c.simplefin)sync().catch(()=>console.error('Background sync failed; check provider setup.'));});},60000);timer.unref();
+const timer=setInterval(()=>{if(!googleConfigured&&!microsoftConfigured)return;const profiles=db.prepare("SELECT value FROM vault WHERE id LIKE 'user-index:%'").all().map(r=>decrypt(r.value));if(!profiles.some(p=>!p.scope))profiles.push(users.legacy);for(const profile of profiles)users.run(profile,()=>{const c=connections();if(c.lastAttempt&&Date.now()-Date.parse(c.lastAttempt)<6*3600000)return;if(mailboxes(c,users.current().email).length||c.items.length||c.simplefin||c.lunchflow)sync().catch(()=>console.error('Background sync failed; check provider setup.'));});},60000);timer.unref();
 process.on('SIGTERM',()=>{clearInterval(timer);server.close(()=>{db.close();process.exit(0);});});
 

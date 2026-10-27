@@ -1,3 +1,4 @@
+import {connectLunchflow,publicLunchflow,syncLunchflow,configureLunchflowAccount} from '../lunchflow.mjs';
 import {applyPlaidLoanBalances,diagnosePlaid} from '../plaid-loans.mjs';
 import {billSharingAction} from '../bill-sharing.mjs';
 import {microsoftAuthorization,exchangeMicrosoftToken,microsoftUser,requireMicrosoftMail} from '../microsoft.mjs';
@@ -48,13 +49,14 @@ export function runtime(env,fetcher=fetch){
  async function plaid(path,data){if(!env.PLAID_CLIENT_ID||!env.PLAID_SECRET)throw Error('Plaid is not configured');const mode=env.PLAID_ENV||'sandbox';if(!['sandbox','production'].includes(mode))throw Error('Invalid Plaid environment');return request(`https://${mode}.plaid.com${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:env.PLAID_CLIENT_ID,secret:env.PLAID_SECRET,...data})});}
  const microsoftToken=params=>exchangeMicrosoftToken(request,env.MICROSOFT_CLIENT_ID,env.MICROSOFT_CLIENT_SECRET,params);
  const googleToken=data=>request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,...data})});
- function publicConnections(c){return {sun:publicSun(c.sun),simplefin:publicSimplefin(c),items:c.items.map(publicItem),creditCards:publicCredit(c),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates.filter(x=>!x.dismissed),...publicMail(c,users.current().email),bankUpdated:c.bankUpdated,status:c.status};}
+ function publicConnections(c){return {sun:publicSun(c.sun),simplefin:publicSimplefin(c),lunchflow:publicLunchflow(c),items:c.items.map(publicItem),creditCards:publicCredit(c),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates.filter(x=>!x.dismissed),...publicMail(c,users.current().email),bankUpdated:c.bankUpdated,status:c.status};}
  async function claimRentLogin(now=Date.now()){
   const usage=await read('sun-browser-usage',{since:now,count:0,last:0});if(now-usage.since>=86400000){usage.since=now;usage.count=0;}
   if(usage.count>=6)throw new SunError('quota');if(now-usage.last<20000)throw new SunError('rate');
   usage.count++;usage.last=now;await write('sun-browser-usage',usage);
  }
  async function syncSunRent(c,force=false){return syncSun(c.sun,await read('sun-session',null),{check:s=>sunBrowser.check(s),login:async(...args)=>{await claimRentLogin();return sunBrowser.login(...args);}},value=>write('sun-session',value),{force,credentials:c.sun?.automaticLogin?await read('sun-credentials',null):null});}
+ async function syncLunchflowBalances(c){return syncLunchflow(c,async()=>(await plan()).state.accounts,accounts=>updatePlan(s=>{s.accounts=accounts;}),fetcher);}
  async function syncSimplefinBalances(c){return syncSimplefin(c,async()=>(await plan()).state.accounts,accounts=>updatePlan(s=>{s.accounts=accounts;}),fetcher);}
  async function syncBalances(c,item,live=false){
    item.balanceAttempt=Date.now();
@@ -92,6 +94,7 @@ export function runtime(env,fetcher=fetch){
  async function sync(force=false,bankOnly=false,targetId=null,gmailOnly=false,transactionsOnly=false){return locked(async()=>{const c=await connections(),now=Date.now(),bank=!gmailOnly&&c.items.filter(i=>(!targetId||i.id===targetId)&&(force||i.pending||!i.nextSync||i.nextSync<=now)).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0],gmail=!bankOnly&&mailboxes(c,users.current().email).filter(a=>force||a.backlog?.length||a.page||!a.nextSync||a.nextSync<=now).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0];
    if(!bankOnly&&!gmailOnly&&!targetId&&c.sun?.connected&&c.sun.enabled!==false&&!c.sun.needsLogin&&(!c.sun.nextSync||c.sun.nextSync<=now)&&!(c.sun.pending?.expires>now)){c.lastTask='rent';c.status=await syncSunRent(c);await write('connections',c);return {status:c.status};}
    if(!gmailOnly&&!targetId&&c.simplefin&&(force||!c.simplefin.nextSync||c.simplefin.nextSync<=now)&&(!bank||c.lastTask==='bank')){c.lastTask='simplefin';c.status=await syncSimplefinBalances(c);await write('connections',c);return {status:c.status};}
+   if(!gmailOnly&&!targetId&&c.lunchflow&&(c.lunchflow.pending?.length||force||!c.lunchflow.nextSync||c.lunchflow.nextSync<=now)&&(!bank||c.lastTask==='bank'||c.lastTask==='simplefin')){c.lastTask='lunchflow';const result=await syncLunchflowBalances(c);c.status=result.status;await write('connections',c);return result;}
    if(targetId&&!bank)throw Error('Bank connection not found. Reload your connections.');
    if(!bank&&!gmail)return {status:gmailOnly?'No email accounts connected.':c.status};if(bank)bank.lastSyncAttempt=now;try{if(force&&bank&&!transactionsOnly){try{await syncBalances(c,bank,true);}catch{/* Independent products can still refresh. */}}if(gmail&&(!bank||c.lastTask==='bank')){c.lastTask='gmail';c.status=await syncGmail(c,gmail);}else{c.lastTask='bank';c.status=await syncBank(c,bank,force,transactionsOnly);}}catch(e){c.status='Sync needs attention: '+e.message;if(c.lastTask==='gmail'&&gmail){gmail.nextSync=now+sixHours;gmail.status=c.status;}}
    if(bank?.balanceError)c.status+=' Balance refresh needs attention; earlier balances are kept: '+bank.balanceError;
@@ -199,6 +202,17 @@ export function runtime(env,fetcher=fetch){
       }
       return json({error:'Not found'},404);
      }catch(error){return json({error:sunMessage(error)},['quota','rate'].includes(error.code)?429:400);}
+    }
+    if(path.startsWith('/api/lunchflow/')){
+     const c=await connections();
+     if(path==='/api/lunchflow/connect'){
+      if(c.lunchflow&&!b.replace)return json({error:'Lunch Flow is already connected. Use Replace API key.'},409);
+      c.lunchflow=await connectLunchflow(b.apiKey,fetcher);await write('connections',c);
+     }
+     if(path==='/api/lunchflow/connect'||path==='/api/lunchflow/refresh'){const result=await syncLunchflowBalances(c);c.status=result.status;await write('connections',c);return json(result);}
+     if(path==='/api/lunchflow/account'){await updatePlan(s=>configureLunchflowAccount(s.accounts,b));return json({ok:true});}
+     if(path==='/api/lunchflow/disconnect'){delete c.lunchflow;c.transactions=c.transactions.filter(t=>t.source!=='lunchflow');await write('connections',c);await updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.source!=='lunchflow');});return json({status:'Lunch Flow disconnected. Your entered debts and bills are kept.'});}
+     return json({error:'Unknown Lunch Flow action.'},404);
     }
     if(path==='/api/simplefin/connect'){
      const c=await connections();if(c.simplefin&&!b.replace)return json({error:'SimpleFIN is already connected. Use Replace token to reconnect it.'},409);

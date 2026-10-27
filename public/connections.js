@@ -21,7 +21,7 @@ window.BearDen=(()=>{
  function hiddenAccountsMarkup(accounts){const hidden=accounts.filter(a=>accountHidden(a.id));return hidden.length?'<details class="hidden-connection-accounts"><summary>Hidden accounts ('+hidden.length+')</summary>'+hidden.map(a=>'<div class="connection-account-heading"><strong>'+esc(accountName(a))+'</strong><span class="connection-account-actions">'+renameAccountButton(a)+'<button type="button" data-show-connected-account="'+esc(a.id)+'" aria-label="Show '+esc(accountName(a))+'">Show</button></span></div>').join('')+'</details>':'';}
  bridge.refreshAccountLists=()=>renderConnections();
  function setConnectionConfig(id,open){const button=$('#'+id);$('#'+button.getAttribute('aria-controls')).hidden=!open;button.setAttribute('aria-expanded',String(open));}
- for(const id of ['configurePlaid','configureSimplefin','configureRent'])$('#'+id).onclick=()=>setConnectionConfig(id,$('#'+id).getAttribute('aria-expanded')!=='true');
+ for(const id of ['configurePlaid','configureSimplefin','configureLunchflow','configureRent'])$('#'+id).onclick=()=>setConnectionConfig(id,$('#'+id).getAttribute('aria-expanded')!=='true');
  let syncNoticeDismissed=false,syncNoticeActive=false;
  const notice=$('#connectionMessage'),dismissNotice=$('#dismissConnectionMessage');
  const updateNotice=()=>{dismissNotice.hidden=!notice.textContent;};
@@ -62,7 +62,7 @@ window.BearDen=(()=>{
  function requireLogin(){if(config.authenticated)return true;message('Sign in with Google or Microsoft in Settings to connect an account.');window.selectBearTab?.('settings');return false;}
  async function reconcileAccountReferences(){
   if(!values['income-planner'])return;
-  const {remapConnectedAccountReferences}=await import('./connection-model.mjs?v=provider-loans1');
+  const {remapConnectedAccountReferences}=await import('./connection-model.mjs?v=lunchflow1');
   const before=values['income-planner'],planner=JSON.parse(before),next=remapConnectedAccountReferences(planner,legacy?.state?.accounts||[]);
   if(next!==planner){values['income-planner']=JSON.stringify(next);try{await persist();}catch(e){values['income-planner']=before;throw e;}}
  }
@@ -84,7 +84,7 @@ window.BearDen=(()=>{
   }).join('');
   $('#plaidAccountSummary').textContent='Plaid accounts ('+plaidAccounts.filter(a=>!accountHidden(a.id)).length+' shown)';
   $('#classicBalances').innerHTML=plaidAccounts.filter(a=>!accountHidden(a.id)).map(a=>`<div class="connection-row"><div class="connection-account-heading"><strong>${esc(accountName(a))}</strong>${hideAccountButton(a)}</div>${a.zeroUnconfirmed?(a.balance>0?'Last known balance: '+money(a.balance):'Loan balance needs verification'):a.balanceUnavailable?(a.balanceUpdated?'Last known balance: '+money(a.balance):'Balance not supplied'):money(a.balance)}${a.balanceWarning?'<small>'+esc(a.balanceWarning)+'</small>':''}${a.accountMissing?'<small>Account missing from the latest response. Use Choose / repair accounts for this bank.</small>':a.balanceUnavailable?'<small>The latest response did not include a usable balance.</small>':a.balanceSource==='cached'?'<small>Using the bank’s cached balance.</small>':''}<small>${esc(a.currency||'USD')}${a.balanceRetrieved?' · Retrieved '+esc(new Date(a.balanceRetrieved).toLocaleString()):''}</small>${['loan','credit'].includes(a.type)&&a.balance===0?'<small>Plaid reports zero; verify with your bank. This is a balance, not a payment due.'+(a.lastPositiveBalance>0?' Last positive balance received: '+money(a.lastPositiveBalance)+'.':'')+'</small>':''}<details class="provider-diagnostics"><summary>Balance details</summary><div><p>Connection: ${esc(c.items?.find(i=>i.id===a.itemId)?.name||'Bank')}${c.items?.find(i=>i.id===a.itemId)?.balanceError?'<br>Last balance refresh failed: '+esc(c.items.find(i=>i.id===a.itemId).balanceError):''}<br>Account type: ${esc(a.type||'Not supplied')} / ${esc(a.subtype||'Not supplied')}<br>Live current balance: ${a.reportedLiveCurrent==null?'Not supplied':money(Math.round(a.reportedLiveCurrent*100))}<br>Cached current balance: ${a.reportedCachedCurrent==null?'Not supplied':money(Math.round(a.reportedCachedCurrent*100))}<br>Loan principal from Plaid Liabilities: ${a.liabilityPrincipal==null?'Not supplied':money(a.liabilityPrincipal)}<br>Loan details checked: ${a.liabilityUpdated?esc(new Date(a.liabilityUpdated).toLocaleString()):'Not yet checked'}<br>General account balance reported by Plaid: ${a.reportedCurrent===undefined?'No balance response saved for this account':a.reportedCurrent===null?'Not supplied':money(Math.round(a.reportedCurrent*100))}<br>Available balance reported by Plaid: ${a.reportedAvailable===undefined?'No balance response saved for this account':a.reportedAvailable===null?'Not supplied':money(Math.round(a.reportedAvailable*100))}</p></div></details></div>`).join('')+hiddenAccountsMarkup(plaidAccounts);
-  renderSimplefin(c,s);renderRent(c.sun);
+  renderSimplefin(c,s);renderLunchflow(c,s);renderRent(c.sun);
   $('#classicGmail').textContent='Add Gmail account';$('#classicDisconnectGmail').hidden=true;$('#checkGmailAccounts').hidden=!(c.emailConnected||c.gmail);
   $('#classicEmailStatus').textContent=(c.emailConnected||c.gmail)?'Connected':'Not connected';$('#classicEmailStatus').dataset.connected=String(!!(c.emailConnected||c.gmail));
   $('#gmailAccountList').innerHTML=(c.mailAccounts||c.gmailAccounts||[]).map(a=>'<div class="connection-row"><strong>'+esc(a.email||'Email account')+'</strong><small>'+esc(a.status||'Connected')+(a.updated?' · '+esc(new Date(a.updated).toLocaleString()):'')+'</small><button type="button" data-gmail-disconnect="'+esc(a.id)+'">Disconnect</button></div>').join('');
@@ -146,6 +146,22 @@ window.BearDen=(()=>{
    return '<form class="connection-row" data-simplefin-account="'+esc(a.id)+'"><div class="connection-account-heading"><strong>'+esc(accountName(a))+'</strong>'+hideAccountButton(a)+'</div><small>'+esc(a.institution)+' · SimpleFIN · '+(c.transactions||[]).filter(t=>t.account_id===a.id).length+' saved transaction(s)</small><p>'+(a.providerUnavailable?(a.balanceUpdated?'Last known balance: '+money(a.balance)+'. Latest balance unavailable.':'Balance not supplied.'):(a.balanceStale?'Last reported balance: ':'Reported balance: ')+(known?money(raw):'Not supplied')+' '+esc(a.currency))+(a.balanceUpdated?' · As of '+esc(new Date(a.balanceUpdated).toLocaleString()):'')+'</p>'+(a.accountMissing?'<small>Not returned by SimpleFIN. Check which accounts are shared with BearDen.</small>':'')+(a.balanceWarning?'<small>'+esc(a.balanceWarning)+'</small>':'')+simplefinDiagnosticMarkup(a)+'<label>Account type<select name="kind">'+types.map(([value,name])=>'<option value="'+value+'" '+(kind===value?'selected':'')+'>'+name+'</option>').join('')+'</select></label><label data-simplefin-sign '+(debt?'':'hidden')+'>Confirm what the balance means<select name="debtSign"><option value="">Choose the amount you owe</option>'+[['negative',raw<0],['positive',raw>=0]].map(([value,isOwed])=>'<option value="'+value+'" '+(a.debtSign===value?'selected':'')+'>'+(known?(isOwed?money(Math.abs(raw))+' owed':money(Math.abs(raw))+' credit / no amount owed'):(value==='negative'?'Negative means amount owed':'Positive means amount owed'))+'</option>').join('')+'</select></label><button type="submit">Save account type</button><small data-simplefin-account-status>'+(kind==='unknown'?'Choose a type before using this balance.':debt?'Then open Accounts, edit your debt, and choose this linked account.':'Available under Choose accounts.')+'</small></form>';
   }).join('')+hiddenAccountsMarkup(accounts);
  }
+ function lunchflowDiagnosticMarkup(a){
+  const d=a.balanceObservation;if(!d)return '';
+  return '<details class="provider-diagnostics"><summary>Balance details</summary><div><p>Amount supplied by Lunch Flow: '+(Number.isSafeInteger(d.amount)?esc(money(d.amount)):'Not supplied')+'</p><p>Retrieved: '+esc(new Date(d.retrievedAt).toLocaleString())+'</p><p>Bank balance date: not provided.</p>'+(a.transactionsWarning?'<p>'+esc(a.transactionsWarning)+'</p>':'')+'</div></details>';
+ }
+ function renderLunchflow(c,s){
+  const connected=!!c.lunchflow,accounts=(s?.accounts||[]).filter(a=>a.source==='lunchflow');
+  $('#lunchflowStatus').textContent=connected?'Connected':'Not connected';$('#lunchflowStatus').dataset.connected=String(connected);
+  $('#lunchflowActions').hidden=!connected;$('#lunchflowSetup').hidden=connected;$('#lunchflowConnect').textContent=connected?'Replace Lunch Flow API key':'Connect Lunch Flow';
+  $('#lunchflowFeedback').textContent=c.lunchflow?(c.lunchflow.status+(c.lunchflow.updated?' Last checked '+new Date(c.lunchflow.updated).toLocaleString()+'.':'')):'Not connected.';
+  $('#lunchflowAccountSummary').textContent='Lunch Flow accounts ('+accounts.filter(a=>!accountHidden(a.id)).length+' shown)';
+  $('#lunchflowAccounts').innerHTML=accounts.filter(a=>!accountHidden(a.id)).map(a=>{
+   const kind=a.type==='depository'?a.subtype:a.type,debt=['credit','loan'].includes(a.type),raw=a.rawBalance,known=Number.isSafeInteger(raw);
+   const types=[['unknown','Choose account type'],['credit','Credit card'],['loan','Loan'],['checking','Checking'],['savings','Savings']];
+   return '<form class="connection-row" data-lunchflow-account="'+esc(a.id)+'"><div class="connection-account-heading"><strong>'+esc(accountName(a))+'</strong>'+hideAccountButton(a)+'</div><small>'+esc(a.institution)+' · Lunch Flow · '+(c.transactions||[]).filter(t=>t.account_id===a.id).length+' saved transaction(s)</small><p>'+(a.providerUnavailable?(a.balanceUpdated?'Last known balance: '+money(a.balance)+'. Latest balance unavailable.':'Balance not supplied.'):(a.balanceStale?'Last reported balance: ':'Reported balance: ')+(known?money(raw):'Not supplied')+' '+esc(a.currency))+(a.balanceUpdated?' · Retrieved '+esc(new Date(a.balanceUpdated).toLocaleString()):'')+'</p>'+(a.accountMissing?'<small>Not returned by Lunch Flow. Check which accounts are shared with BearDen.</small>':'')+(a.balanceWarning?'<small>'+esc(a.balanceWarning)+'</small>':'')+lunchflowDiagnosticMarkup(a)+'<label>Account type<select name="kind">'+types.map(([value,name])=>'<option value="'+value+'" '+(kind===value?'selected':'')+'>'+name+'</option>').join('')+'</select></label><label data-lunchflow-sign '+(debt?'':'hidden')+'>Confirm what the balance means<select name="debtSign"><option value="">Choose the amount you owe</option>'+[['negative',raw<0],['positive',raw>=0]].map(([value,isOwed])=>'<option value="'+value+'" '+(a.debtSign===value?'selected':'')+'>'+(known?(isOwed?money(Math.abs(raw))+' owed':money(Math.abs(raw))+' credit / no amount owed'):(value==='negative'?'Negative means amount owed':'Positive means amount owed'))+'</option>').join('')+'</select></label><button type="submit">Save account type</button><small data-lunchflow-account-status>'+(kind==='unknown'?'Choose a type before using this balance.':debt?'Then open Accounts, edit your debt, and choose this linked account.':'Available under Choose accounts.')+'</small></form>';
+  }).join('')+hiddenAccountsMarkup(accounts);
+ }
  $('#simplefinConnectForm').onsubmit=async event=>{
   event.preventDefault();if(!requireLogin())return;const button=$('#simplefinConnect'),token=$('#simplefinToken').value.trim();if(!token)return;
   const replace=!!legacy?.connections?.simplefin;if(replace&&!confirm('Replace the saved SimpleFIN access token? Existing debt links will be kept.'))return;
@@ -165,6 +181,27 @@ window.BearDen=(()=>{
   e.preventDefault();const form=e.target.closest('[data-simplefin-account]');if(!form)return;const b=form.querySelector('button[type=submit]'),status=form.querySelector('[data-simplefin-account-status]');b.disabled=true;
   try{await queue;await api('/api/simplefin/account',{id:form.dataset.simplefinAccount,kind:form.elements.kind.value,debtSign:form.elements.debtSign.value});await refresh();$('#simplefinFeedback').textContent='Account type saved. To update an existing debt, open Accounts, edit that debt, and select its linked account.';}catch(error){status.textContent=error.message;}finally{b.disabled=false;}
  });
+ $('#lunchflowAccounts').addEventListener('change',e=>{const form=e.target.closest('[data-lunchflow-account]');if(form&&e.target.name==='kind')form.querySelector('[data-lunchflow-sign]').hidden=!['credit','loan'].includes(e.target.value);});
+ $('#lunchflowAccounts').addEventListener('submit',async e=>{
+  e.preventDefault();const form=e.target.closest('[data-lunchflow-account]');if(!form)return;const b=form.querySelector('button[type=submit]'),status=form.querySelector('[data-lunchflow-account-status]');b.disabled=true;
+  try{await queue;await api('/api/lunchflow/account',{id:form.dataset.lunchflowAccount,kind:form.elements.kind.value,debtSign:form.elements.debtSign.value});await refresh();$('#lunchflowFeedback').textContent='Account type saved. To update an existing debt, open Accounts, edit that debt, and select its linked account.';}catch(error){status.textContent=error.message;}finally{b.disabled=false;}
+ });
+ async function finishLunchflow(result,report){
+  for(let batch=0;result.pending&&batch<50;batch++){report(result.status);result=await api('/api/lunchflow/refresh',{});}
+  return result;
+ }
+ $('#lunchflowConnectForm').onsubmit=async event=>{
+  event.preventDefault();if(!requireLogin())return;const b=$('#lunchflowConnect'),apiKey=$('#lunchflowToken').value.trim();if(!apiKey)return;
+  const replace=!!legacy?.connections?.lunchflow;if(replace&&!confirm('Replace the Lunch Flow API key for this login?'))return;
+  b.disabled=true;$('#lunchflowToken').value='';const report=text=>$('#lunchflowFeedback').textContent=text;report('Connecting Lunch Flow…');
+  try{await queue;let r=await api('/api/lunchflow/connect',{apiKey,replace});r=await finishLunchflow(r,report);await refresh();$('#lunchflowSetup').open=false;report(r.status);}catch(e){report(e.message);}finally{b.disabled=false;}
+ };
+ $('#lunchflowReplace').onclick=()=>{$('#lunchflowSetup').hidden=false;$('#lunchflowSetup').open=true;$('#lunchflowToken').focus();};
+ $('#lunchflowRefresh').onclick=async()=>{const b=$('#lunchflowRefresh'),report=text=>$('#lunchflowFeedback').textContent=text;b.disabled=true;report('Checking Lunch Flow…');try{await queue;const r=await finishLunchflow(await api('/api/lunchflow/refresh',{}),report);await refresh();report(r.status);}catch(e){report(e.message);}finally{b.disabled=false;}};
+ $('#lunchflowDisconnect').onclick=async()=>{
+  if(!confirm('Disconnect Lunch Flow from BearDen? Your entered debts and bills will stay.'))return;
+  const b=$('#lunchflowDisconnect');b.disabled=true;try{await queue;const r=await api('/api/lunchflow/disconnect',{});await refresh();$('#lunchflowFeedback').textContent=r.status;}catch(e){$('#lunchflowFeedback').textContent=e.message;}finally{b.disabled=false;}
+ };
  async function connectBank(resume=false,options={}){
   if(!requireLogin())return;if(!config.plaidConfigured)throw Error('Bank connections are unavailable right now.');
   if(resume){if(sessionStorage.getItem('bearden-link-account')!==config.accountId){sessionStorage.removeItem('bearden-link-token');sessionStorage.removeItem('bearden-link-context');sessionStorage.removeItem('bearden-link-account');throw Error('Your BearDen account changed. Start Connect bank again from this account.');}options=JSON.parse(sessionStorage.getItem('bearden-link-context')||'{}');}
@@ -218,6 +255,7 @@ window.BearDen=(()=>{
     await refresh();
    }
    if(includeSimplefin&&legacy?.connections?.simplefin){report('Refreshing SimpleFIN…');try{const r=await api('/api/simplefin/refresh',{});results.push('SimpleFIN: '+r.status);}catch(e){results.push('SimpleFIN: '+e.message);}await refresh();}
+   if(includeSimplefin&&legacy?.connections?.lunchflow){report('Refreshing Lunch Flow…');try{const r=await finishLunchflow(await api('/api/lunchflow/refresh',{}),report);results.push(r.status);}catch(e){results.push('Lunch Flow: '+e.message);}await refresh();}
    return results.length?results:['No bank connections to refresh.'];
   }finally{refreshingBank=false;buttons.forEach(b=>{if(b.id==='classicSync'&&syncNoticeActive)return;b.disabled=false;b.removeAttribute('aria-busy');});}
  }

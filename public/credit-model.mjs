@@ -17,7 +17,7 @@ export function creditCapacity({card=null,account=null,enteredLimit=null,balance
  const limit=providerLimit??nonnegative(enteredLimit);
  // Reported available credit includes holds/pending purchases. Do not replace
  // it with limit minus balance or free credit early for projected payments.
- const bankAvailable=bank&&!bank.balanceUnavailable?(bank.source==='plaid'?amount(bank.reportedAvailable):bank.source==='simplefin'?bank.rawAvailable:null):null;
+ const bankAvailable=bank&&!bank.balanceUnavailable?(bank.source==='plaid'?amount(bank.reportedAvailable):['simplefin','lunchflow'].includes(bank.source)?bank.rawAvailable:null):null;
  const reported=Number.isSafeInteger(bankAvailable)?bankAvailable:Number.isSafeInteger(card?.available)?card.available:null;
  const available=reported!==null?Math.max(0,reported):limit!==null&&Number.isSafeInteger(balance)?Math.max(0,limit-balance):null;
  return {limit,providerLimit,available};

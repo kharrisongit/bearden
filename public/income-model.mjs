@@ -1,7 +1,7 @@
 export {removeBillFromPlanner,removeDebtsFromPlanner} from './account-removal.mjs?v=delete-accounts1';
 export {carPaymentLoans} from './car-debt.mjs?v=car-debt1';
 export {transactionCategories,categorizeTransaction,transactionMerchantKey,setTransactionCategory} from './transaction-categories.mjs?v=auto-categories1';
-export {resolveDebtConnections,resolveDebtDetails,remapConnectedAccountReferences} from './connection-model.mjs?v=provider-loans1';
+export {resolveDebtConnections,resolveDebtDetails,remapConnectedAccountReferences} from './connection-model.mjs?v=lunchflow1';
 import {transactionAccountId,matchingPayments,postedPayment} from './transaction-links.mjs?v=connections-audit1';
 import {transactionKey} from './bank-activity.mjs?v=auto-categories1';
 import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=paid-cycle1';
@@ -264,7 +264,7 @@ export function forecastBalanceOn(points,date){
 export function linkedBillLoan(bill,planner,accounts=[]){
  const id=planner.loanLinks?.[bill.id];
  if(!id||bill.billKind!=='car-payment')return null;
- const account=accounts.find(a=>a.id===id&&['plaid','simplefin'].includes(a.source)&&a.type==='loan');
+ const account=accounts.find(a=>a.id===id&&['plaid','simplefin','lunchflow'].includes(a.source)&&a.type==='loan');
  return account?{id,name:account.displayName||account.name,balance:account.balance,balanceUnavailable:!!account.balanceUnavailable,currency:account.currency||'USD'}:{id,unavailable:true};
 }
 
@@ -308,6 +308,6 @@ export function personalChecking(accounts,household={}){
  return household.personalAccountId?checking.find(a=>a.id===household.personalAccountId)||null:checking.length===1?checking[0]:null;
 }
 export function personalCheckingTransactions(transactions,account){
- return ['plaid','simplefin'].includes(account?.source)?transactions.filter(t=>transactionAccountId(t)===account.id):[];
+ return ['plaid','simplefin','lunchflow'].includes(account?.source)?transactions.filter(t=>transactionAccountId(t)===account.id):[];
 }
 
