@@ -42,7 +42,7 @@ export function runtime(env,fetcher=fetch){
  async function sessionIdentity(req){if(!configured)return null;const token=cookies(req).bearden;if(!token)return null;const id=hash(token),session=await first('SELECT expires FROM sessions WHERE hash=?',id);return session&&session.expires>Date.now()?await rawRead('auth-session:'+id,token.startsWith('v2.')?null:users.legacy):null;}
  async function authorized(req){return !!await sessionIdentity(req);}
 
- async function locked(fn){const id=random(),now=Date.now();const r=await run("INSERT INTO locks VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET owner=excluded.owner,expires=excluded.expires WHERE locks.expires < ?",users.lock(),id,now+300000,now);if(!r.meta?.changes)throw Error('A sync or save is already running. Try again in a moment.');try{return await fn();}finally{await run("DELETE FROM locks WHERE id=? AND owner=?",users.lock(),id);}}
+ async function locked(fn){const id=random(),now=Date.now();const r=await run("INSERT INTO locks VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET owner=excluded.owner,expires=excluded.expires WHERE locks.expires < ?",users.lock(),id,now+300000,now);if(!r.meta?.changes)throw Object.assign(Error('A sync or save is already running. Try again in a moment.'),{code:'SYNC_BUSY'});try{return await fn();}finally{await run("DELETE FROM locks WHERE id=? AND owner=?",users.lock(),id);}}
  async function request(url,options={}){const r=await fetcher(url,{...options,signal:AbortSignal.timeout(15000)});let d;try{d=await r.json();}catch{throw Error('Provider response unreadable');}if(!r.ok){const error=Error(d.error_code||d.error?.status||'Provider request failed ('+r.status+')');error.code=d.error_code;throw error;}return d;}
  async function plaid(path,data){if(!env.PLAID_CLIENT_ID||!env.PLAID_SECRET)throw Error('Plaid is not configured');const mode=env.PLAID_ENV||'sandbox';if(!['sandbox','production'].includes(mode))throw Error('Invalid Plaid environment');return request(`https://${mode}.plaid.com${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:env.PLAID_CLIENT_ID,secret:env.PLAID_SECRET,...data})});}
  const microsoftToken=params=>exchangeMicrosoftToken(request,env.MICROSOFT_CLIENT_ID,env.MICROSOFT_CLIENT_SECRET,params);
@@ -270,7 +270,7 @@ export function runtime(env,fetcher=fetch){
  return {handle,sync,syncNextAccount,configured,encrypt,decrypt};
 }
 export default {
- async fetch(req,env){try{return await runtime(env).handle(req);}catch(e){return json({error:e.message||'Request failed'},400);}},
+ async fetch(req,env){try{return await runtime(env).handle(req);}catch(e){return json({error:e.message||'Request failed',...(e.code==='SYNC_BUSY'?{code:e.code}:{})},e.code==='SYNC_BUSY'?409:400);}},
  async scheduled(_event,env,ctx){const app=runtime(env);if(app.configured)ctx.waitUntil(app.syncNextAccount().catch(()=>{/* Connection errors are stored in the private status. Do not log tokens or payloads. */}));}
 };
 

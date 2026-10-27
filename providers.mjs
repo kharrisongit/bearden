@@ -61,8 +61,12 @@ const accountAmount=a=>['credit','loan','investment','brokerage'].includes(a.typ
 export function plaidAccountEntry(a,item,old,now=new Date().toISOString()){
  const raw=accountAmount(a);
  const known=typeof raw==='number'&&Number.isFinite(raw)&&Number.isSafeInteger(Math.round(raw*100));
+ const zeroUnconfirmed=a.type==='loan'&&known&&raw===0;
+ const lastPositive=old?.balance>0?old.balance:old?.lastPositiveBalance;
+ const saved=zeroUnconfirmed?lastPositive??0:old?.balance??0;
+ const usable=known&&!zeroUnconfirmed;
  const eligible=a.type==='depository'&&a.subtype==='checking'&&a.balances?.iso_currency_code==='USD';
- return {id:'plaid-'+a.account_id,itemId:item.id,name:a.name+(a.mask?' •'+a.mask:''),balance:known?Math.round(raw*100):(old?.balance??0),balanceUnavailable:!known,accountMissing:false,balanceSource:known?(a.balanceSource||'cached'):'saved',balanceUpdated:known?(a.balances?.last_updated_datetime||now):(old?.balanceUpdated||null),reportedCurrent:validBalance(a.balances?.current)?a.balances.current:null,reportedAvailable:validBalance(a.balances?.available)?a.balances.available:null,creditLimit:a.type==='credit'&&validBalance(a.balances?.limit)&&a.balances.limit>=0?Math.round(a.balances.limit*100):old?.creditLimit??null,balanceRetrieved:now,lastPositiveBalance:known&&raw>0?Math.round(raw*100):(old?.lastPositiveBalance??(old?.balance>0?old.balance:null)),include:eligible?(old?.include??true):false,source:'plaid',type:a.type,subtype:a.subtype,currency:a.balances?.iso_currency_code};
+ return {id:'plaid-'+a.account_id,itemId:item.id,name:a.name+(a.mask?' •'+a.mask:''),balance:usable?Math.round(raw*100):saved,balanceUnavailable:!usable||!!a.balanceConflict,zeroUnconfirmed,balanceWarning:zeroUnconfirmed?'Plaid returned $0 for this loan. The balance needs verification; this does not confirm payoff.':a.balanceConflict?'Plaid’s live loan balance was $0 but its cached principal was positive. Showing the cached amount until verified.':null,accountMissing:false,balanceSource:usable?(a.balanceSource||'cached'):'saved',balanceUpdated:usable?(a.balances?.last_updated_datetime||now):(zeroUnconfirmed?old?.lastPositiveBalanceUpdated||old?.balanceUpdated||null:old?.balanceUpdated||null),reportedCurrent:validBalance(a.balances?.current)?a.balances.current:null,reportedLiveCurrent:a.reportedLiveCurrent??null,reportedAvailable:validBalance(a.balances?.available)?a.balances.available:null,creditLimit:a.type==='credit'&&validBalance(a.balances?.limit)&&a.balances.limit>=0?Math.round(a.balances.limit*100):old?.creditLimit??null,balanceRetrieved:now,lastPositiveBalance:known&&raw>0?Math.round(raw*100):(old?.lastPositiveBalance??(old?.balance>0?old.balance:null)),lastPositiveBalanceUpdated:known&&raw>0?(a.balances?.last_updated_datetime||now):(old?.lastPositiveBalanceUpdated??(old?.balance>0?old.balanceUpdated:null)),include:eligible?(old?.include??true):false,source:'plaid',type:a.type,subtype:a.subtype,currency:a.balances?.iso_currency_code};
 }
 export async function bankAccounts(call,item,live=false){
  const read=async path=>{const result=await call(path,{access_token:item.token});if(!Array.isArray(result?.accounts)||result.accounts.some(a=>!a?.account_id))throw Error('Plaid returned an invalid account list');return result;};
@@ -76,13 +80,14 @@ export async function bankAccounts(call,item,live=false){
  if(!fresh&&!cached)throw liveError||cachedError;
  const byId=new Map((cached?.accounts||[]).map(a=>[a.account_id,{...a,balanceSource:'cached'}]));
  for(const a of fresh?.accounts||[]){
-  const fallback=byId.get(a.account_id),usable=validBalance(accountAmount(a));
+  const fallback=byId.get(a.account_id),conflict=a.type==='loan'&&a.balances?.current===0&&validBalance(fallback?.balances?.current)&&fallback.balances.current>0,usable=validBalance(accountAmount(a))&&!conflict;
   // Prefer a complete live amount over a cached available balance. For debt,
   // available credit must never stand in for the principal/current amount owed.
   const balances={...fallback?.balances,...a.balances};
   if(usable){balances.current=validBalance(a.balances?.current)?a.balances.current:null;balances.available=validBalance(a.balances?.available)?a.balances.available:null;balances.last_updated_datetime=a.balances?.last_updated_datetime;}
   if(!usable){for(const key of ['current','available'])if(!validBalance(balances[key])&&validBalance(fallback?.balances?.[key]))balances[key]=fallback.balances[key];balances.last_updated_datetime=fallback?.balances?.last_updated_datetime;}
-  byId.set(a.account_id,{...fallback,...a,balances,balanceSource:usable?'live':'cached'});
+  if(conflict){balances.current=fallback.balances.current;balances.last_updated_datetime=fallback.balances.last_updated_datetime;}
+  byId.set(a.account_id,{...fallback,...a,balances,balanceConflict:conflict,reportedLiveCurrent:validBalance(a.balances?.current)?a.balances.current:null,balanceSource:usable?'live':'cached'});
  }
  const accounts=[...byId.values()],fallbacks=accounts.filter(a=>a.balanceSource==='cached').length;
  if(liveError)item.balanceWarning='Live balance refresh unavailable ('+(liveError.code||liveError.message)+'); showing cached bank data.';

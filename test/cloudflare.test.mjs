@@ -419,3 +419,9 @@ test('both providers import a second profile’s transactions without reading or
  assert.equal((await f.app.handle(member.req('/api/simplefin/refresh',{}))).status,200);
  const data=await(await f.app.handle(member.req('/api/state'))).json();assert.equal(data.connections.transactions.length,2);assert.equal(data.state.accounts.length,2);assert.ok(data.connections.transactions.some(t=>t.name==='Member purchase'));assert.ok(data.connections.transactions.some(t=>t.name==='SimpleFIN purchase'));assert.deepEqual(f.get('connections'),owner);assert.ok(!JSON.stringify(data).includes('owner-secret'));f.db.close();
 });
+
+test('Worker marks lock contention as retryable without bypassing the active lock',async()=>{
+ const f=fixture();f.db.prepare('INSERT INTO locks VALUES(?,?,?)').run('sync','other',Date.now()+60000);
+ const response=await worker.fetch(f.req('/api/rent/refresh',{}),f.env),data=await response.json();
+ assert.equal(response.status,409);assert.equal(data.code,'SYNC_BUSY');assert.equal(f.db.prepare('SELECT owner FROM locks').get().owner,'other');f.db.close();
+});

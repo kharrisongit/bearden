@@ -6,7 +6,7 @@ test('loan balance uses principal, distinguishes missing from zero, retains last
  const loan={account_id:'loan',name:'ELGA Auto',type:'loan',balances:{current:1234.56,available:0,iso_currency_code:'USD'}};
  const item={id:'bank'};const entry=plaidAccountEntry(loan,item);assert.equal(entry.balance,123456);assert.equal(entry.include,false);
  for(const current of [null,undefined,NaN]){const missing=plaidAccountEntry({...loan,balances:{...loan.balances,current}},item,entry);assert.equal(missing.balance,123456);assert.equal(missing.balanceUnavailable,true);}
- const zero=plaidAccountEntry({...loan,balances:{...loan.balances,current:0}},item,entry);assert.equal(zero.balance,0);assert.equal(zero.balanceUnavailable,false);
+ const zero=plaidAccountEntry({...loan,balances:{...loan.balances,current:0}},item,entry);assert.equal(zero.balance,123456);assert.equal(zero.reportedCurrent,0);assert.equal(zero.zeroUnconfirmed,true);assert.equal(zero.balanceUnavailable,true);
 });
 test('manual refresh requests live balance and exposes cached fallback',async()=>{
  const calls=[],item={token:'private'};await bankAccounts(async path=>{calls.push(path);return {accounts:[]};},item,true);assert.deepEqual(calls,['/accounts/balance/get','/accounts/get']);

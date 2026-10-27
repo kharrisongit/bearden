@@ -19,7 +19,7 @@ export function resolveDebtDetails({card,primary=null,backup=null,issuers=[],sta
   const item=items.find(item=>item.id===bank.itemId),updated=bank.balanceUpdated||bank.balanceRetrieved||null;
   const stale=!!bank.balanceUnavailable||!!item?.balanceError||!timestamp(updated)||now-timestamp(updated)>48*3600000;
   const source=(bank.source==='simplefin'?'SimpleFIN':'Plaid')+(i?' backup':'');
-  const value=cents(bank.balance);
+  const value=bank.zeroUnconfirmed&&!(bank.balance>0)?null:cents(bank.balance);
   // ELGA and other institutions can return an unconfirmed zero during outages.
   const corroboratedZero=manual.balance===0||statement?.balance===0&&!statement.paymentStatus&&timestamp(statement.receivedAt)>now-62*86400000||banks.some(a=>a.id!==bank.id&&!a.balanceUnavailable&&a.balance===0&&a.currency==='USD'&&timestamp(a.balanceUpdated||a.balanceRetrieved)>now-48*3600000);
   if(value!==0||corroboratedZero)push('balance',value,source,updated,stale,stale?4:i?1:0);
@@ -72,3 +72,29 @@ export function resolveDebtConnections(planner,accounts,issuers,cards,statements
  }));
 }
 
+
+// Redirect only verified provider-ID aliases; labels never establish identity.
+export function remapConnectedAccountReferences(planner,accounts){
+ const pairs=accounts.filter(a=>a.source==='simplefin').flatMap(a=>(a.identityAliases||[]).map(id=>[id,a.id]));
+ const aliases=new Map(pairs.filter(([alias,id])=>!accounts.some(a=>a.id===alias)&&!pairs.some(([other,target])=>other===alias&&target!==id)));
+ if(!aliases.size)return planner;
+ function translate(value){
+  if(aliases.has(value))return aliases.get(value);
+  if(value.startsWith('[')){try{const array=JSON.parse(value);if(Array.isArray(array))return JSON.stringify(array.map(v=>typeof v==='string'?translate(v):v));}catch{}}
+  return value;
+ }
+ function remap(value){
+  if(typeof value==='string')return translate(value);
+  if(Array.isArray(value))return value.map(remap);
+  if(value&&typeof value==='object'){
+   const next={};
+   // The retained account's explicit choices win when both aliases were edited.
+   for(const [key,v]of Object.entries(value).sort(([a],[b])=>Number(translate(a)!==a)-Number(translate(b)!==b))){
+    const dest=translate(key);if(!Object.hasOwn(next,dest))Object.defineProperty(next,dest,{value:remap(v),enumerable:true,writable:true,configurable:true});
+   }
+   return next;
+  }
+  return value;
+ }
+ const next=remap(planner);return JSON.stringify(next)===JSON.stringify(planner)?planner:next;
+}
