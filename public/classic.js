@@ -1959,13 +1959,26 @@ function toggleChecked(paycheckNum, checked){
   calculate();
 }
 
-// Unchecks every paycheck without touching balances, budget, income, or
-// savings — just gives you a clean slate to re-check things off from.
+// Restart the simulation from the saved plan, including choices on later
+// paychecks and Slice selections hidden underneath a Squash.
 function resetCheckedPaychecks(){
-  if(!confirm('Uncheck all paychecks? This clears paycheck checkoffs and recalculates your progress. Your income, budget, and accounts stay saved.'))return;
+  if(!confirm('Reset the paycheck simulation? This clears checkoffs, all Slice / Squash choices, paycheck-specific edits, bonuses, and one-time expenses. Your saved income, budget, accounts, and savings goals stay.'))return;
   const section = document.getElementById('schedulePlanSection');
   checkedPaychecks = {};
+  paycheckSlices = {};
+  paycheckSquashes = {};
+  paycheckOverrides = {};
+  savingsContributionOverrides = {};
+  budgetItemOverrides = {};
+  accountPaymentOverrides = {};
+  appliedBonuses = {};
+  extraExpenses = {};
+  extraExpenseIdCounter = 0;
+  bonusInputOpenForPaycheck = null;
+  extraExpenseInputOpenForPaycheck = null;
   window.debtPaymentHistory={};window.debtInterestHistory={};
+  clearTimeout(saveDebounceTimer);
+  performSaveAppState(); // Save the reset before the animation can delay it.
   if (section) {
     section.classList.remove('schedule-resetting');
     void section.offsetHeight; // restart the animation if it's already mid-play
@@ -7010,4 +7023,3 @@ document.getElementById('addDebtPaymentForm').onsubmit=async event=>{
   await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('addDebtPaymentDialog').close();
  }catch(error){accountPaymentOverrides=before;paycheckSlices=slices;paycheckSquashes=squashes;calculate();clearTimeout(saveDebounceTimer);status.textContent=error.message;}finally{button.disabled=false;}
 };
-
