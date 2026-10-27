@@ -153,3 +153,28 @@ test('single and annual reclaims use different saved contribution amounts for ea
  assert.equal(billsReclaimPlan(f,start,{...options,contribution:undefined}).status,'unavailable');
  assert.equal(singleReclaimPlan(f,start,{...singleOptions,amount:undefined}).status,'unavailable');
 });
+
+test('annual deposits cover the deepest later gap, not only the first $20.16 dip',()=>{
+ const f=longLedger(100000,[{date:'2027-02-01',delta:-26516},{date:'2027-03-01',delta:100000},{date:'2027-08-01',delta:200000},{date:'2028-09-01',delta:-135000}]);
+ const opts={...options,buffer:0,personalContribution:75500,spouseContribution:75500,spouseStart:'2026-01-09'},copy=structuredClone(f),r=billsReclaimPlan(f,start,opts);
+ assert.deepEqual(r.firstShortfall,{date:'2027-02-01',balance:-2016});assert.equal(r.low,-63516);assert.equal(r.lowDate,'2028-09-01');assert.equal(r.withoutAtLow,238484);
+ assert.ok(r.baselineLow>0);assert.equal(r.impact.kind,'created');assert.equal(r.depositPlan.safe,true);assert.equal(r.depositPlan.additionalFunding,63516);
+ assert.deepEqual(r.depositPlan.deposits.map(d=>[d.date,d.amount]),[['2027-01-31',2016],['2027-07-29',51000],['2028-08-31',10500]]);
+ assert.equal(r.depositPlan.lowAfterReclaim,0);assert.equal(r.depositPlan.netReclaim,238484);assert.equal(r.depositPlan.schedule.reduce((sum,d)=>sum+d.amount,0),302000);
+ const saved={...f,rows:[...f.rows,...r.depositPlan.deposits.map(d=>({date:d.date,delta:d.amount,type:'extra-deposit'}))]};
+ const again=billsReclaimPlan(saved,start,opts);assert.equal(again.safe,true);assert.equal(again.depositPlan,null);assert.equal(again.total,302000);assert.deepEqual(f,copy);
+});
+
+test('annual comparison distinguishes an unchanged scheduling gap from one made worse by reclaims',()=>{
+ const timing=longLedger(10000,[{date:'2026-11-02',delta:-15000},{date:'2026-12-01',delta:500000}]);
+ const unchanged=billsReclaimPlan(timing,start,options);assert.equal(unchanged.low,-5000);assert.equal(unchanged.baselineLow,-5000);assert.equal(unchanged.withoutAtLow,-5000);assert.equal(unchanged.impact,null);
+ const repaired=coverBillShortfalls(timing,start,{buffer:10000,minimum:10000});assert.equal(billsReclaimPlan(repaired.forecast,start,options).safe,true);
+ const worsened=billsReclaimPlan(longLedger(100000,[{date:'2027-02-01',delta:-150000}]),start,{...options,spouseStart:'2026-01-09'});
+ assert.equal(worsened.baselineLow,-50000);assert.equal(worsened.low,-350000);assert.equal(worsened.withoutAtLow,-50000);assert.equal(worsened.impact.kind,'worsened');
+});
+
+test('annual funding preserves a cushion and includes a deposit needed immediately',()=>{
+ const date='2027-01-29',f={opening:5000,end:'2028-08-01',rows:[]};
+ const r=billsReclaimPlan(f,date,{...options,end:'2027-08-01',buffer:10000});
+ assert.equal(r.depositPlan.safe,true);assert.equal(r.depositPlan.deposits[0].date,date);assert.equal(r.depositPlan.additionalFunding,305000);assert.equal(r.depositPlan.lowAfterReclaim,10000);assert.equal(r.depositPlan.netReclaim,-5000);
+});

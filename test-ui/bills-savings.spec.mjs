@@ -3,12 +3,12 @@ import {readFileSync} from 'node:fs';
 import {runtime} from '../cloudflare/worker.mjs';
 import {blank} from '../public/engine.mjs';
 
-async function fixture(page,{unavailable=false,blockSavings=false,holdSavings=false,shortfall=false,opening=500000,personalAmount=75000,spouseAmount=75000}={}){
+async function fixture(page,{unavailable=false,blockSavings=false,holdSavings=false,shortfall=false,opening=500000,personalAmount=75000,spouseAmount=75000,billAmount=200000,extraBills=[]}={}){
  let releaseSavings;const savingsWait=holdSavings?new Promise(resolve=>releaseSavings=resolve):null;
  await page.clock.setFixedTime(new Date('2026-10-27T16:00:00Z'));
  const accounts=[{id:'lunchflow-personal',name:'Personal checking',balance:120025},{id:'lunchflow-bills',name:'Bills checking',balance:shortfall?199000:opening,balanceUnavailable:unavailable}].map(a=>({...a,source:'lunchflow',type:'depository',subtype:'checking',currency:'USD',include:true,balanceUpdated:'2026-10-27T15:00:00Z'}));
- const planner={accountVisibility:{'lunchflow-personal':true,'lunchflow-bills':true},manual:[{id:'rent',name:'Rent',date:'2026-11-01',amount:200000,repeat:'monthly',source:'manual',billKind:'rent'}],billFunding:{rent:'shared'},household:{enabled:true,personalAccountId:accounts[0].id,billsAccountId:accounts[1].id,personalAmount,spouseAmount,spouseStartDate:'2026-11-06',spouseRepeat:'biweekly'}};
- let tracker={state:{version:1,values:{'app-state':JSON.stringify({cards:[],budgetItems:[],budgetSetupVersion:2,startDate:'2026-11-06',takeHome:'2000',savingsGoals:[]}),onboarding:JSON.stringify({completed:true}),'income-planner':JSON.stringify(planner)}},revision:0};
+ const planner={accountVisibility:{'lunchflow-personal':true,'lunchflow-bills':true},manual:[{id:'rent',name:'Rent',date:'2026-11-01',amount:billAmount,repeat:'monthly',source:'manual',billKind:'rent'},...extraBills],billFunding:{rent:'shared',...Object.fromEntries(extraBills.map(b=>[b.id,'shared']))},household:{enabled:true,personalAccountId:accounts[0].id,billsAccountId:accounts[1].id,personalAmount,spouseAmount,spouseStartDate:'2026-11-06',spouseRepeat:'biweekly'}};
+ let failSave=false;let tracker={state:{version:1,values:{'app-state':JSON.stringify({cards:[],budgetItems:[],budgetSetupVersion:2,startDate:'2026-11-06',takeHome:'2000',savingsGoals:[]}),onboarding:JSON.stringify({completed:true}),'income-planner':JSON.stringify(planner)}},revision:0};
  // Browser requests go through the production allowlist, not straight to disk.
  const app=runtime({APP_URL:'https://bearden.test',ASSETS:{fetch:async req=>{
   const path=new URL(req.url).pathname,name=path==='/'?'index.html':path.slice(1);
@@ -21,6 +21,7 @@ async function fixture(page,{unavailable=false,blockSavings=false,holdSavings=fa
   if(path==='/api/config')return route.fulfill({json:{authenticated:true,accountId:'fixture',bankProvider:'lunchflow'}});
   if(path==='/api/banks/retire')return route.fulfill({json:{ok:true}});
   if(path==='/api/classic'){
+   if(request.method()==='POST'&&failSave)return route.fulfill({status:500,json:{error:'Save failed. Try again.'}});
    if(request.method()==='POST')tracker={state:request.postDataJSON().state,revision:tracker.revision+1};
    return route.fulfill({json:request.method()==='GET'?tracker:{revision:tracker.revision}});
   }
@@ -31,7 +32,7 @@ async function fixture(page,{unavailable=false,blockSavings=false,holdSavings=fa
  });
  await page.goto('https://bearden.test/');await page.evaluate(()=>window.classicReady);
  await expect(page.locator('#configureHousehold')).toBeEnabled();
- return {releaseSavings,get planner(){return JSON.parse(tracker.state.values['income-planner']);}};
+ return {releaseSavings,failSave:value=>failSave=value,get planner(){return JSON.parse(tracker.state.values['income-planner']);}};
 }
 
 for(const [width,theme]of [[390,'light'],[320,'dark']])test(`${width}px ${theme}: accounts load and the separate tools protect a year beyond both second reclaims`,async({page})=>{
@@ -77,7 +78,7 @@ test('closing while the calculator loads cancels the pending result',async({page
  const data=await fixture(page,{holdSavings:true});await page.locator('#nav-accounts').click();await page.locator('#openBillsReclaim').click();
  await page.locator('#billsReclaimMode').selectOption('annual');const requested=page.waitForRequest(/bills-savings.mjs/);await page.locator('#checkBillsReclaim').click();await requested;
  await page.locator('#closeBillsReclaim').click();data.releaseSavings();
- await page.evaluate(()=>import('/bills-savings.mjs?v=reclaim-impact1'));
+ await page.evaluate(()=>import('/bills-savings.mjs?v=reclaim-funding1'));
  await page.locator('#openBillsReclaim').click();await expect(page.locator('#billsReclaimResult')).toBeHidden();await expect(page.locator('#billsReclaimStatus')).toHaveText('');
  await page.locator('#checkBillsReclaim').click();await expect(page.locator('#billsReclaimResult')).toContainText('Yes — $1,500.00 each fits');
 });
@@ -127,4 +128,29 @@ test('single reclaim explains new gaps, offers a later date, and keeps the mobil
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await result.scrollIntoViewIfNeeded();await page.screenshot({path:'test-results/reclaim-impact-mobile.png',fullPage:true});
  await page.locator('[data-reclaim-date]').click();await expect(page.locator('#billsReclaimDate')).toHaveValue('2026-11-06');await expect(result).toContainText('Yes — $750.00 fits on Nov 6, 2026');await expect(result).not.toContainText('You need');
  await page.locator('#billsReclaimBuffer').fill('200');await expect(result).toBeHidden();await page.locator('#checkBillsReclaim').click();await expect(result).toBeVisible();expect(errors).toEqual([]);
+});
+
+test('annual reclaim schedules every required deposit, recalculates, and does not duplicate them after reload',async({page})=>{
+ await page.setViewportSize({width:390,height:844});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const extras=[{id:'fee1',name:'Extra bill',date:'2027-05-01',amount:30000,repeat:'once',source:'manual',billKind:'utility'},{id:'fee2',name:'Later bill',date:'2027-08-01',amount:10000,repeat:'once',source:'manual',billKind:'utility'}];
+ const data=await fixture(page,{opening:310000,billAmount:300000,extraBills:extras});
+ await page.locator('#nav-accounts').click();await page.locator('#openBillsReclaim').click();await page.locator('#billsReclaimMode').selectOption('annual');await page.locator('#billsReclaimBuffer').fill('0');await page.locator('#checkBillsReclaim').click();
+ const result=page.locator('#billsReclaimResult'),option=result.locator('.reclaim-funded-option');
+ await expect(result).toContainText('First projected shortfall');await expect(result).toContainText('Deepest shortfall with full reclaims: -$300.00');await expect(result).toContainText('The reclaim creates this deepest shortfall');
+ await expect(option).toContainText('Extra funding: $300.00');await expect(option).toContainText('Net kept after that funding: $2,700.00');await expect(option.locator('[data-plan-extra]')).toHaveCount(1);
+ await option.locator('[data-extra-source]').selectOption('other');data.failSave(true);await option.locator('[data-plan-extra]').click();await expect(page.locator('#billsReclaimStatus')).toContainText('Save failed');expect(data.planner.household.additionalDeposits).toBeUndefined();
+ data.failSave(false);await option.locator('[data-plan-extra]').click();await expect(result).toContainText('Yes — $1,500.00 each fits this forecast after the planned extra deposits');await expect(result.locator('[data-plan-extra]')).toHaveCount(0);
+ expect(data.planner.household.additionalDeposits.reduce((sum,d)=>sum+d.amount,0)).toBe(30000);expect(data.planner.household.additionalDeposits.every(d=>d.source==='other'&&!d.received)).toBe(true);const count=data.planner.household.additionalDeposits.length;
+ await page.locator('#checkBillsReclaim').click();await expect(result).toContainText('Yes —');expect(data.planner.household.additionalDeposits).toHaveLength(count);
+ await page.reload();await expect(page.locator('#configureHousehold')).toBeEnabled();await page.locator('#nav-accounts').click();await page.locator('#openBillsReclaim').click();await page.locator('#billsReclaimMode').selectOption('annual');await page.locator('#billsReclaimBuffer').fill('0');await page.locator('#checkBillsReclaim').click();
+ await expect(result).toContainText('Yes —');await expect(result.locator('[data-plan-extra]')).toHaveCount(0);expect(data.planner.household.additionalDeposits).toHaveLength(count);expect(errors).toEqual([]);
+});
+
+test('single reclaim can schedule its extra deposit and an existing timing gap is not blamed on reclaiming',async({page})=>{
+ await page.setViewportSize({width:320,height:844});const data=await fixture(page,{opening:250000});await page.locator('#nav-accounts').click();await page.locator('#openBillsReclaim').click();await page.locator('#checkBillsReclaim').click();
+ await expect(page.locator('.reclaim-funded-option')).toContainText('Extra funding: $350.00');await page.locator('.reclaim-funded-option [data-plan-extra]').click();await expect(page.locator('#billsReclaimResult')).toContainText('Yes — $750.00 fits');expect(data.planner.household.additionalDeposits.reduce((n,d)=>n+d.amount,0)).toBe(35000);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.reload();await expect(page.locator('#configureHousehold')).toBeEnabled();
+ await page.unrouteAll({behavior:'wait'});await fixture(page,{shortfall:true});await page.locator('#nav-accounts').click();await page.locator('#openBillsReclaim').click();await page.locator('#billsReclaimMode').selectOption('annual');await page.locator('#checkBillsReclaim').click();
+ await expect(page.locator('#billsReclaimResult')).toContainText('This deepest shortfall already exists without reclaiming.');await expect(page.locator('#billsReclaimResult')).toContainText('Those gaps are not caused by reclaiming.');await expect(page.locator('#billsReclaimResult')).toContainText('Yes — $1,500.00 each fits this forecast after the planned extra deposits');
 });

@@ -50,17 +50,17 @@ export function singleReclaimPlan(f,start,{date=start,amount,buffer=10000,search
  const rows=f.rows.filter(r=>r.date>=start&&r.date<=f.end).map(r=>({...r}));
  if(rows.some(r=>!validDate(r.date)||!Number.isSafeInteger(r.delta)))return unavailable;
  rows.sort((a,b)=>a.date.localeCompare(b.date)||cashOrder(a)-cashOrder(b));
- const withdrawal=on=>({date:on,delta:-amount,type:'reclaim',name:'One-time reclaim'});
+ const withdrawal=on=>({date:on,delta:-amount,type:'reclaim',name:'One-time reclaim',reclaimPreview:true});
  function compare(forecast,on){
   const candidate=withdrawal(on),events=[...forecast.rows,candidate].sort((a,b)=>a.date.localeCompare(b.date)||cashOrder(a)-cashOrder(b));
   let before=forecast.opening,after=before,taken=false,lowAfter=null,impact=null;
   const baseline={low:before,lowDate:start,firstShortfall:before<0?{date:start,balance:before}:null};
-  const requested={...baseline};
+  const requested={...baseline,withoutAtLow:before};
   for(const event of events){
    if(event===candidate){after-=amount;taken=true;}else{before+=event.delta;after+=event.delta;}
    if(!Number.isSafeInteger(before)||!Number.isSafeInteger(after))return null;
    for(const [state,balance]of [[baseline,before],[requested,after]]){
-    if(balance<state.low){state.low=balance;state.lowDate=event.date;}
+    if(balance<state.low){state.low=balance;state.lowDate=event.date;if(state===requested)state.withoutAtLow=before;}
     if(balance<0&&!state.firstShortfall)state.firstShortfall={date:event.date,balance};
    }
    if(taken){
@@ -86,7 +86,9 @@ export function singleReclaimPlan(f,start,{date=start,amount,buffer=10000,search
  const repair=coverBillShortfalls({...funding.forecast,rows:[...funding.forecast.rows,withdrawal(date)]},start,{buffer,minimum:buffer});
  if(!repair)return unavailable;
  const additionalDeposits=repair.deposits,additionalFunding=additionalDeposits.reduce((sum,d)=>sum+d.amount,0);
- return {status:'ready',...raw,safe:funded.safe,fundedLow:funded.lowAfter,date,amount,buffer,searchEnd,checkedThrough:f.end,funding,maxOnDate,earliest,additionalDeposits,additionalFunding,netReclaim:amount-additionalFunding,netAfterAllFunding:amount-additionalFunding-funding.extraFunding};
+ const afterDeposits=compare({...repair.forecast,rows:repair.forecast.rows.filter(r=>!r.reclaimPreview)},date);
+ if(!afterDeposits)return unavailable;
+ return {status:'ready',...raw,safe:funded.safe,fundedLow:funded.lowAfter,date,amount,buffer,searchEnd,checkedThrough:f.end,funding,maxOnDate,earliest,additionalDeposits,additionalFunding,depositPlan:{safe:afterDeposits.safe,lowAfterReclaim:afterDeposits.lowAfter},netReclaim:amount-additionalFunding,netAfterAllFunding:amount-additionalFunding-funding.extraFunding};
 }
 
 // All amounts are integer cents. The supplied ledger extends past the last
@@ -142,25 +144,43 @@ export function billsReclaimPlan(f,start,{end,periodStart=start,buffer=10000,per
  const events=[...rows,...planned].sort((a,b)=>a.date.localeCompare(b.date)||rank(a)-rank(b));
  const scaleMax=Math.max(personalContribution,spouseContribution);
  const scaled=(amount,scale)=>Number(BigInt(amount)*BigInt(scale)/BigInt(scaleMax));
- function evaluate(scale){
+ function evaluate(scale,forecast=f){
   const mine=scaled(personalContribution,scale),spouseAmount=scaled(spouseContribution,scale);
-  let balance=f.opening,low=f.opening,reclaimed=0,lowAfterReclaim=null,firstShortfall=balance<0?{date:start,balance}:null,firstBelowBuffer=null;
+  let balance=forecast.opening,without=balance,low=balance,lowDate=start,withoutAtLow=balance,impact=null,reclaimed=0,lowAfterReclaim=null,firstShortfall=balance<0?{date:start,balance}:null,firstBelowBuffer=null;
   const schedule=[];
-  for(const event of events){
+  const sequence=forecast===f?events:[...forecast.rows,...planned].sort((a,b)=>a.date.localeCompare(b.date)||rank(a)-rank(b));
+  for(const event of sequence){
    const withdrawal=event.reclaim?(event.mine?mine:0)+(event.spouse?spouseAmount:0):0;
    balance+=event.reclaim?-withdrawal:event.delta;
-   if(!Number.isSafeInteger(balance))return null;
-   reclaimed+=withdrawal;low=Math.min(low,balance);
-   if(reclaimed>0){lowAfterReclaim=lowAfterReclaim===null?balance:Math.min(lowAfterReclaim,balance);if(balance<buffer&&!firstBelowBuffer)firstBelowBuffer={date:event.date,balance};}
+   if(!event.reclaim)without+=event.delta;
+   if(!Number.isSafeInteger(balance)||!Number.isSafeInteger(without))return null;
+   reclaimed+=withdrawal;if(balance<low){low=balance;lowDate=event.date;withoutAtLow=without;}
+   if(reclaimed>0){
+    lowAfterReclaim=lowAfterReclaim===null?balance:Math.min(lowAfterReclaim,balance);if(balance<buffer&&!firstBelowBuffer)firstBelowBuffer={date:event.date,balance};
+    const kind=balance<0?(without<0?'worsened':'created'):balance<buffer&&without>=buffer?'cushion':null;
+    if(kind&&(!impact||impact.kind==='cushion'&&kind!=='cushion'))impact={kind,date:event.date,before:without,after:balance};
+   }
    if(balance<0&&!firstShortfall)firstShortfall={date:event.date,balance};
    if(event.reclaim)schedule.push({date:event.date,mine:event.mine?mine:0,spouse:event.spouse?spouseAmount:0,amount:withdrawal,balanceAfter:balance});
   }
-  return {safe:!firstShortfall&&!firstBelowBuffer,low,lowAfterReclaim,firstShortfall,firstBelowBuffer,schedule,total:reclaimed};
+  return {safe:!firstShortfall&&!firstBelowBuffer,low,lowDate,withoutAtLow,impact,endBalance:balance,lowAfterReclaim,firstShortfall,firstBelowBuffer,schedule,total:reclaimed};
  }
  const requested=evaluate(scaleMax),baseline=evaluate(0);
  if(!requested||!baseline)return unavailable;
  let low=0,high=scaleMax;
  while(low<high){const mid=Math.ceil((low+high)/2),result=evaluate(mid);if(result?.safe)low=mid;else high=mid-1;}
  const smaller=evaluate(low),safeMine=scaled(personalContribution,low),safeSpouse=scaled(spouseContribution,low);
- return {status:'ready',...requested,baselineLow:baseline.low,baselineShortfall:baseline.firstShortfall,personalContribution,spouseContribution,perPerson:personalContribution*2,spouseTotal:spouseContribution*2,safePerContribution:safeMine,safeSpouseContribution:safeSpouse,safePerPerson:safeMine*2,safeSpouseTotal:safeSpouse*2,safeTotal:smaller.total,safeSchedule:smaller.schedule,buffer,periodStart,end,checkedThrough:f.end};
+ let depositPlan=null;
+ if(!requested.safe){
+  const withdrawals=requested.schedule.map(r=>({date:r.date,delta:-r.amount,type:'reclaim',name:'Full contribution reclaim',reclaimPreview:true}));
+  const repair=coverBillShortfalls({...f,rows:[...rows,...withdrawals]},start,{buffer,minimum:buffer});
+  if(!repair)return unavailable;
+  // Re-evaluate the complete schedule with exactly the proposed deposits. The
+  // withdrawals in the repair ledger must not also be applied a second time.
+  const funded=evaluate(scaleMax,{...repair.forecast,rows:repair.forecast.rows.filter(r=>!r.reclaimPreview)});
+  if(!funded)return unavailable;
+  const additionalFunding=repair.deposits.reduce((sum,d)=>sum+d.amount,0);
+  depositPlan={safe:funded.safe,deposits:repair.deposits,additionalFunding,netReclaim:requested.total-additionalFunding,lowAfterReclaim:funded.lowAfterReclaim,schedule:funded.schedule};
+ }
+ return {status:'ready',...requested,depositPlan,baselineLow:baseline.low,baselineLowDate:baseline.lowDate,baselineEndBalance:baseline.endBalance,baselineShortfall:baseline.firstShortfall,personalContribution,spouseContribution,perPerson:personalContribution*2,spouseTotal:spouseContribution*2,safePerContribution:safeMine,safeSpouseContribution:safeSpouse,safePerPerson:safeMine*2,safeSpouseTotal:safeSpouse*2,safeTotal:smaller.total,safeSchedule:smaller.schedule,buffer,periodStart,end,checkedThrough:f.end};
 }
