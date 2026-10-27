@@ -1,5 +1,5 @@
 import {categorizeTransaction} from './transaction-categories.mjs?v=auto-categories1';
-import {transactionAccountId} from './transaction-links.mjs?v=shared-payments1';
+import {transactionAccountId} from './transaction-links.mjs?v=plaid-restore1';
 import {day} from './engine.mjs';
 import {matchesPayment,matchingPayments,paymentOwner,paymentTargets} from './transaction-links.mjs';
 export const transactionKey=t=>JSON.stringify([t.itemId,t.account_id,String(t.name||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()]);
@@ -51,7 +51,7 @@ function nextMonth(date){const d=new Date(date+'T12:00:00Z'),n=d.getUTCDate();d.
 // Posted outflows from the selected bills account, including tracked bills and debt payments.
 export function billsAccountSpending(transactions,account,today,rules={},links={},preferences={}){
  const start=day(today,-29),groups=new Map(),rows=[];
- if(!['lunchflow'].includes(account?.source))return {categories:[],total:0,rows};
+ if(!['plaid','lunchflow'].includes(account?.source))return {categories:[],total:0,rows};
  for(const t of transactions){
   if(transactionAccountId(t)!==account.id||t.pending||t.currency!=='USD'||!(t.amount>0)||!Number.isFinite(t.amount)||t.date<start||t.date>today)continue;
   const linked=links[paymentOwner(t,links)],rule=rules[transactionKey(t)],tracked=rule?.choice==='bill';

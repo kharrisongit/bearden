@@ -4,9 +4,9 @@ import {blank} from '../public/engine.mjs';
 
 async function fixture(page,{goals=true,empty=false,unavailable=false}={}){
  await page.clock.setFixedTime(new Date('2026-10-26T12:00:00Z'));
- const accounts=empty?[]:[{id:'plaid-personal',name:'Personal checking',type:'depository',subtype:'checking',source:'plaid',balance:999911,currency:'USD'},{id:'simplefin-bills',name:'Household bills checking',type:'depository',subtype:'checking',source:'simplefin',balance:75025,currency:'USD',balanceUnavailable:unavailable}];
+ const accounts=empty?[]:[{id:'plaid-personal',name:'Personal checking',type:'depository',subtype:'checking',source:'plaid',balance:999911,currency:'USD'},{id:'lunchflow-bills',name:'Household bills checking',type:'depository',subtype:'checking',source:'lunchflow',balance:75025,currency:'USD',balanceUnavailable:unavailable}];
  const manual=empty?[]:[{id:'rent',name:'Rent',date:'2026-10-01',amount:80000,billKind:'rent'},{id:'car',name:'Car payment',date:'2026-10-28',amount:30000,billKind:'car-payment'},{id:'electric',name:'Electric',date:'2026-10-29',amount:12500,billKind:'electric'},{id:'internet',name:'Internet',date:'2026-10-20',amount:6000,billKind:'phone-internet'},{id:'credit',name:'Card minimum',date:'2026-10-30',amount:5000,billKind:'credit-card'}].map(b=>({...b,repeat:'monthly',source:'manual'}));
- const planner={manual,paid:['rent:2026-10-01'],household:empty?{}:{enabled:false,personalAccountId:'plaid-personal',billsAccountId:'simplefin-bills'}};
+ const planner={manual,paid:['rent:2026-10-01'],household:empty?{}:{enabled:false,personalAccountId:'plaid-personal',billsAccountId:'lunchflow-bills'}};
  let tracker={state:{version:1,values:{'app-state':JSON.stringify({cards:[],budgetItems:[],budgetSetupVersion:2,startDate:'2026-11-06',takeHome:'1800',savingsGoals:goals?[{id:1,name:'Emergency',goal:1000,start:100,contribution:50}]:[],savingsGoalIdCounter:goals?1:0}),'income-planner':JSON.stringify(planner),onboarding:JSON.stringify({completed:true})}},revision:0};
  let failSavings=false;
  await page.route('https://bearden.test/**',async route=>{

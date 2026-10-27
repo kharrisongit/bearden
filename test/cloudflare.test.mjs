@@ -243,25 +243,31 @@ test('Gmail-only continuation never refreshes an unrelated bank connection',asyn
  const f=fixture(async()=>{throw Error('No providers should be called');});f.set('connections',{items:[{id:'bank',token:'bank',name:'ELGA'}],transactions:[],candidates:[],gmail:null});const r=await(await f.app.handle(f.req('/api/sync',{gmailOnly:true}))).json();assert.match(r.status,/No email/);assert.equal(f.get('connections').items[0].balancesUpdated,undefined);f.db.close();
 });
 
-test('SimpleFIN setup is private, encrypted, immediately loads balances, and reconnects without duplicating accounts',async()=>{
- const setup=Buffer.from('https://beta-bridge.simplefin.org/simplefin/claim/sample').toString('base64'),access='https://sf-private-user:sf-private-secret@beta-bridge.simplefin.org/simplefin';
- const f=fixture(async(url,options)=>{assert.equal(options.redirect,'manual');if(url.includes('/claim/'))return new Response(access);assert.ok(!url.includes('sf-private'));assert.match(options.headers.Authorization,/^Basic /);return Response.json({connections:[{conn_id:'i',name:'Indigo'}],accounts:[{id:'card',conn_id:'i',name:'Indigo',currency:'USD',balance:'-123.45','balance-date':Math.floor(Date.now()/1000)}]});});
- assert.equal((await f.app.handle(new Request(f.env.APP_URL+'/api/simplefin/connect',{method:'POST',body:JSON.stringify({token:setup})}))).status,401);
- assert.equal((await f.app.handle(f.req('/api/simplefin/connect',{token:setup},'https://evil.example'))).status,403);
- const connected=await f.app.handle(f.req('/api/simplefin/connect',{token:setup}));assert.equal(connected.status,200);assert.equal(f.get('connections').simplefin.accessUrl,access);
- assert.ok(!f.db.prepare('SELECT value FROM vault WHERE id=?').get('connections').value.includes('sf-private'));
- let publicState=await(await f.app.handle(f.req('/api/state'))).text();assert.ok(!publicState.includes('sf-private'));let data=JSON.parse(publicState);assert.equal(data.state.accounts.length,1);const id=data.state.accounts[0].id;assert.equal(data.connections.simplefin.connected,true);
- assert.equal((await f.app.handle(f.req('/api/simplefin/account',{id,kind:'credit',debtSign:'negative'}))).status,200);assert.equal(f.get('plan').state.accounts[0].balance,12345);
- assert.equal((await f.app.handle(f.req('/api/simplefin/connect',{token:setup}))).status,409);
- assert.equal((await f.app.handle(f.req('/api/simplefin/connect',{token:setup,replace:true}))).status,200);assert.equal(f.get('plan').state.accounts.length,1);assert.equal(f.get('plan').state.accounts[0].type,'credit');
- const member=privateSession(f);assert.equal((await(await f.app.handle(member.req('/api/state'))).json()).connections.simplefin,null);await assert.rejects(()=>f.app.handle(member.req('/api/simplefin/refresh',{})),/Connect SimpleFIN/);
- await f.app.handle(member.req('/api/simplefin/disconnect',{}));assert.equal(f.get('connections').simplefin.accessUrl,access);
- await f.app.handle(f.req('/api/simplefin/disconnect',{}));assert.equal(f.get('connections').simplefin,undefined);assert.equal(f.get('plan').state.accounts.length,0);f.db.close();
+test('bank cleanup preserves active Plaid and Lunch Flow accounts, links, and private credentials',async()=>{
+ const removed=[];const f=fixture(async(url,options)=>{assert.ok(url.endsWith('/item/remove'));removed.push(JSON.parse(options.body).access_token);return Response.json({});});
+ const state=blank();state.accounts=[{id:'plaid-a',source:'plaid',balance:10000},{id:'lunchflow-a',source:'lunchflow',balance:20000},{id:'simplefin-a',source:'simplefin',balance:30000}];
+ const planner={debtAccountLinks:{card:'plaid-a'},household:{personalAccountId:'plaid-a',billsAccountId:'lunchflow-a'},accountNames:{'plaid-a':'My bank'},transactionLinks:{rent:{accountId:'plaid-a',itemId:'active'}}};
+ const tracker={state:{version:1,values:{'income-planner':JSON.stringify(planner),'app-state':'{"cards":[]}'}},revision:7};f.set('classic',tracker);f.set('plan',{state,revision:2});
+ const item={id:'active',token:'active-secret',name:'Bank'},lunchflow={apiKey:'lunch-private',status:'Connected'};
+ f.set('connections',{items:[item],lunchflow,simplefin:{accessUrl:'https://old:secret@bridge.simplefin.org/simplefin'},transactions:[{transaction_id:'p',itemId:'active',date:'2026-10-27'},{transaction_id:'l',source:'lunchflow',date:'2026-10-27'},{transaction_id:'s',source:'simplefin',date:'2026-10-27'}],creditCards:[{accountId:'a',itemId:'active',balance:10000}],candidates:[],pendingBankRemovals:[item,{id:'old',token:'old-secret'}]});
+ assert.equal((await f.app.handle(f.req('/api/banks/retire',{}))).status,200);
+ assert.deepEqual(removed,['old-secret']);assert.deepEqual(f.get('connections').items,[item]);assert.deepEqual(f.get('connections').lunchflow,lunchflow);assert.equal(f.get('connections').creditCards.length,1);assert.equal(f.get('connections').transactions.length,2);assert.equal(f.get('connections').simplefin,undefined);
+ assert.deepEqual(f.get('classic'),tracker);assert.deepEqual(f.get('plan').state.accounts.map(a=>a.id),['plaid-a','lunchflow-a']);
+ const before=f.get('plan');await f.app.handle(f.req('/api/banks/retire',{}));assert.deepEqual(f.get('plan'),before);assert.deepEqual(removed,['old-secret']);
+ const publicState=await(await f.app.handle(f.req('/api/state'))).text();assert.doesNotMatch(publicState,/active-secret|lunch-private|old-secret/);f.db.close();
 });
-test('SimpleFIN failed initial fetch keeps its consumed token and scheduled refresh recovers',async()=>{
- let ready=false,calls=0;const access='https://u:p@beta-bridge.simplefin.org/simplefin',f=fixture(async url=>{if(url.includes('/claim/'))return new Response(access);calls++;return ready?Response.json({accounts:[]}):new Response('private upstream error',{status:503});});
- const setup=Buffer.from('https://beta-bridge.simplefin.org/simplefin/claim/sample').toString('base64');await f.app.handle(f.req('/api/simplefin/connect',{token:setup}));let c=f.get('connections');assert.equal(c.simplefin.accessUrl,access);assert.match(c.simplefin.status,/503/);
- ready=true;c.simplefin.nextSync=0;c.simplefin.lastAttempt=Date.now()-300001;f.set('connections',c);await f.app.sync();assert.equal(calls,4);assert.match(f.get('connections').simplefin.status,/Add financial institutions/);f.db.close();
+test('previously migrated profiles keep new Plaid links on saves and retired SimpleFIN stays unavailable',async()=>{
+ const f=fixture();f.set('connections',{items:[{id:'new-bank',name:'Bank',token:'new-secret'}],bankProvidersRetired:1,retiredBankItemIds:['old-bank'],transactions:[],candidates:[]});
+ const planner={debtAccountLinks:{card:'plaid-new'},transactionLinks:{rent:{accountId:'plaid-new',itemId:'new-bank'}},household:{personalAccountId:'plaid-new'}};
+ const state={version:1,values:{'income-planner':JSON.stringify(planner)}};
+ assert.equal((await f.app.handle(f.req('/api/classic',{state,revision:0}))).status,200);assert.deepEqual(f.get('classic').state,state);
+ const plan=blank();plan.accounts=[{id:'plaid-new',source:'plaid',name:'Checking',balance:12300,include:true}];
+ assert.equal((await f.app.handle(f.req('/api/state',{state:plan,revision:0}))).status,200);assert.equal(f.get('plan').state.accounts[0].id,'plaid-new');
+ await f.app.handle(f.req('/api/banks/retire',{}));assert.deepEqual(f.get('classic').state,state);assert.equal(f.get('connections').items.length,1);
+ assert.equal((await f.app.handle(f.req('/api/simplefin/connect',{token:'retired'}))).status,410);
+ assert.equal((await f.app.handle(new Request(f.env.APP_URL+'/api/plaid/link',{method:'POST'}))).status,401);
+ assert.equal((await f.app.handle(f.req('/api/plaid/link',{},'https://other.example'))).status,403);
+ const config=await(await f.app.handle(f.req('/api/config'))).json();assert.equal(config.plaidConfigured,true);assert.deepEqual(config.bankProviders,['lunchflow','plaid']);f.db.close();
 });
 
 import {fakeSunBrowser} from './helpers/sun-browser.mjs';
@@ -408,16 +414,16 @@ test('empty initial Plaid history is labelled preparing and retried shortly inst
 test('both providers import a second profile’s transactions without reading or changing the original profile',async()=>{
  const today=new Date().toISOString().slice(0,10),stamp=Math.floor(Date.now()/1000)-60;
  const f=fixture(async(url,options)=>{
-  if(url.includes('simplefin.org'))return Response.json({accounts:[{id:'sf-account',conn_id:'sf-bank',name:'Checking',currency:'USD',balance:'50.00','balance-date':stamp,transactions:[{id:'sf-tx',posted:stamp,amount:'-8.00',description:'SimpleFIN purchase'}]}]});
+  if(url.includes('lunchflow.app')){assert.equal(options.headers['x-api-key'],'member-lunchflow-key');if(url.endsWith('/accounts'))return Response.json({accounts:[{id:1,name:'Checking',currency:'USD'}]});if(url.endsWith('/balance'))return Response.json({balance:{amount:50,currency:'USD'}});return Response.json({transactions:[{id:'lf-tx',accountId:1,date:today,amount:-8,currency:'USD',description:'Lunch Flow purchase'}],total:1});}
   assert.equal(JSON.parse(options.body).access_token,'member-bank-token');
   if(url.includes('/accounts/'))return Response.json({accounts:[{account_id:'member-account',name:'Checking',type:'depository',subtype:'checking',balances:{current:100,iso_currency_code:'USD'}}]});
   return Response.json({added:[{transaction_id:'member-tx',account_id:'member-account',date:today,amount:12,pending:false,name:'Member purchase',iso_currency_code:'USD'}],modified:[],removed:[],next_cursor:'done',has_more:false});
  });const member=privateSession(f),key='user:'+member.identity.scope+':connections';
  const owner={items:[{id:'owner-bank',token:'owner-secret'}],transactions:[{transaction_id:'owner-tx',date:today}],candidates:[]};f.set('connections',owner);
- f.set(key,{items:[{id:'member-bank',name:'Member bank',token:'member-bank-token'}],transactions:[],candidates:[],simplefin:{accessUrl:'https://member:private@bridge.simplefin.org/simplefin'}});
+ f.set(key,{items:[{id:'member-bank',name:'Member bank',token:'member-bank-token'}],transactions:[],candidates:[],lunchflow:{apiKey:'member-lunchflow-key'}});
  assert.equal((await f.app.handle(member.req('/api/bank/refresh',{itemId:'member-bank'}))).status,200);
- assert.equal((await f.app.handle(member.req('/api/simplefin/refresh',{}))).status,200);
- const data=await(await f.app.handle(member.req('/api/state'))).json();assert.equal(data.connections.transactions.length,2);assert.equal(data.state.accounts.length,2);assert.ok(data.connections.transactions.some(t=>t.name==='Member purchase'));assert.ok(data.connections.transactions.some(t=>t.name==='SimpleFIN purchase'));assert.deepEqual(f.get('connections'),owner);assert.ok(!JSON.stringify(data).includes('owner-secret'));f.db.close();
+ assert.equal((await f.app.handle(member.req('/api/lunchflow/refresh',{}))).status,200);
+ const data=await(await f.app.handle(member.req('/api/state'))).json();assert.equal(data.connections.transactions.length,2);assert.equal(data.state.accounts.length,2);assert.ok(data.connections.transactions.some(t=>t.name==='Member purchase'));assert.ok(data.connections.transactions.some(t=>t.name==='Lunch Flow purchase'));assert.deepEqual(f.get('connections'),owner);assert.ok(!JSON.stringify(data).includes('owner-secret'));f.db.close();
 });
 
 test('Worker marks lock contention as retryable without bypassing the active lock',async()=>{

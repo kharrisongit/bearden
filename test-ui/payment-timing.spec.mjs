@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';import {readFileSync} from 'node:fs
 async function fixture(page,{messages=[],debtKind='credit-card',accounts=[],incomePlanner={},connectionOverrides={},debtOverrides={},goalContribution=0}={}){
  let tracker={state:{version:1,values:{'app-state':JSON.stringify({cards:[{id:1,name:'Visa',debtKind,balance:10000,apr:0,min:46.15,monthlyMinimum:100,dueDate:'2026-11-30',...debtOverrides}],cardIdCounter:1,budgetItems:[],budgetSetupVersion:2,startDate:'2026-11-06',takeHome:'1000',payoffMethod:'minimum',savingsGoals:[{id:1,name:'Emergency',goal:1000,start:100,contribution:goalContribution}],savingsGoalIdCounter:1}),'income-planner':JSON.stringify(incomePlanner),onboarding:JSON.stringify({completed:true})}},revision:0};
  let releaseSync,startedSync;const started=new Promise(r=>startedSync=r),gate=new Promise(r=>releaseSync=r);let bankRefreshes=0;
- const emailCalls=[];const connections={items:[{id:'bank',name:'Bank'}],simplefin:{connected:true,status:'Connected'},emailConnected:true,mailAccounts:[{id:'mail',email:'person@hotmail.com',provider:'microsoft'}],sun:{enabled:true,connected:true,status:'Connected'},transactions:[],candidates:[],creditCards:[],gmailMessages:messages,recurringBills:[],...connectionOverrides};
+ const emailCalls=[];const connections={items:[{id:'bank',name:'Bank'}],lunchflow:{connected:true,status:'Connected'},emailConnected:true,mailAccounts:[{id:'mail',email:'person@hotmail.com',provider:'microsoft'}],sun:{enabled:true,connected:true,status:'Connected'},transactions:[],candidates:[],creditCards:[],gmailMessages:messages,recurringBills:[],...connectionOverrides};
  await page.route('https://bearden.test/**',async route=>{
   const req=route.request(),path=new URL(req.url()).pathname;
   if(path==='/api/config')return route.fulfill({json:{authenticated:true,email:'person@hotmail.com',accountId:'test',microsoftConfigured:true}});
@@ -11,7 +11,7 @@ async function fixture(page,{messages=[],debtKind='credit-card',accounts=[],inco
   if(path==='/api/gmail/search'){emailCalls.push(req.postDataJSON());return route.fulfill({json:connections});}
   if(path==='/api/state')return route.fulfill({json:{state:{...blank(),accounts},connections,revision:0}});
   if(path==='/api/bank/refresh'){if(++bankRefreshes===1){startedSync();await gate;}return route.fulfill({json:{status:'Bank refreshed.'}});}
-  if(['/api/simplefin/refresh','/api/sync','/api/rent/refresh'].includes(path))return route.fulfill({json:{status:'Updated.'}});
+  if(['/api/lunchflow/refresh','/api/sync','/api/rent/refresh'].includes(path))return route.fulfill({json:{status:'Updated.'}});
   if(path.startsWith('/api/'))return route.fulfill({status:404,json:{}});
   const name=path==='/'?'index.html':path.slice(1);try{return route.fulfill({body:readFileSync(new URL('../public/'+name,import.meta.url)),contentType:name.endsWith('.css')?'text/css':/\.(js|mjs)$/.test(name)?'text/javascript':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
@@ -21,7 +21,7 @@ async function fixture(page,{messages=[],debtKind='credit-card',accounts=[],inco
 test('optional car payments update debt totals and payoff, persist, and reserve each payment only once',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:390,height:844});await page.clock.setFixedTime(new Date('2026-10-26T12:00:00Z'));
  const car={id:'car',name:'Buick payment',billKind:'car-payment',amount:10000,date:'2026-11-12',repeat:'monthly',source:'manual'};
- const f=await fixture(page,{goalContribution:50,debtOverrides:{balance:100,min:46.15,monthlyMinimum:100},accounts:[{id:'simplefin-car',name:'Auto loan',type:'loan',source:'simplefin',balance:25000,currency:'USD'}],incomePlanner:{manual:[car],loanLinks:{car:'simplefin-car'},carLoanDetails:{car:{apr:0}}}});
+ const f=await fixture(page,{goalContribution:50,debtOverrides:{balance:100,min:46.15,monthlyMinimum:100},accounts:[{id:'lunchflow-car',name:'Auto loan',type:'loan',source:'lunchflow',balance:25000,currency:'USD'}],incomePlanner:{manual:[car],loanLinks:{car:'lunchflow-car'},carLoanDetails:{car:{apr:0}}}});
  await expect(page.locator('#carPaymentsInDebtToggle')).toBeEnabled();await expect(page.locator('#heroTotal')).toHaveText('$100.00');
  const before=await page.evaluate(()=>window.getDebtPlan().schedule[0]);
  await page.locator('#nav-settings').click();await expect(page.locator('#carPaymentsInDebtToggle')).not.toBeChecked();await page.locator('#carPaymentsInDebtToggle').check();
@@ -129,7 +129,7 @@ test('timing settings persist, debt due dates edit, and an extra payment can be 
 });
 test('connection badges sit beside headings, saving footer is absent, and dismissed sync stays dismissed',async({page})=>{
  await page.setViewportSize({width:390,height:844});const f=await fixture(page);await page.locator('#nav-settings').click();
- for(const id of ['classicBankStatus','simplefinStatus','classicEmailStatus','rentStatus']){
+ for(const id of ['classicBankStatus','lunchflowStatus','classicEmailStatus','rentStatus']){
   const badge=page.locator('#'+id);await expect(badge).toHaveText('Connected');expect(await badge.evaluate(el=>{const b=el.getBoundingClientRect(),h=el.previousElementSibling.getBoundingClientRect();return b.left>=h.right&&Math.abs(b.top+b.height/2-h.top-h.height/2)<2;})).toBe(true);
  }
  await expect(page.locator('#storageStatus')).toHaveCount(0);await page.locator('#classicSync').click();await f.started;await expect(page.locator('#connectionMessage')).toContainText('Refreshing');await page.locator('#dismissConnectionMessage').click();await expect(page.locator('#connectionMessage')).toBeEmpty();f.releaseSync();await expect(page.locator('#classicSync')).toBeEnabled();await expect(page.locator('#connectionMessage')).toBeEmpty();await expect(page.locator('#dismissConnectionMessage')).toBeHidden();
@@ -156,16 +156,16 @@ test('linking a payment receipt keeps the debt due date intact',async({page})=>{
 test('same-debt backup supplies current balance and email terms update future paychecks with a manual override',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));const receivedAt=new Date(Date.now()-3600000).toISOString();
  const statement={id:'mail:s',mailboxId:'mail',sender:'bank@example.com',receivedAt,balance:88000,minimum:12500,apr:26,dueDate:'2026-11-15'};
- const accounts=[{id:'plaid-a',itemId:'bank',name:'Visa primary',source:'plaid',type:'credit',currency:'USD',balance:0,balanceUnavailable:true,balanceUpdated:receivedAt},{id:'simplefin-b',itemId:'simplefin',name:'Visa backup',source:'simplefin',type:'credit',currency:'USD',balance:85000,balanceUpdated:receivedAt,include:false}];
+ const accounts=[{id:'plaid-a',itemId:'bank',name:'Visa primary',source:'plaid',type:'credit',currency:'USD',balance:0,balanceUnavailable:true,balanceUpdated:receivedAt},{id:'lunchflow-b',itemId:'lunchflow',name:'Visa backup',source:'lunchflow',type:'credit',currency:'USD',balance:85000,balanceUpdated:receivedAt,include:false}];
  const f=await fixture(page,{accounts,messages:[statement],incomePlanner:{debtAccountLinks:{1:'plaid-a'},emailLinks:{'debt:1':{mailboxId:'mail',sender:'bank@example.com',selectedMessage:statement}}}});
  await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();await page.locator('[data-edit-debt="1"]').first().click();
- await page.locator('[name="backupDebtAccount"]').selectOption('simplefin-b');await expect(page.locator('#debtSources')).toContainText('SimpleFIN backup');
+ await page.locator('[name="backupDebtAccount"]').selectOption('lunchflow-b');await expect(page.locator('#debtSources')).toContainText('Lunch Flow backup');
  await expect(page.locator('#debtEditorForm [name="minimum"]')).toHaveValue('125.00');await expect(page.locator('#debtEditorForm [name="apr"]')).toHaveValue('26');await expect(page.locator('#debtEditorForm [name="balance"]')).toHaveValue('10000');
  await page.getByRole('button',{name:'Save debt',exact:true}).click();await expect(page.locator('#debtEditor')).not.toBeVisible();
  await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().syncedDebtBalances[1]?.balance)).toBe(85000);
  await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().schedule[0].payments[0])).toBe(57.69);
- expect(JSON.parse(f.tracker.state.values['income-planner']).debtBackupLinks[1]).toBe('simplefin-b');
- await page.reload();await page.evaluate(()=>window.classicReady);await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();await page.locator('[data-edit-debt="1"]').first().click();await expect(page.locator('[name="backupDebtAccount"]')).toHaveValue('simplefin-b');
+ expect(JSON.parse(f.tracker.state.values['income-planner']).debtBackupLinks[1]).toBe('lunchflow-b');
+ await page.reload();await page.evaluate(()=>window.classicReady);await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();await page.locator('[data-edit-debt="1"]').first().click();await expect(page.locator('[name="backupDebtAccount"]')).toHaveValue('lunchflow-b');
  await page.locator('[name="autoDebtDetails"]').uncheck();await page.locator('#debtEditorForm [name="minimum"]').fill('90');await page.getByRole('button',{name:'Save debt',exact:true}).click();await expect(page.locator('#debtEditor')).not.toBeVisible();
  await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().schedule[0].payments[0])).toBe(41.54);expect(errors).toEqual([]);
 });

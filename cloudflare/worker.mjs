@@ -1,24 +1,28 @@
 import {retireLegacyBanks,retiredBankAccount,cleanRetiredBankLinks} from '../bank-retirement.mjs';
 import {connectLunchflow,publicLunchflow,syncLunchflow,configureLunchflowAccount} from '../lunchflow.mjs';
+import {applyPlaidLoanBalances,diagnosePlaid} from '../plaid-loans.mjs';
 import {billSharingAction} from '../bill-sharing.mjs';
 import {microsoftAuthorization,exchangeMicrosoftToken,microsoftUser,requireMicrosoftMail} from '../microsoft.mjs';
 import {rentPortalUrl} from '../rent-portal.mjs';
 import {rememberRentReadings} from '../public/rent-model.mjs';
 import {createSunBrowser,publicSun,sunMessage,syncSun,rentCredentials,rentAutoLoginSupported,SunError} from '../sun-rent.mjs';
+import {mergePlaidAccounts,bankAccounts,combineBankConnections} from '../providers.mjs';
 import {userScope,googleIdentity,microsoftIdentity,sessionMismatch} from '../user-scope.mjs';
 import {mailboxes,connectMailbox,connectMicrosoftMailbox,publicMail,forgetMailbox,scanMailbox,refreshSelectedEmail,mailboxWatches} from '../mailboxes.mjs';
 import {incomeFromTracker,incomeFromPlan} from '../income-preset.mjs';
+import {creditLinkOptions,syncCredit,publicCredit,publicItem} from '../credit.mjs';
 import {recurringBills,personalSpending} from '../recurring.mjs';
 import {validateClassic} from '../classic-state.mjs';
 // Serverless adapter. No persistent process, local disk, or paid Worker features.
 import {randomBytes,createHash,createCipheriv,createDecipheriv} from 'node:crypto';
 import {Buffer} from 'node:buffer';
 import {blank,validate,cents} from '../public/engine.mjs';
+import {applyTransactions} from '../providers.mjs';
 
 const random=()=>randomBytes(32).toString('base64url'),hash=s=>createHash('sha256').update(s).digest('hex');
 const sixHours=6*3600000;
 const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Permissions-Policy':'camera=(), microphone=(), geolocation=()',
- 'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' wss://live.browser.run; frame-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"};
+ 'Content-Security-Policy':"default-src 'self'; script-src 'self' https://cdn.plaid.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.plaid.com wss://live.browser.run; frame-src https://*.plaid.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"};
 function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{...headers,'Content-Type':'application/json'}});}
 function cookie(name,value,seconds){return `${name}=${value}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${seconds}`;}
 function cookies(req){return Object.fromEntries((req.headers.get('cookie')||'').split(';').map(x=>x.trim().split('=')).filter(x=>x.length===2));}
@@ -45,7 +49,7 @@ export function runtime(env,fetcher=fetch){
  async function plaid(path,data){if(!env.PLAID_CLIENT_ID||!env.PLAID_SECRET)throw Error('Plaid is not configured');const mode=env.PLAID_ENV||'sandbox';if(!['sandbox','production'].includes(mode))throw Error('Invalid Plaid environment');return request(`https://${mode}.plaid.com${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:env.PLAID_CLIENT_ID,secret:env.PLAID_SECRET,...data})});}
  const microsoftToken=params=>exchangeMicrosoftToken(request,env.MICROSOFT_CLIENT_ID,env.MICROSOFT_CLIENT_SECRET,params);
  const googleToken=data=>request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,...data})});
- function publicConnections(c){return {sun:publicSun(c.sun),lunchflow:publicLunchflow(c),items:[],creditCards:[],recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates.filter(x=>!x.dismissed),...publicMail(c,users.current().email),bankUpdated:c.bankUpdated,status:c.status};}
+ function publicConnections(c){return {sun:publicSun(c.sun),lunchflow:publicLunchflow(c),items:c.items.map(publicItem),creditCards:publicCredit(c),recurringBills:recurringBills(c.transactions),personalSpending:personalSpending(c.transactions),transactions:c.transactions.filter(t=>t.date>=new Date(Date.now()-365*86400000).toISOString().slice(0,10)).slice(0,1500),candidates:c.candidates.filter(x=>!x.dismissed),...publicMail(c,users.current().email),bankUpdated:c.bankUpdated,status:c.status};}
  async function claimRentLogin(now=Date.now()){
   const usage=await read('sun-browser-usage',{since:now,count:0,last:0});if(now-usage.since>=86400000){usage.since=now;usage.count=0;}
   if(usage.count>=6)throw new SunError('quota');if(now-usage.last<20000)throw new SunError('rate');
@@ -53,26 +57,53 @@ export function runtime(env,fetcher=fetch){
  }
  async function syncSunRent(c,force=false){return syncSun(c.sun,await read('sun-session',null),{check:s=>sunBrowser.check(s),login:async(...args)=>{await claimRentLogin();return sunBrowser.login(...args);}},value=>write('sun-session',value),{force,credentials:c.sun?.automaticLogin?await read('sun-credentials',null):null});}
  async function syncLunchflowBalances(c){return syncLunchflow(c,async()=>(await plan()).state.accounts,accounts=>updatePlan(s=>{s.accounts=accounts;}),fetcher);}
+
+ async function syncBalances(c,item,live=false){
+   item.balanceAttempt=Date.now();
+   try{const accounts=await bankAccounts(plaid,item,live);
+   await updatePlan(s=>{s.accounts=applyPlaidLoanBalances(mergePlaidAccounts(s.accounts,accounts,item),c,item);});
+  item.balancesUpdated=Date.now();delete item.balanceError;c.bankUpdated=new Date().toISOString();
+   }catch(error){item.balanceError=error.code||error.message;throw error;}
+ }
+ async function syncBank(c,item,force=false,transactionsOnly=false){
+  item.lastSyncAttempt=Date.now();
+  if(!transactionsOnly){await syncCredit(c,item,plaid,force);if(c.loanDetails?.some(l=>l.itemId===item.id))await updatePlan(s=>{s.accounts=applyPlaidLoanBalances(s.accounts,c,item);});}
+  // Stage a complete cursor update; manual refresh drains several pages at once.
+  if(!item.pending)item.pending={original:item.cursor||'',cursor:item.cursor||'',transactions:c.transactions.filter(t=>t.itemId===item.id)};
+  try{
+   if(!transactionsOnly&&(!item.balancesUpdated||Date.now()-item.balancesUpdated>=sixHours)){try{await syncBalances(c,item);}catch{/* Still sync transactions and liabilities. */}}
+   for(let n=0;n<(force||transactionsOnly?5:1);n++){
+    const page=await plaid('/transactions/sync',{access_token:item.token,cursor:item.pending.cursor,count:500});
+    item.pending.transactions=applyTransactions(item.pending.transactions,[page],item.id).filter(t=>t.date>=new Date(Date.now()-200*86400000).toISOString().slice(0,10)).slice(0,1500);item.pending.cursor=page.next_cursor;
+    if(page.has_more)continue;
+    const waiting=!page.next_cursor||page.transactions_update_status==='NOT_READY';
+    c.transactions=[...c.transactions.filter(t=>t.itemId!==item.id),...item.pending.transactions].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3000);item.cursor=item.pending.cursor;delete item.pending;delete item.transactionsError;item.transactionsUpdated=new Date().toISOString();item.transactionsLoading=waiting;item.nextSync=Date.now()+(waiting?900000:sixHours);
+    return item.name+(waiting?' is still preparing transaction history. BearDen will retry shortly.':' synced. Scheduled again in about 6 hours.')+(item.liabilitiesStatus?' '+item.liabilitiesStatus:'');
+   }
+   item.nextSync=Date.now()+900000;delete item.transactionsError;
+   return item.name+' transaction history is still loading. The next batch is ready to fetch.';
+  }catch(e){item.transactionsError=e.code||e.message;if(e.code==='TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION')delete item.pending;item.nextSync=Date.now()+900000;throw e;}
+ }
+
  async function syncGmail(c,account,query=null){
   const watches=mailboxWatches(await read('classic',{}),account.id);
   const bills=await scanMailbox(c,account,{request,googleToken,microsoftToken,query,watches,limit:query===null?3:10});
   if(bills.length){const p=await plan();let changed=false;for(const bill of bills)if(!p.state.bills.some(b=>b.sourceId===bill.sourceId||b.sourceKey===bill.sourceKey)){p.state.bills.push(bill);changed=true;}if(changed){validate(p.state);if(JSON.stringify(p.state).length>240000)throw Error('Plan storage is full.');p.revision++;await write('plan',p);}}
   return account.status;
  }
- async function sync(force=false,bankOnly=false,_targetId=null,gmailOnly=false){return locked(async()=>{
-  const c=await retireLegacyBanks(read,write,plaid),now=Date.now();
-  const gmail=!bankOnly&&mailboxes(c,users.current().email).filter(a=>force||a.backlog?.length||a.page||!a.nextSync||a.nextSync<=now).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0];
-  if(!bankOnly&&!gmailOnly&&c.sun?.connected&&c.sun.enabled!==false&&!c.sun.needsLogin&&(!c.sun.nextSync||c.sun.nextSync<=now)&&!(c.sun.pending?.expires>now)){c.lastTask='rent';c.status=await syncSunRent(c);await write('connections',c);return {status:c.status};}
-  const bank=!gmailOnly&&c.lunchflow&&(c.lunchflow.pending?.length||force||!c.lunchflow.nextSync||c.lunchflow.nextSync<=now);
-  if(bank&&(!gmail||c.lastTask!=='lunchflow')){c.lastTask='lunchflow';const result=await syncLunchflowBalances(c);c.status=result.status;await write('connections',c);return result;}
-  if(!gmail)return {status:gmailOnly?'No email accounts connected.':c.status};
-  c.lastTask='gmail';try{c.status=await syncGmail(c,gmail);}catch(e){c.status='Sync needs attention: '+e.message;gmail.nextSync=now+sixHours;gmail.status=c.status;}
-  c.lastAttempt=new Date().toISOString();c.candidates=c.candidates.filter(x=>!x.dismissed);await write('connections',c);return {status:c.status};
- });}
+ async function sync(force=false,bankOnly=false,targetId=null,gmailOnly=false,transactionsOnly=false){return locked(async()=>{const c=await retireLegacyBanks(read,write,plaid),now=Date.now(),bank=!gmailOnly&&c.items.filter(i=>(!targetId||i.id===targetId)&&(force||i.pending||!i.nextSync||i.nextSync<=now)).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0],gmail=!bankOnly&&mailboxes(c,users.current().email).filter(a=>force||a.backlog?.length||a.page||!a.nextSync||a.nextSync<=now).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0];
+   if(!bankOnly&&!gmailOnly&&!targetId&&c.sun?.connected&&c.sun.enabled!==false&&!c.sun.needsLogin&&(!c.sun.nextSync||c.sun.nextSync<=now)&&!(c.sun.pending?.expires>now)){c.lastTask='rent';c.status=await syncSunRent(c);await write('connections',c);return {status:c.status};}
+
+   if(!gmailOnly&&!targetId&&c.lunchflow&&(c.lunchflow.pending?.length||force||!c.lunchflow.nextSync||c.lunchflow.nextSync<=now)&&(!bank||c.lastTask==='bank')){c.lastTask='lunchflow';const result=await syncLunchflowBalances(c);c.status=result.status;await write('connections',c);return result;}
+   if(targetId&&!bank)throw Error('Bank connection not found. Reload your connections.');
+   if(!bank&&!gmail)return {status:gmailOnly?'No email accounts connected.':c.status};if(bank)bank.lastSyncAttempt=now;try{if(force&&bank&&!transactionsOnly){try{await syncBalances(c,bank,true);}catch{/* Independent products can still refresh. */}}if(gmail&&(!bank||c.lastTask==='bank')){c.lastTask='gmail';c.status=await syncGmail(c,gmail);}else{c.lastTask='bank';c.status=await syncBank(c,bank,force,transactionsOnly);}}catch(e){c.status='Sync needs attention: '+e.message;if(c.lastTask==='gmail'&&gmail){gmail.nextSync=now+sixHours;gmail.status=c.status;}}
+   if(bank?.balanceError)c.status+=' Balance refresh needs attention; earlier balances are kept: '+bank.balanceError;
+   if(bank?.balanceWarning)c.status+=' '+bank.balanceWarning;
+   c.lastAttempt=new Date().toISOString();c.candidates=c.candidates.filter(x=>!x.dismissed);await write('connections',c);return {status:c.status,itemId:bank?.id,transactionsPending:!!bank?.pending&&!bank?.transactionsError,transactionsLoading:!!bank?.transactionsLoading,balanceRefreshed:!!bank&&!bank.balanceError&&bank.balancesUpdated>=now,balanceWarning:bank?.balanceWarning||null,balanceError:bank?.balanceError||null};});}
  async function handleScoped(req){
   const u=new URL(req.url),path=u.pathname;
   if(path==='/health')return json({ok:true,hosting:'cloudflare-free',configured});
-  if(path==='/api/config'&&req.method==='GET')return json({authenticated:await authorized(req),accountId:await authorized(req)?users.current().accountId:null,email:await authorized(req)?users.current().email:null,googleConfigured,microsoftConfigured,rentConfigured:!!env.BROWSER?.acquire,bankProvider:'lunchflow',syncDescription:'Lunch Flow balances and transactions refresh about daily'});
+  if(path==='/api/config'&&req.method==='GET')return json({authenticated:await authorized(req),accountId:await authorized(req)?users.current().accountId:null,email:await authorized(req)?users.current().email:null,googleConfigured,microsoftConfigured,rentConfigured:!!env.BROWSER?.acquire,plaidConfigured:!!(env.PLAID_CLIENT_ID&&env.PLAID_SECRET),bankProviders:['lunchflow','plaid'],plaidEnvironment:env.PLAID_ENV||'sandbox',syncDescription:'Plaid updates about every 6 hours; Lunch Flow about daily'});
   if(path==='/auth/google'&&req.method==='GET'){
    if(!googleConfigured)return json({error:'Configure Cloudflare D1 and the Google/owner/encryption secrets first.'},503);const gmail=u.searchParams.has('gmail');if(gmail&&!await authorized(req))return redirect('/auth/google');if(gmail&&sessionMismatch(users.current(),u.searchParams.get('account'),'POST'))return json({error:'Your BearDen account changed. Reload before adding Gmail.'},409);
    const state=random(),verifier=random();await run('DELETE FROM oauth WHERE expires < ?',Date.now());await run('INSERT INTO oauth VALUES(?,?,?,?)',hash(state),encrypt(gmail?{verifier,ownerSession:hash(cookies(req).bearden)}:verifier),gmail?1:0,Date.now()+600000);
@@ -110,7 +141,7 @@ export function runtime(env,fetcher=fetch){
    if(!await authorized(req))return json({error:'Sign in to access private data.'},401);
    if(sessionMismatch(users.current(),req.headers.get('X-BearDen-Account'),req.method))return json({error:'The signed-in account changed. Reload before continuing; your edits have not been saved to the other account.'},409);
    if(req.method==='GET'&&path==='/api/income/baby-bear'){const saved=await read('income-shortcut',null),classic=await read('classic',{}),preset=saved||incomeFromTracker(classic.state)||incomeFromPlan((await plan()).state);return preset?json(preset):json({error:'Set your income in the Income tab once to save your Baby Bear income shortcut.'},404);}
-   if(path.startsWith('/api/plaid/')||path.startsWith('/api/simplefin/')||path==='/api/cards/refresh')return json({error:'Bank connections now use Lunch Flow. Reload BearDen.'},410);
+   if(path.startsWith('/api/simplefin/'))return json({error:'SimpleFIN is no longer available. Use Lunch Flow or Plaid.'},410);
    if(path==='/api/import/baby-bear')return json({error:'Preset account imports have been retired. Use Accounts or the income-only shortcut.'},410);
    if(req.method==='GET'&&path==='/api/classic')return json(await read('classic',{state:{version:1,values:{}},revision:0}));
    if(req.method==='GET'&&path==='/api/state')return json({...await plan(),connections:publicConnections(await connections())});
@@ -118,6 +149,7 @@ export function runtime(env,fetcher=fetch){
    if(path==='/api/logout'){await run('DELETE FROM sessions WHERE hash=?',hash(cookies(req).bearden));const response=json({ok:true});response.headers.append('Set-Cookie',cookie('bearden','',0));return response;}
    if(path==='/api/bank/refresh')return json(await sync(true,true,b.itemId||null,false,b.continueTransactions===true&&!!b.itemId));
    if(path==='/api/sync')return json(await sync(true,false,null,b.gmailOnly===true));
+   if(path==='/api/plaid/link'){const c=await connections(),item=c.items.find(i=>i.id===b.itemId);const d=await plaid('/link/token/create',{user:{client_user_id:hash(users.current().scope||owner)},client_name:'BearDen',...creditLinkOptions(b,item),country_codes:['US'],language:'en',...(env.PLAID_REDIRECT_URI?{redirect_uri:env.PLAID_REDIRECT_URI}:{})});return json({link_token:d.link_token});}
    return locked(async()=>{
     if(path==='/api/banks/retire'){await retireLegacyBanks(read,write,plaid);return json({ok:true});}
     if(path.startsWith('/api/bills/share/'))return json(await billSharingAction(path.slice('/api/bills/share/'.length),b,{read,write,rawRead,rawWrite,rawDelete:id=>run('DELETE FROM vault WHERE id=?',id),accountId:users.current().accountId}));
@@ -184,8 +216,34 @@ export function runtime(env,fetcher=fetch){
      if(path==='/api/lunchflow/disconnect'){delete c.lunchflow;c.transactions=c.transactions.filter(t=>t.source!=='lunchflow');await write('connections',c);await updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.source!=='lunchflow');});return json({status:'Lunch Flow disconnected. Your entered debts and bills are kept.'});}
      return json({error:'Unknown Lunch Flow action.'},404);
     }
-    if(path==='/api/classic'){const state=cleanRetiredBankLinks(validateClassic(b.state),(await connections()).retiredBankItemIds),current=await read('classic',{revision:0});if(current.revision!==b.revision)return json({error:'The tracker changed in another tab. Reload before editing again.'},409);await write('classic',{state,revision:current.revision+1});if(!await read('income-shortcut',null)){const preset=incomeFromTracker(state)||incomeFromPlan((await plan()).state);if(preset)await write('income-shortcut',preset);}return json({revision:current.revision+1});}
+    if(path==='/api/classic'){const state=cleanRetiredBankLinks(validateClassic(b.state)),current=await read('classic',{revision:0});if(current.revision!==b.revision)return json({error:'The tracker changed in another tab. Reload before editing again.'},409);await write('classic',{state,revision:current.revision+1});if(!await read('income-shortcut',null)){const preset=incomeFromTracker(state)||incomeFromPlan((await plan()).state);if(preset)await write('income-shortcut',preset);}return json({revision:current.revision+1});}
     if(path==='/api/state'){const state=validate(b.state);state.accounts=state.accounts.filter(a=>!retiredBankAccount(a));if(state.emailSenders.length>20||state.emailSenders.some(s=>!/^[-\w.+]+@[\w.-]+\.[a-z]{2,}$/i.test(s)))throw Error('Use up to 20 full sender email addresses');const current=await plan();if(current.revision!==b.revision)return json({error:'Plan changed during sync or in another tab. Reload before editing again.'},409);await write('plan',{state,revision:current.revision+1});const c=await connections(),accepted=new Set(state.bills.map(b=>b.sourceId).filter(Boolean));if(c.candidates.some(x=>accepted.has(x.id))){c.candidates=c.candidates.filter(x=>!accepted.has(x.id));await write('connections',c);}return json({revision:current.revision+1});}
+    if(path==='/api/plaid/exchange'){if(typeof b.public_token!=='string')throw Error('Missing public token');const c=await connections();if(c.items.length>=10)throw Error('This personal setup supports up to 10 bank connections');const d=await plaid('/item/public_token/exchange',{public_token:b.public_token});let item=c.items.find(i=>i.id===d.item_id);if(!item){item={id:d.item_id,token:d.access_token,name:String(b.name||'Bank').slice(0,150),cursor:'',liabilities:b.kind==='credit'};c.items.push(item);}
+     // Persist the exchanged token before fetching balances so a provider failure is recoverable.
+     c.status='Bank connected. Loading balances.';await write('connections',c);
+     try{await syncBalances(c,item);c.status='Bank connected; balances loaded. Transaction history will load in the background.'+(item.liabilitiesStatus?' '+item.liabilitiesStatus:'');}
+     catch(e){c.status='Bank connected, but balances could not load: '+e.message+'. Use Sync connections to retry.';}
+     await write('connections',c);return json({ok:true,status:c.status,itemId:item.id,transactionsPending:true});}
+
+    if(path==='/api/plaid/updated'||path==='/api/cards/refresh'){
+     const c=await connections(),item=c.items.find(i=>i.id===b.itemId);if(!item)return json({error:'Bank connection not found'},404);
+     if(path==='/api/plaid/updated'&&b.kind!=='bank'){item.liabilities=true;await write('connections',c);}
+     try{await syncBalances(c,item,true);}catch(e){c.status='Balance refresh needs attention: '+e.message;}
+     try{c.status=await syncBank(c,item,true);}catch(e){c.status=(item.liabilitiesStatus||'')+' Transaction sync needs attention: '+e.message;}
+     if(item.balanceError)c.status+=' Balance refresh needs attention: '+item.balanceError;
+     if(item.balanceWarning)c.status+=' '+item.balanceWarning;
+     await write('connections',c);return json({status:c.status,itemId:item.id,transactionsPending:!!item.pending&&!item.transactionsError,transactionsLoading:!!item.transactionsLoading});
+    }
+    if(path==='/api/plaid/diagnose'){const c=await connections(),item=c.items.find(i=>i.id===b.itemId);if(!item)return json({error:'Bank connection not found'},404);const diagnostic=await diagnosePlaid(item,plaid);await write('connections',c);return json({diagnostic});}
+    if(path==='/api/plaid/combine'){
+     const before={connections:await connections(),plan:await plan(),classic:await read('classic',null)};
+     if(b.revision!==(before.classic?.revision??0))return json({error:'Your saved data changed. Reload before combining connections.'},409);
+     const merged=combineBankConnections(before.connections,before.plan,before.classic,b.removeId,b.keepId);
+     await write('bank-combine-backup',before);
+     try{await write('plan',merged.plan);if(merged.classic)await write('classic',merged.classic);await write('connections',merged.connections);}catch(e){await write('plan',before.plan);if(before.classic)await write('classic',before.classic);await write('connections',before.connections);throw e;}
+     return json({ok:true});
+    }
+    if(path==='/api/plaid/disconnect'){const c=await connections(),item=c.items.find(i=>i.id===b.id);if(!item)return json({error:'Bank not found'},404);await plaid('/item/remove',{access_token:item.token});c.items=c.items.filter(i=>i.id!==b.id);c.transactions=c.transactions.filter(t=>t.itemId!==b.id);c.creditCards=(c.creditCards||[]).filter(card=>card.itemId!==b.id);c.loanDetails=(c.loanDetails||[]).filter(loan=>loan.itemId!==b.id);await write('connections',c);await updatePlan(s=>{s.accounts=s.accounts.filter(a=>a.itemId!==b.id);});return json({ok:true});}
     if(path==='/api/gmail/message'){
      const c=await connections();let message;try{message=await refreshSelectedEmail(c,b,{request,googleToken,microsoftToken,owner:users.current().email});}finally{await write('connections',c);}return json({message});
     }

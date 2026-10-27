@@ -1,4 +1,4 @@
-import {transactionAccountId} from './transaction-links.mjs?v=shared-payments1';
+import {transactionAccountId} from './transaction-links.mjs?v=plaid-restore1';
 import {day,occurrences} from './engine.mjs';
 export const householdEnabled=h=>!!(h?.enabled&&h.personalAccountId&&h.billsAccountId&&h.personalAccountId!==h.billsAccountId);
 export const isSharedBillCandidate=bill=>!['budget','baby-bear-budget','tracker-debt','plaid-credit'].includes(bill.source)&&!['credit-card','loan'].includes(bill.billKind)&&bill.kind!=='household-bills'&&!bill.transfer&&bill.id!=='household-contribution'&&!/^fixed\s+bills$/i.test(String(bill.name||'').trim());

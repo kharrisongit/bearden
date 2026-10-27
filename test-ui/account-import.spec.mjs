@@ -5,8 +5,8 @@ import {blank} from '../public/engine.mjs';
 test('mobile Settings repairs the existing bank and finishes transaction batches with clear saved balance status',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  const requests=[],errors=[];page.on('pageerror',e=>errors.push(e.message));
- const connections={items:[{id:'bank',name:'Family Bank',transactionsError:'ITEM_LOGIN_REQUIRED'}],transactions:[],creditCards:[],gmailAccounts:[],simplefin:{connected:true,status:'SimpleFIN loaded 1 account(s).'}};
- const accounts=[{id:'plaid-a',itemId:'bank',source:'plaid',type:'depository',subtype:'checking',name:'Checking',balance:12345,balanceUpdated:'2026-10-26T12:00:00Z',balanceUnavailable:true,accountMissing:true,currency:'USD',include:true},{id:'simplefin-a',itemId:'simplefin',source:'simplefin',name:'Savings',institution:'Family Bank',type:'depository',subtype:'savings',balance:10000,rawBalance:10000,currency:'USD',include:false}];
+ const connections={items:[{id:'bank',name:'Family Bank',transactionsError:'ITEM_LOGIN_REQUIRED'}],transactions:[],creditCards:[],gmailAccounts:[],lunchflow:{connected:true,status:'Lunch Flow loaded 1 account(s).'}};
+ const accounts=[{id:'plaid-a',itemId:'bank',source:'plaid',type:'depository',subtype:'checking',name:'Checking',balance:12345,balanceUpdated:'2026-10-26T12:00:00Z',balanceUnavailable:true,accountMissing:true,currency:'USD',include:true},{id:'lunchflow-a',itemId:'lunchflow',source:'lunchflow',name:'Savings',institution:'Family Bank',type:'depository',subtype:'savings',balance:10000,rawBalance:10000,currency:'USD',include:false}];
  accounts.push({id:'plaid-car',itemId:'bank',source:'plaid',type:'loan',subtype:'auto',name:'Car loan',balance:0,reportedCurrent:0,zeroUnconfirmed:true,balanceUnavailable:true,balanceUpdated:null,currency:'USD',include:false});
  let batches=0;
  await page.addInitScript(()=>{window.Plaid={create:options=>{window.testPlaid=options;return {open(){},destroy(){}};}};});
@@ -33,16 +33,16 @@ test('mobile Settings repairs the existing bank and finishes transaction batches
  await page.evaluate(()=>window.testPlaid.onSuccess('unused',{institution:{name:'Family Bank'}}));
  expect(batches).toBe(2);expect(requests.some(r=>r.path==='/api/plaid/exchange')).toBe(false);
  await page.locator('#nav-settings').click();await expect(page.locator('#plaidConnections')).toContainText('1 saved transaction(s)');
- await page.locator('#configureSimplefin').click();await expect(page.getByRole('link',{name:'Manage SimpleFIN accounts'})).toHaveAttribute('href','https://bridge.simplefin.org/');
+ await page.locator('#configureLunchflow').click();await expect(page.locator('#lunchflowRefresh')).toBeVisible();await expect(page.locator('#configureSimplefin')).toHaveCount(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);expect(errors).toEqual([]);
 });
 
-test('renaming a SimpleFIN account survives resync and duplicate ID repair; saves and refreshes do not overlap',async({page})=>{
+test('renaming a Lunch Flow account survives resync; saves and refreshes do not overlap',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- const old='simplefin-old',duplicate='simplefin-new';
- let accounts=[{id:old,source:'simplefin',name:'Provider checking',institution:'Bank',type:'depository',subtype:'checking',currency:'USD',balance:12300,rawBalance:12300,include:false}];
- const connections={items:[],transactions:[],creditCards:[],simplefin:{connected:true,status:'Connected'},sun:{connected:true,enabled:true,status:'Connected'}};
+ const old='lunchflow-old',duplicate=old;
+ let accounts=[{id:old,source:'lunchflow',name:'Provider checking',institution:'Bank',type:'depository',subtype:'checking',currency:'USD',balance:12300,rawBalance:12300,include:false}];
+ const connections={items:[],transactions:[],creditCards:[],lunchflow:{connected:true,status:'Connected'},sun:{connected:true,enabled:true,status:'Connected'}};
  let tracker={state:{version:1,values:{'app-state':JSON.stringify({cards:[],budgetItems:[],budgetSetupVersion:2,takeHome:1000,savingsGoals:[]}),onboarding:JSON.stringify({completed:true}),'income-planner':JSON.stringify({accountNames:{[duplicate]:'Old duplicate label'},household:{personalAccountId:duplicate}})}},revision:0},active=0,maxActive=0,refreshes=0,rentCalls=0;
  await page.route('https://bearden.test/**',async route=>{
   const req=route.request(),path=new URL(req.url()).pathname,post=req.method()==='POST';
@@ -54,9 +54,9 @@ test('renaming a SimpleFIN account survives resync and duplicate ID repair; save
     if(post){tracker={state:req.postDataJSON().state,revision:tracker.revision+1};return await route.fulfill({json:{revision:tracker.revision}});}
     return await route.fulfill({json:tracker});
    }
-   if(path==='/api/simplefin/refresh'){
+   if(path==='/api/lunchflow/refresh'){
     refreshes++;accounts=[{...accounts[0],name:'New upstream name',identityAliases:[duplicate]}];
-    return await route.fulfill({json:{status:'SimpleFIN loaded 1 account(s).'}});
+    return await route.fulfill({json:{status:'Lunch Flow loaded 1 account(s).'}});
    }
    if(path==='/api/rent/refresh'){
     rentCalls++;return await route.fulfill(rentCalls===1?{status:409,json:{error:'A sync or save is already running. Try again in a moment.',code:'SYNC_BUSY'}}:{json:{status:'Rent checked.'}});
@@ -66,13 +66,13 @@ test('renaming a SimpleFIN account survives resync and duplicate ID repair; save
   }finally{if(post)active--;}
  });
  await page.goto('https://bearden.test/');await page.evaluate(()=>window.classicReady);await expect(page.locator('#configureHousehold')).toBeEnabled();
- await page.locator('#nav-settings').click();await page.locator('#simplefinAccountSummary').click();
+ await page.locator('#nav-settings').click();await page.locator('#configureLunchflow').click();await page.locator('#lunchflowAccountSummary').click();
  await page.locator('[data-rename-connected-account="'+old+'"]').click();await page.locator('#connectedAccountName').fill('Richard’s checking');await page.locator('#connectedAccountNameForm [type=submit]').click();await expect(page.locator('#connectedAccountNameEditor')).toBeHidden();
  await page.locator('#classicSync').click();
  // Simulate an autosave while the provider request is in progress.
  await page.evaluate(()=>window.BearDen.storage.set('notes','[]'));
  await expect(page.locator('#connectionMessage')).toContainText('Rent checked.');
- await expect(page.locator('[data-simplefin-account]')).toHaveCount(1);await expect(page.locator('#simplefinAccounts')).toContainText('Richard’s checking');
+ await expect(page.locator('[data-lunchflow-account]')).toHaveCount(1);await expect(page.locator('#lunchflowAccounts')).toContainText('Richard’s checking');
  const planner=JSON.parse(tracker.state.values['income-planner']);expect(planner.accountNames[old]).toBe('Richard’s checking');expect(planner.household.personalAccountId).toBe(old);expect(maxActive).toBe(1);expect(refreshes).toBe(1);expect(rentCalls).toBe(2);
- await page.reload();await page.evaluate(()=>window.classicReady);await page.locator('#nav-settings').click();await page.locator('#simplefinAccountSummary').click();await expect(page.locator('#simplefinAccounts')).toContainText('Richard’s checking');await expect(page.locator('[data-simplefin-account]')).toHaveCount(1);expect(errors).toEqual([]);
+ await page.reload();await page.evaluate(()=>window.classicReady);await page.locator('#nav-settings').click();await page.locator('#configureLunchflow').click();await page.locator('#lunchflowAccountSummary').click();await expect(page.locator('#lunchflowAccounts')).toContainText('Richard’s checking');await expect(page.locator('[data-lunchflow-account]')).toHaveCount(1);expect(errors).toEqual([]);
 });
