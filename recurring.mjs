@@ -1,10 +1,11 @@
+import {transactionAccountId} from './public/transaction-links.mjs';
 import {day,monthly} from './public/engine.mjs';
 const normalize=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 export {classifyBankTransaction,personalSpending} from './public/bank-activity.mjs';
 import {classifyBankTransaction} from './public/bank-activity.mjs';
 // Seed monthly estimates immediately from likely bills in the last 30 days.
 // With three regular payments, refine the cadence using the longer history.
-// No extra Plaid product is activated. Transfers, shopping and debt payments are excluded.
+// Uses the existing transaction feed. Transfers, shopping and debt payments are excluded.
 export function recurringBills(transactions,today=new Date().toISOString().slice(0,10)){
  const groups=new Map();
  for(const t of transactions||[]){
@@ -27,7 +28,7 @@ export function recurringBills(transactions,today=new Date().toISOString().slice
   const amount=Math.round(last.amount*100);if(!Number.isSafeInteger(amount)||amount>1e12)continue;
   // Encode the full identity to keep streams stable and separate across accounts.
   const id='bank-'+Buffer.from(key).toString('base64url');
-  out.push({id,groupKey:key,name:last.name.slice(0,200),amount,date,repeat,source:'bank-estimate',accountId:'plaid-'+last.account_id,lastPayment:last.date,samples:rows.length,provisional:!cadence,billKind:classifyBankTransaction(last).billKind,reason:classifyBankTransaction(last).reason});
+  out.push({id,groupKey:key,name:last.name.slice(0,200),amount,date,repeat,source:'bank-estimate',accountId:transactionAccountId(last),lastPayment:last.date,samples:rows.length,provisional:!cadence,billKind:classifyBankTransaction(last).billKind,reason:classifyBankTransaction(last).reason});
  }
  return out;
 }

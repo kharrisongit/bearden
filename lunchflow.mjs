@@ -1,6 +1,11 @@
 import {Buffer} from 'node:buffer';
 import {createHash} from 'node:crypto';
-import {simplefinAccountBalance} from './simplefin.mjs';
+function accountBalance(a){
+ const debt=['credit','loan'].includes(a.type),raw=a.rawBalance,include=a.type==='depository'&&a.currency==='USD'&&a.include===true;
+ if(a.providerUnavailable||raw===null||!Number.isSafeInteger(raw)||debt&&!['negative','positive'].includes(a.debtSign))return {...a,balanceUnavailable:true,include};
+ const balance=debt?Math.max(0,a.debtSign==='negative'?-raw:raw):a.type==='depository'?(a.rawAvailable??raw):raw;
+ return {...a,balance,balanceUnavailable:!!a.providerUnavailable,include};
+}
 const day=86400000;
 const label=(v,fallback)=>typeof v==='string'&&v.trim()?v.trim().slice(0,150):fallback;
 const id=v=>typeof v==='number'&&Number.isSafeInteger(v)?String(v):typeof v==='string'&&/^[\w.:-]{1,200}$/.test(v)?v:null;
@@ -32,7 +37,7 @@ export function configureLunchflowAccount(accounts,{id:accountId,kind,debtSign})
  if(!['unknown','credit','loan','checking','savings'].includes(kind))throw Error('Choose the account type.');
  const a=accounts.find(a=>a.source==='lunchflow'&&a.id===accountId);if(!a)throw Error('Lunch Flow account not found.');
  if(['credit','loan'].includes(kind)&&!['positive','negative'].includes(debtSign))throw Error('Choose how this account reports the amount owed.');
- Object.assign(a,simplefinAccountBalance({...a,type:['checking','savings'].includes(kind)?'depository':kind,subtype:['checking','savings'].includes(kind)?kind:'',debtSign:['credit','loan'].includes(kind)?debtSign:null}));
+ Object.assign(a,accountBalance({...a,type:['checking','savings'].includes(kind)?'depository':kind,subtype:['checking','savings'].includes(kind)?kind:'',debtSign:['credit','loan'].includes(kind)?debtSign:null}));
 }
 export async function syncLunchflow(c,readAccounts,saveAccounts,fetcher=fetch){
  const s=c.lunchflow;if(!s)throw Error('Connect Lunch Flow first.');
@@ -61,7 +66,7 @@ export async function syncLunchflow(c,readAccounts,saveAccounts,fetcher=fetch){
   const b=balance.status==='fulfilled'?balance.value.balance:null,raw=money(b?.amount),unit=currency(b?.currency),wrongCurrency=unit&&a.currency!=='XXX'&&unit!==a.currency;
   const zero=raw===0&&(a.type==='loan'||a.balance>0);
   if(raw===null||!unit||wrongCurrency||zero){a.providerUnavailable=true;a.balanceUnavailable=true;a.balanceWarning=balance.status==='rejected'?balance.reason.message:zero?'Lunch Flow returned zero; verify this debt before treating it as paid off.':wrongCurrency?'Lunch Flow returned a different currency; the saved balance is kept.':'Lunch Flow did not supply a usable balance.';s.issues.push(a.name+': '+a.balanceWarning);}
-  else Object.assign(a,simplefinAccountBalance({...a,rawBalance:raw,rawAvailable:null,currency:unit,balanceUpdated:at,balanceRetrieved:at,providerUnavailable:false,balanceStale:false,balanceWarning:null}));
+  else Object.assign(a,accountBalance({...a,rawBalance:raw,rawAvailable:null,currency:unit,balanceUpdated:at,balanceRetrieved:at,providerUnavailable:false,balanceStale:false,balanceWarning:null}));
   a.balanceRetrieved=at;a.balanceObservation={amount:raw,amountStatus:raw===null?'missing':'reported',retrievedAt:at};
   a.balanceDateUnknown=true; // The API supplies a reading without a bank balance timestamp.
   if(history.status==='fulfilled'&&Array.isArray(history.value.transactions)){

@@ -1,18 +1,18 @@
 export {removeBillFromPlanner,removeDebtsFromPlanner} from './account-removal.mjs?v=delete-accounts1';
 export {carPaymentLoans} from './car-debt.mjs?v=car-debt1';
 export {transactionCategories,categorizeTransaction,transactionMerchantKey,setTransactionCategory} from './transaction-categories.mjs?v=auto-categories1';
-export {resolveDebtConnections,resolveDebtDetails,remapConnectedAccountReferences} from './connection-model.mjs?v=lunchflow1';
-import {transactionAccountId,matchingPayments,postedPayment} from './transaction-links.mjs?v=connections-audit1';
-import {transactionKey} from './bank-activity.mjs?v=auto-categories1';
+export {resolveDebtConnections,resolveDebtDetails,remapConnectedAccountReferences} from './connection-model.mjs?v=lunchflow-only1';
+import {transactionAccountId,matchingPayments,postedPayment} from './transaction-links.mjs?v=lunchflow-only1';
+import {transactionKey} from './bank-activity.mjs?v=lunchflow-only1';
 import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=paid-cycle1';
 export {monthlyMinimum} from './debt-payments.mjs?v=paid-cycle1';
 import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-portal1';
-import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=connections-audit1';
+import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=lunchflow-only1';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
-export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs?v=auto-categories1';
+export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs?v=lunchflow-only1';
 export {creditBills,creditCapacity} from './credit-model.mjs?v=paid-cycle1';
 export {transactionAccountId};
-export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment} from './transaction-links.mjs?v=connections-audit1';
+export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment} from './transaction-links.mjs?v=lunchflow-only1';
 import {day,occurrences} from './engine.mjs';
 const cents=n=>Math.round((Number(n)||0)*100);
 const isPersonal=b=>/\b(food|dining|grocer(?:y|ies)|gas|fuel|transport|shopping|personal|spending|entertainment|misc(?:ellaneous)?|allowance|fun|restaurants)\b/i.test(b.name||'');
@@ -264,7 +264,7 @@ export function forecastBalanceOn(points,date){
 export function linkedBillLoan(bill,planner,accounts=[]){
  const id=planner.loanLinks?.[bill.id];
  if(!id||bill.billKind!=='car-payment')return null;
- const account=accounts.find(a=>a.id===id&&['plaid','simplefin','lunchflow'].includes(a.source)&&a.type==='loan');
+ const account=accounts.find(a=>a.id===id&&a.source==='lunchflow'&&a.type==='loan');
  return account?{id,name:account.displayName||account.name,balance:account.balance,balanceUnavailable:!!account.balanceUnavailable,currency:account.currency||'USD'}:{id,unavailable:true};
 }
 
@@ -308,6 +308,6 @@ export function personalChecking(accounts,household={}){
  return household.personalAccountId?checking.find(a=>a.id===household.personalAccountId)||null:checking.length===1?checking[0]:null;
 }
 export function personalCheckingTransactions(transactions,account){
- return ['plaid','simplefin','lunchflow'].includes(account?.source)?transactions.filter(t=>transactionAccountId(t)===account.id):[];
+ return account?.source==='lunchflow'?transactions.filter(t=>transactionAccountId(t)===account.id):[];
 }
 
