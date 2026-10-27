@@ -249,7 +249,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 :root .forecast-stats small{color:inherit;line-height:1.3;min-height:2.6em;margin:0}
 :root .forecast-stats strong{margin-top:auto;font-variant-numeric:tabular-nums}
 :root .forecast-stats>.forecast-incoming{background:var(--cash-in-bg);color:var(--cash-in)}
-:root .forecast-stats>.forecast-outgoing{background:var(--cash-out-bg);color:var(--cash-out)}
+:root .forecast-stats>.forecast-outgoing{background:var(--amount-bg);color:var(--amount-ink)}
 :root .forecast-stats>.forecast-lowest{background:var(--due-bg);color:var(--due-ink)}
 :root .forecast-stats>.is-negative,:root .forecast-main.is-negative{color:var(--warn)}
 :root .forecast-stats>.is-negative{background:var(--warn-soft)}
