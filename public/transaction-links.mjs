@@ -13,12 +13,24 @@ export const postedPayment=t=>!t.pending&&t.currency==='USD'&&Number.isFinite(t.
 export function paymentLink(transaction,{exactAmount=false}={}){
  return {itemId:transaction.itemId,accountId:transaction.account_id,merchant:merchantIdentity(transaction.name),name:transaction.name,amount:exactAmount?Math.round(transaction.amount*100):null,sampleAmount:Math.round(transaction.amount*100)};
 }
-export function matchesPayment(transaction,link){
+function matchesMerchant(transaction,link){
  return !!link&&!!link.merchant&&postedPayment(transaction)&&transaction.itemId===link.itemId&&transaction.account_id===link.accountId&&merchantIdentity(transaction.name)===merchantIdentity(link.merchant)&&(link.amount==null||Math.round(transaction.amount*100)===link.amount);
 }
-export function matchingPayments(transactions,link,today=new Date().toISOString().slice(0,10)){
+export const paymentTargets=(transaction,links)=>Object.keys(links||{}).filter(target=>matchesMerchant(transaction,links[target]));
+export function paymentOwner(transaction,links){
+ const targets=paymentTargets(transaction,links),assigned=targets.filter(target=>links[target].paymentIds?.includes(transaction.transaction_id));
+ // An explicit assignment wins; overlapping or previously shared merchants
+ // otherwise need confirmation. Never apply one bank payment to both cards.
+ if(assigned.length)return assigned.length===1?assigned[0]:null;
+ return targets.length===1&&!links[targets[0]].sharedMerchant?targets[0]:null;
+}
+export function matchesPayment(transaction,link,links=null,target=null){
+ if(!matchesMerchant(transaction,link))return false;
+ return links?target!==null&&paymentOwner(transaction,links)===target:!link.sharedMerchant||!!link.paymentIds?.includes(transaction.transaction_id);
+}
+export function matchingPayments(transactions,link,today=new Date().toISOString().slice(0,10),links=null,target=null){
  const seen=new Set();return (transactions||[]).filter(t=>{
-  if(t.date>today||!matchesPayment(t,link)||seen.has(t.transaction_id))return false;
+  if(t.date>today||!matchesPayment(t,link,links,target)||seen.has(t.transaction_id))return false;
   seen.add(t.transaction_id);return true;
  }).sort((a,b)=>b.date.localeCompare(a.date)||String(a.transaction_id).localeCompare(String(b.transaction_id)));
 }
@@ -34,7 +46,7 @@ export function matchedBillPayments(events,transactions,links,today,{details=fal
  for(const event of events){const target=paymentTarget(event);if(!links[target])continue;if(!groups.has(target))groups.set(target,[]);groups.get(target).push(event);}
  for(const [target,bills]of groups){
   const totals=new Map(),dates=new Map();
-  for(const transaction of matchingPayments(transactions,links[target],today)){
+  for(const transaction of matchingPayments(transactions,links[target],today,links,target)){
    const candidates=bills.filter(b=>{
     const early=b.repeat==='weekly'?3:b.source==='tracker-debt'?6:7,late=b.repeat==='weekly'?3:b.source==='tracker-debt'?7:14;
     const start=b.source==='plaid-credit'&&b.statementDate&&b.statementDate<b.date?day(b.statementDate,1):day(b.date,-early);

@@ -65,7 +65,7 @@
  async function save(){if(!ready)throw Error('Accounts have not loaded. Reload before saving changes.');await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();}
  let initializing;
  $('#configureHousehold').disabled=true;$('#billTrackerChooseAccount').disabled=true;$('#sharedBillsToggle').disabled=true;$('#carPaymentsInDebtToggle').disabled=true;
- function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=lunchflow-only1'),import('./email-model.mjs?v=connections-audit1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=short-share1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#billTrackerChooseAccount').disabled=false;$('#sharedBillsToggle').disabled=false;$('#carPaymentsInDebtToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
+ function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=shared-payments1'),import('./email-model.mjs?v=connections-audit1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=short-share1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#billTrackerChooseAccount').disabled=false;$('#sharedBillsToggle').disabled=false;$('#carPaymentsInDebtToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
  window.addEventListener('load',initialize,{once:true});
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});
@@ -81,46 +81,70 @@
  const linkDrafts={};let pickingLink=null;
  let resolvedDebts={};
  const bankTransactions=()=>window.BearDen.plan?.connections?.transactions||[];
- window.getDebtBankPaymentHistory=id=>model?model.matchingPayments(bankTransactions(),planner.transactionLinks['debt:'+id],iso(new Date())):[];
+ window.getDebtBankPaymentHistory=id=>model?model.matchingPayments(bankTransactions(),planner.transactionLinks['debt:'+id],iso(new Date()),planner.transactionLinks,'debt:'+id):[];
  function bankPaymentHistoryMarkup(history){
   if(!history.length)return '';
   return '<div class="linked-bank-history"><h5>Bank payment history</h5><p class="subtle">'+history.length+' posted payments · '+money(history.reduce((total,t)=>total+Math.round(t.amount*100),0))+'</p><div class="linked-payment-list">'+history.map(t=>'<div class="forecast-row"><span>'+esc(t.name)+'<small>'+esc(dateLabel(t.date))+'</small></span><strong>'+money(Math.round(t.amount*100))+'</strong></div>').join('')+'</div></div>';
  }
  function setEditorLink(prefix,target,link=null,exactAmount=false){
-  linkDrafts[prefix]={target,link:link?structuredClone(link):null,exactAmount};renderEditorLink(prefix);setEmailDraft(prefix,target);
+  linkDrafts[prefix]={target,link:link?structuredClone(link):null,exactAmount:link?.amount!=null||exactAmount,assignments:{}};renderEditorLink(prefix);setEmailDraft(prefix,target);
+ }
+ function draftPaymentLinks(prefix){
+  const draft=linkDrafts[prefix],links=structuredClone(planner.transactionLinks);
+  if(!draft.link){delete links[draft.target];return links;}
+  links[draft.target]={...structuredClone(draft.link),targetName:$('#'+prefix+'EditorForm').elements.name.value.trim()||'This account'};
+  for(const [target,link]of Object.entries(links))if(model.linkConflict(links,target,link))link.sharedMerchant=true;
+  for(const [id,owner]of Object.entries(draft.assignments)){
+   for(const link of Object.values(links))if(link.paymentIds)link.paymentIds=link.paymentIds.filter(value=>value!==id);
+   const transaction=bankTransactions().find(t=>t.transaction_id===id);
+   if(transaction&&owner&&model.paymentTargets(transaction,links).includes(owner)){links[owner].paymentIds??=[];links[owner].paymentIds.push(id);}
+  }
+  return links;
+ }
+ function renderPaymentAssignments(prefix,links){
+  const target=linkDrafts[prefix].target;
+  const rows=bankTransactions().filter(t=>t.date<=iso(new Date())&&model.paymentTargets(t,links).includes(target)).sort((a,b)=>b.date.localeCompare(a.date));
+  return '<div class="payment-assignments"><strong>Which account received each payment?</strong><p class="subtle">Choose an account for each posted payment, then save. New payments stay unassigned until you choose. Amounts can change each month.</p>'+rows.map(t=>{
+   const owner=model.paymentOwner(t,links),targets=model.paymentTargets(t,links);
+   return '<label class="payment-assignment"><span>'+esc(dateLabel(t.date))+' · '+money(Math.round(t.amount*100))+'<small>'+esc(t.name)+'</small></span><select data-payment-owner="'+esc(t.transaction_id)+'" data-link-prefix="'+prefix+'" aria-label="Account for '+esc(dateLabel(t.date))+' payment of '+esc(money(Math.round(t.amount*100)))+'"><option value="">Unassigned</option>'+targets.map(key=>'<option value="'+esc(key)+'" '+(owner===key?'selected':'')+'>'+esc(links[key].targetName||'Account')+'</option>').join('')+'</select></label>';
+  }).join('')+'</div>';
  }
  function renderEditorLink(prefix){
-  const draft=linkDrafts[prefix],link=draft.link,history=link?model.matchingPayments(bankTransactions(),link,iso(new Date())):[];
+  const draft=linkDrafts[prefix],links=draftPaymentLinks(prefix),link=links[draft.target],shared=!!link?.sharedMerchant,conflict=link&&model.linkConflict(links,draft.target,link),history=link?model.matchingPayments(bankTransactions(),link,iso(new Date()),links,draft.target):[];
   const account=(window.BearDen.plan?.state?.accounts||[]).find(a=>a.id===model.transactionAccountId(link));
-  $('#'+prefix+'TransactionLink').innerHTML='<strong>Linked bank payments</strong>'+(link?'<p class="subtle">Watching '+esc(link.name)+' · '+esc(connectedAccountName(account)||'selected bank account')+'</p><label class="check-label"><input type="checkbox" data-link-exact="'+prefix+'" '+(link.amount!=null?'checked':'')+'> Only payments of '+money(link.sampleAmount||link.amount||0)+'</label><p class="subtle">'+history.length+' matching posted payment'+(history.length===1?'':'s')+' · '+money(history.reduce((sum,t)=>sum+Math.round(t.amount*100),0))+' total in available history. Future syncs use this merchant and bank account.</p><div class="linked-payment-list">'+history.map(t=>'<div class="forecast-row"><span>'+esc(t.name)+'<small>'+esc(dateLabel(t.date))+'</small></span><strong>'+money(Math.round(t.amount*100))+'</strong></div>').join('')+'</div>':'<p class="subtle">Choose a transaction to identify the merchant, total previous payments, and recognize future payments. Bill emails supply upcoming amounts; past payments are only a fallback estimate.</p>')+(link&&linkError(draft.target,link)?'<p class="subtle" role="status">'+esc(linkError(draft.target,link))+'</p>':'')+'<div class="link-actions"><button type="button" data-pick-link="'+prefix+'">'+(link?'Change transaction':'Link a transaction')+'</button>'+(link?'<button type="button" data-unlink-payment="'+prefix+'">Unlink</button>':'')+'</div>'+(prefix==='bill'?'':'<p class="subtle">Matched payments appear in your history. Starting balances and paycheck checkoffs stay as entered.</p>');
+  $('#'+prefix+'TransactionLink').innerHTML='<strong>Linked bank payments</strong>'+(link?'<p class="subtle">Watching '+esc(link.name)+' · '+esc(connectedAccountName(account)||'selected bank account')+'</p><label class="check-label"><input type="checkbox" data-link-exact="'+prefix+'" '+(link.amount!=null?'checked':'')+'> Only payments of '+money(link.sampleAmount||link.amount||0)+'</label><label class="check-label"><input type="checkbox" data-link-shared="'+prefix+'" '+(shared?'checked':'')+' '+(conflict?'disabled':'')+'> This merchant is used for more than one account</label><p class="subtle">'+history.length+' '+(shared?'assigned':'matching')+' posted payment'+(history.length===1?'':'s')+' · '+money(history.reduce((sum,t)=>sum+Math.round(t.amount*100),0))+' total in available history.</p>'+(shared?renderPaymentAssignments(prefix,links):'<div class="linked-payment-list">'+history.map(t=>'<div class="forecast-row"><span>'+esc(t.name)+'<small>'+esc(dateLabel(t.date))+'</small></span><strong>'+money(Math.round(t.amount*100))+'</strong></div>').join('')+'</div>'):'<p class="subtle">Choose a transaction to identify the merchant and recognize future payments. If several accounts use that merchant, assign each payment to its account.</p>')+(link&&linkError(draft.target,link)?'<p class="subtle" role="status">'+esc(linkError(draft.target,link))+'</p>':'')+'<div class="link-actions"><button type="button" data-pick-link="'+prefix+'">'+(link?'Change transaction':'Link a transaction')+'</button>'+(link?'<button type="button" data-unlink-payment="'+prefix+'">Unlink</button>':'')+'</div>'+(prefix==='bill'?'':'<p class="subtle">Matched payments appear in your history. Starting balances and paycheck checkoffs stay as entered.</p>');
  }
  function linkError(target,link){
   if(!link)return '';
-  const conflict=model.linkConflict(planner.transactionLinks,target,link);
-  if(conflict)return 'This merchant is already linked to '+(planner.transactionLinks[conflict].targetName||'another account')+'. Use an amount filter to separate payments, or unlink the other account first.';
   const tracked=Object.values(planner.bankRules).find(r=>r.choice==='bill'&&!planner.transactionLinks['bill:'+r.id]&&'bill:'+r.id!==target&&review.bills.some(b=>b.id===r.id&&model.matchingPayments(bankTransactions(),link,iso(new Date())).some(t=>t.key===b.groupKey||model.transactionKey(t)===b.groupKey)));
   return tracked?'This transaction already tracks '+tracked.name+'. Edit or stop tracking that bill first.':'';
  }
  function storeEditorLink(prefix,target,name){
   storeEmailDraft(prefix,target,name);
   const link=linkDrafts[prefix]?.link,message=linkError(target,link);if(message)throw Error(message);
-  if(link)planner.transactionLinks[target]={...link,targetName:name};else delete planner.transactionLinks[target];
+  const draft=linkDrafts[prefix],links=draftPaymentLinks(prefix);
+  if(link){links[target]={...links[draft.target],targetName:name};if(target!==draft.target)delete links[draft.target];}
+  else delete links[target];
+  planner.transactionLinks=links;
  }
  function renderTransactionChoices(){
   const query=$('#transactionLinkSearch').value.toLowerCase().trim(),draft=linkDrafts[pickingLink];
   const rows=bankTransactions().filter(t=>model.postedPayment(t)&&t.date<=iso(new Date())&&(!query||(t.name+' '+t.amount+' '+money(Math.round(t.amount*100))).toLowerCase().includes(query))).sort((a,b)=>b.date.localeCompare(a.date));
   $('#transactionLinkChoices').innerHTML=rows.map(t=>{
    const account=(window.BearDen.plan?.state?.accounts||[]).find(a=>a.id===model.transactionAccountId(t)),link=model.paymentLink(t,{exactAmount:draft.exactAmount}),message=linkError(draft.target,link);
-   return '<button type="button" class="transaction-choice" data-link-transaction="'+esc(t.transaction_id)+'"><span><strong>'+esc(t.name)+'</strong><b>'+money(Math.round(t.amount*100))+'</b></span><small>'+esc(dateLabel(t.date)+' · '+(connectedAccountName(account)||'Bank account'))+'</small>'+(message?'<small>'+esc(message)+'</small>':'')+'</button>';
+   return '<button type="button" class="transaction-choice" data-link-transaction="'+esc(t.transaction_id)+'"><span><strong>'+esc(t.name)+'</strong><b>'+money(Math.round(t.amount*100))+'</b></span><small>'+esc(dateLabel(t.date)+' · '+(connectedAccountName(account)||'Bank account'))+'</small>'+(message?'<small>'+esc(message)+'</small>':model.linkConflict(planner.transactionLinks,draft.target,link)?'<small>Shared merchant — choose which account received each payment after linking.</small>':'')+'</button>';
   }).join('')||'<p class="subtle">No matching posted payments. Refresh your bank to load available history.</p>';
  }
  $('#transactionLinkSearch').oninput=renderTransactionChoices;
  $('#closeTransactionLinkPicker').onclick=()=>$('#transactionLinkPicker').close();
- document.addEventListener('change',e=>{const checkbox=e.target.closest('[data-link-exact]');if(!checkbox)return;const prefix=checkbox.dataset.linkExact,draft=linkDrafts[prefix];draft.link.amount=checkbox.checked?draft.link.sampleAmount:null;draft.exactAmount=checkbox.checked;renderEditorLink(prefix);});
+ document.addEventListener('change',e=>{
+  const assignment=e.target.closest('[data-payment-owner]');if(assignment){const prefix=assignment.dataset.linkPrefix;linkDrafts[prefix].assignments[assignment.dataset.paymentOwner]=assignment.value;renderEditorLink(prefix);return;}
+  const shared=e.target.closest('[data-link-shared]');if(shared){linkDrafts[shared.dataset.linkShared].link.sharedMerchant=shared.checked;renderEditorLink(shared.dataset.linkShared);return;}
+  const checkbox=e.target.closest('[data-link-exact]');if(!checkbox)return;const prefix=checkbox.dataset.linkExact,draft=linkDrafts[prefix];draft.link.amount=checkbox.checked?draft.link.sampleAmount:null;draft.exactAmount=checkbox.checked;renderEditorLink(prefix);});
  document.addEventListener('click',e=>{
   const pick=e.target.closest('[data-pick-link]');if(pick){pickingLink=pick.dataset.pickLink;$('#transactionLinkSearch').value='';$('#transactionLinkError').textContent='';renderTransactionChoices();$('#transactionLinkPicker').showModal();}
   const unlink=e.target.closest('[data-unlink-payment]');if(unlink){linkDrafts[unlink.dataset.unlinkPayment].link=null;renderEditorLink(unlink.dataset.unlinkPayment);}
-  const chosen=e.target.closest('[data-link-transaction]');if(chosen){const transaction=bankTransactions().find(t=>t.transaction_id===chosen.dataset.linkTransaction);if(!transaction)return;const draft=linkDrafts[pickingLink],link=model.paymentLink(transaction,{exactAmount:draft.exactAmount}),message=linkError(draft.target,link);draft.link=link;renderEditorLink(pickingLink);$('#transactionLinkPicker').close();}
+  const chosen=e.target.closest('[data-link-transaction]');if(chosen){const transaction=bankTransactions().find(t=>t.transaction_id===chosen.dataset.linkTransaction);if(!transaction)return;const draft=linkDrafts[pickingLink],link=model.paymentLink(transaction,{exactAmount:draft.exactAmount}),message=linkError(draft.target,link);if(draft.link?.itemId===link.itemId&&draft.link?.accountId===link.accountId&&draft.link?.merchant===link.merchant){link.paymentIds=draft.link.paymentIds;link.sharedMerchant=draft.link.sharedMerchant;}else draft.assignments={};draft.link=link;renderEditorLink(pickingLink);$('#transactionLinkPicker').close();}
   const linked=e.target.closest('[data-edit-linked]');if(linked){const target=linked.dataset.editLinked,[type,...parts]=target.split(':'),id=parts.join(':');if(type==='debt')openDebtEditor(id);else if(type==='credit')openCreditEditor(id);else openBillEditor(id);}
  });
  const emailDrafts={};let pickingEmail=null,mailSearchRunning=false,paymentDisplaySignature='';
@@ -128,7 +152,7 @@
  function isCreditTarget(target){if(target.startsWith('credit:'))return true;if(target.startsWith('debt:')){const card=window.getDebtPlan().state.cards.find(c=>String(c.id)===target.slice(5));return !!card&&(!card.debtKind||card.debtKind==='credit-card');}return [...planner.manual,...review.bills].some(b=>'bill:'+b.id===target&&b.billKind==='credit-card');}
  function emailStatus(target,link=planner.emailLinks[target]){
   const connections=window.BearDen.plan?.connections||{},credit=target.startsWith('credit:')?(connections.creditCards||[]).find(c=>c.id===target.slice(7)):null,bankLink=planner.transactionLinks[target];
-  const bankPayments=credit?(credit.payments||[]):model.matchingPayments(bankTransactions(),bankLink,iso(new Date())).map(t=>({...t,id:t.transaction_id,amount:Math.round(t.amount*100)}));
+  const bankPayments=credit?(credit.payments||[]):model.matchingPayments(bankTransactions(),bankLink,iso(new Date()),planner.transactionLinks,target).map(t=>({...t,id:t.transaction_id,amount:Math.round(t.amount*100)}));
   const hasPlaid=!!bankLink&&bankLink.itemId==='lunchflow'&&!!connections.lunchflow?.connected;
   return {...mailModel.emailAccountStatus(mailMessages(),link,{hasPlaid,bankPayments,creditCard:isCreditTarget(target),debtAccount:target.startsWith('debt:')}),hasPlaid};
  }
@@ -274,7 +298,7 @@
    if(matched.has(String(c.id))&&!planner.debtAccountLinks?.[c.id])return [];
    const status=model.trackerDebtStatus(plan,c.id),next=payments.find(b=>b.source==='tracker-debt'&&b.trackerCardId===String(c.id));
    const email=emailStatus('debt:'+c.id),statement=email.statement,issuer=linkedCards.find(card=>'plaid-'+card.accountId===planner.debtAccountLinks?.[c.id]),minimum=resolvedDebts[c.id]?.monthlyMinimum.value??statement?.minimum??issuer?.minimum,dueDate=resolvedDebts[c.id]?.dueDate.value||c.dueDate;
-   const bankHistory=model.matchingPayments(bankTransactions(),planner.transactionLinks['debt:'+c.id],iso(new Date()));
+   const bankHistory=model.matchingPayments(bankTransactions(),planner.transactionLinks['debt:'+c.id],iso(new Date()),planner.transactionLinks,'debt:'+c.id);
    const synced=plan.syncedDebtBalances?.[c.id];
    const displayBalance=status.balance;totalBalances.push({name:c.name,amount:displayBalance,startingBalance:Math.round(c.balance*100)});
    const account=accounts.find(a=>a.id===planner.debtAccountLinks?.[c.id]),isCredit=c.debtKind==='credit-card'||account?.type==='credit'||!!issuer;
@@ -616,7 +640,7 @@
    const filter=$('#transactionFilter').value,accountFilter=$('#transactionAccountFilter').value,activity=review.rows.filter(t=>(!accountFilter||t.account_id===accountFilter)&&(filter!=='spending'||personalTransactions.some(p=>p.transaction_id===t.transaction_id))&&(filter==='all'||t.choice===filter)&&(!spendingCategory||t.spendingCategoryKey===spendingCategory));
    activity.sort((a,b)=>($('#transactionSort').value==='category'?a.categoryLabel.localeCompare(b.categoryLabel):$('#transactionSort').value==='account'?accountName(a.account_id).localeCompare(accountName(b.account_id))||a.account_id.localeCompare(b.account_id):0)||b.date.localeCompare(a.date));
    $('#transactionCount').textContent=activity.length+' transaction'+(activity.length===1?'':'s');
-   $('#bankTransactions').innerHTML=activity.map(t=>'<div class="transaction-entry"><div class="bill-entry-top"><span>'+esc(t.name)+'</span><strong>'+money(Math.round(t.amount*100))+'</strong></div><small>'+esc(dateLabel(t.date)+' · '+accountName(t.account_id)+(t.linkedTarget?' · '+t.label:''))+'</small><div class="bill-actions">'+transactionCategoryButton(t)+(t.linkedTarget?'<button type="button" data-edit-linked="'+esc(t.linkedTarget)+'">Edit linked account</button>':'<button type="button" data-track-transaction="'+esc(t.transaction_id)+'" '+(t.choice==='bill'?'disabled':'')+'>'+(t.choice==='bill'?'Tracking bill':'Track bill')+'</button>'+(planner.bankRules[t.key]?'<button type="button" data-reset-transaction="'+esc(t.transaction_id)+'">Undo choice</button>':''))+'</div></div>').join('')||'<p class="subtle">'+(review.rows.length?'No transactions in this group.':'Refresh your bank to load recent outgoing transactions.')+'</p>';
+   $('#bankTransactions').innerHTML=activity.map(t=>'<div class="transaction-entry"><div class="bill-entry-top"><span>'+esc(t.name)+'</span><strong>'+money(Math.round(t.amount*100))+'</strong></div><small>'+esc(dateLabel(t.date)+' · '+accountName(t.account_id)+(t.linkedTarget||t.needsPaymentAssignment?' · '+t.label:''))+'</small><div class="bill-actions">'+transactionCategoryButton(t)+(t.needsPaymentAssignment?'<button type="button" data-edit-linked="'+esc(t.paymentTargets[0])+'">Assign payment</button>':t.linkedTarget?'<button type="button" data-edit-linked="'+esc(t.linkedTarget)+'">Edit linked account</button>':'<button type="button" data-track-transaction="'+esc(t.transaction_id)+'" '+(t.choice==='bill'?'disabled':'')+'>'+(t.choice==='bill'?'Tracking bill':'Track bill')+'</button>'+(planner.bankRules[t.key]?'<button type="button" data-reset-transaction="'+esc(t.transaction_id)+'">Undo choice</button>':''))+'</div></div>').join('')||'<p class="subtle">'+(review.rows.length?'No transactions in this group.':'Refresh your bank to load recent outgoing transactions.')+'</p>';
 
    $('#incomeBalances').innerHTML=balanceNote;
    $('#incomeBankUpdated').textContent=connections.bankUpdated?'Last synced '+new Date(connections.bankUpdated).toLocaleString():'';

@@ -2,17 +2,17 @@ export {removeBillFromPlanner,removeDebtsFromPlanner} from './account-removal.mj
 export {carPaymentLoans} from './car-debt.mjs?v=car-debt1';
 export {transactionCategories,categorizeTransaction,transactionMerchantKey,setTransactionCategory} from './transaction-categories.mjs?v=auto-categories1';
 export {resolveDebtConnections,resolveDebtDetails,remapConnectedAccountReferences} from './connection-model.mjs?v=lunchflow-only1';
-import {transactionAccountId,matchingPayments,postedPayment} from './transaction-links.mjs?v=lunchflow-only1';
-import {transactionKey} from './bank-activity.mjs?v=lunchflow-only1';
+import {transactionAccountId,matchingPayments,postedPayment} from './transaction-links.mjs?v=shared-payments1';
+import {transactionKey} from './bank-activity.mjs?v=shared-payments1';
 import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=paid-cycle1';
 export {monthlyMinimum} from './debt-payments.mjs?v=paid-cycle1';
 import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-portal1';
-import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=lunchflow-only1';
+import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=shared-payments1';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
-export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs?v=lunchflow-only1';
+export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs?v=shared-payments1';
 export {creditBills,creditCapacity} from './credit-model.mjs?v=paid-cycle1';
 export {transactionAccountId};
-export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment} from './transaction-links.mjs?v=lunchflow-only1';
+export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment,paymentOwner,paymentTargets} from './transaction-links.mjs?v=shared-payments1';
 import {day,occurrences} from './engine.mjs';
 const cents=n=>Math.round((Number(n)||0)*100);
 const isPersonal=b=>/\b(food|dining|grocer(?:y|ies)|gas|fuel|transport|shopping|personal|spending|entertainment|misc(?:ellaneous)?|allowance|fun|restaurants)\b/i.test(b.name||'');
@@ -79,7 +79,7 @@ export function billTrackerSummary(legacy,planner,linked,today,{transactions=[]}
  // cycles, grouping split payments so one monthly bill counts only once.
  for(const bill of known.values())if(bill.source==='bank-tracked'&&activeIds.has(bill.id)){
   const link=planner.transactionLinks?.['bill:'+bill.id],seen=new Set();
-  const history=(link?matchingPayments(transactions,link,today):transactions.filter(t=>postedPayment(t)&&transactionKey(t)===bill.groupKey)).filter(t=>{
+  const history=(link?matchingPayments(transactions,link,today,planner.transactionLinks,'bill:'+bill.id):transactions.filter(t=>postedPayment(t)&&transactionKey(t)===bill.groupKey)).filter(t=>{
    if(t.date<start||t.date>today||t.date>=bill.date||seen.has(t.transaction_id))return false;
    seen.add(t.transaction_id);return true;
   });
