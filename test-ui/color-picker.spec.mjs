@@ -86,7 +86,7 @@ test('tap all ten colors, switch light/dark, remember across reload, reset and r
 test('saved color works with holiday bears and the existing header mode toggle',async({page})=>{
  await page.addInitScript(()=>{localStorage.setItem('bearden:classic:color-scheme','rose');localStorage.setItem('bearden:classic:theme','dark');localStorage.setItem('bearden:classic:holiday','christmas');});
  await app(page);await expect(page.locator('html')).toHaveAttribute('data-color-scheme','rose');await expect(page.locator('html')).toHaveAttribute('data-holiday','christmas');
- await page.locator('#themeToggleBtn').click();await expect(page.locator('html')).not.toHaveAttribute('data-theme','dark');await expect(page.locator('html')).toHaveAttribute('data-color-scheme','rose');
+ await page.locator('#nav-settings').click();await page.locator('#themeToggleBtn').click();await expect(page.locator('html')).not.toHaveAttribute('data-theme','dark');await expect(page.locator('html')).toHaveAttribute('data-color-scheme','rose');
  await openPicker(page);await page.locator('[data-color-scheme-choice="forest"]').click();await expect(page.locator('html')).toHaveAttribute('data-holiday','christmas');await page.locator('#closeColorPicker').click();
  await page.locator('#holidayToggleBtn').click();await page.locator('#holidayItemStandard').click();await expect(page.locator('html')).not.toHaveAttribute('data-color-scheme');await expect(page.locator('html')).not.toHaveAttribute('data-holiday');
 });

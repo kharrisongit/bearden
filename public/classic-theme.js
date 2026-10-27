@@ -49,6 +49,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   opener.addEventListener('click',()=>{
     document.getElementById('holidayMenu')?.classList.remove('open');
     sync();if(!dialog.open)dialog.showModal();
+    dialog.setAttribute('closedby','closerequest');
     (swatches.find(button=>button.getAttribute('aria-pressed')==='true')||swatches[0])?.focus({preventScroll:true});
   });
   dialog.addEventListener('click',event=>{
