@@ -319,13 +319,16 @@
  }
  function fillDebtConnectionDetails(){
   const form=$('#debtEditorForm'),accounts=window.BearDen.plan?.state?.accounts||[],connections=window.BearDen.plan?.connections||{},saved=window.getDebtPlan().state.cards.find(c=>String(c.id)===String(editingDebt));
+  const limitField=form.elements.creditLimit;
+  if(!limitField.readOnly)limitField.dataset.manual=limitField.value;
+  const manualLimit=limitField.dataset.manual??'';
   const manual={...saved,balance:Number(form.elements.balance.value),apr:Number(form.elements.apr.value),monthlyMinimum:Number(form.elements.minimum.value),dueDate:form.elements.dueDate.value,debtKind:form.elements.debtKind.value};
   const primary=accounts.find(a=>a.id===form.elements.plaidDebtAccount.value),backup=accounts.find(a=>a.id===form.elements.backupDebtAccount.value),draft=emailDrafts.debt;
   const statement=draft?emailStatus(draft.target,draft.link).statement:null;
-  const automatic=form.elements.autoDebtDetails.checked,details=model.resolveDebtDetails({card:manual,primary,backup,issuers:connections.creditCards||[],statement,items:connections.items||[],manualLimit:form.elements.creditLimit.value?Math.round(Number(form.elements.creditLimit.value)*100):null,futureMinimum:form.elements.futureMinimum.value?Math.round(Number(form.elements.futureMinimum.value)*100):null,automatic});
+  const automatic=form.elements.autoDebtDetails.checked,details=model.resolveDebtDetails({card:manual,primary,backup,issuers:connections.creditCards||[],statement,items:connections.items||[],manualLimit:manualLimit!==''?Math.round(Number(manualLimit)*100):null,futureMinimum:form.elements.futureMinimum.value?Math.round(Number(form.elements.futureMinimum.value)*100):null,automatic});
   for(const [key,name]of [['monthlyMinimum','minimum'],['dueDate','dueDate'],['apr','apr']]){const field=form.elements[name],entry=details[key];field.readOnly=automatic&&entry.source!=='Entered manually';if(field.readOnly&&entry.value!==null)field.value=key==='monthlyMinimum'?(entry.value/100).toFixed(2):entry.value;}
   if(editingDebt===null&&details.balance.source!=='Entered manually')form.elements.balance.value=(details.balance.value/100).toFixed(2);
-  const limit=details.creditLimit;fillCreditLimit(form.elements.creditLimit,$('#debtCreditLimitNote'),{providerLimit:limit.source==='Entered manually'?null:limit.value},form.elements.creditLimit.dataset.manual??'',limit.source);
+  const limit=details.creditLimit;fillCreditLimit(limitField,$('#debtCreditLimitNote'),{providerLimit:limit.source==='Entered manually'?null:limit.value},manualLimit,limit.source);
   $('#debtFutureMinimum').hidden=!(automatic&&details.monthlyMinimum.value===0&&details.currentCycleMinimum);
   if(!form.elements.futureMinimum.value&&details.forecastMinimum.value>0)form.elements.futureMinimum.value=(details.forecastMinimum.value/100).toFixed(2);
   $('#debtSources').innerHTML=debtSourceMarkup(details);
@@ -360,6 +363,7 @@
   const estimate=planner.debtFutureMinimums?.[debt?.id]??resolvedDebts[debt?.id]?.forecastMinimum?.value;
   form.elements.futureMinimum.value=draft?.futureMinimum??(estimate>0?estimate/100:'');
   form.elements.creditLimit.readOnly=false;form.elements.creditLimit.value=draft?.creditLimit??(planner.debtCreditLimits?.[debt?.id]!=null?planner.debtCreditLimits[debt.id]/100:'');
+  form.elements.creditLimit.dataset.manual=form.elements.creditLimit.value;
   $('#debtMinimumNote').hidden=!debt||Number.isFinite(debt.monthlyMinimum);
   const accountId=planner.debtAccountLinks?.[debt?.id]||'',debtAccounts=(window.BearDen.plan?.state?.accounts||[]).filter(a=>a.source==='lunchflow'&&['credit','loan'].includes(a.type)&&(accountShown(a.id)||a.id===accountId));
   form.elements.plaidDebtAccount.innerHTML='<option value="">No linked account</option>'+debtAccounts.map(a=>'<option value="'+esc(a.id)+'">'+esc(connectedAccountName(a))+' (Lunch Flow) · '+esc((a.balanceUnavailable?'Not supplied':money(a.balance,a.currency||'USD')))+'</option>').join('')+(accountId&&!debtAccounts.some(a=>a.id===accountId)?'<option value="'+esc(accountId)+'">Previously linked account (unavailable)</option>':'');form.elements.plaidDebtAccount.value=accountId;updateDebtBackupChoices();form.elements.backupDebtAccount.value=planner.debtBackupLinks?.[debt?.id]||'';
