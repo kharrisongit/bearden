@@ -8,7 +8,6 @@ import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=paid-cy
 export {monthlyMinimum} from './debt-payments.mjs?v=paid-cycle1';
 import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-portal1';
 import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=bills-savings1';
-export {billsSavingsPlan} from './bills-savings.mjs?v=bills-savings1';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
 export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs?v=shared-payments1';
 export {creditBills,creditCapacity} from './credit-model.mjs?v=paid-cycle1';
