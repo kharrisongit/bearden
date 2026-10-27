@@ -347,3 +347,5 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 
 .debt-timing-settings{margin:20px 0;padding:16px;border:1px solid var(--line);border-radius:8px}.debt-timing-settings label{display:block;margin-bottom:8px}.debt-timing-settings select,.debt-timing-settings input{display:block;width:100%;max-width:360px;margin-top:8px;padding:10px;font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:6px}.add-debt-payment{margin:8px 0 12px;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--accent-soft);color:var(--ink);font:inherit;cursor:pointer}
 
+
+.account-delete-row{display:flex;justify-content:flex-end;margin:-4px 0 12px}.account-delete-row:has(button[hidden]){display:none}:root .income-card .account-delete-button{background:transparent;color:var(--warn);border:1px solid var(--warn);font-size:.75rem;padding:8px 12px;min-height:40px}

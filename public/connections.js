@@ -27,6 +27,13 @@ window.BearDen=(()=>{
  }
  bridge.storage.get=async key=>{await bridge.ready;if(blocked)throw Error('Tracker could not load safely. Reload to try again.');return values[key]===undefined?null:{key,value:values[key],shared:false};};
  bridge.storage.set=async(key,value)=>{await bridge.ready;if(!keys.has(key))return null;const previous=values[key],next=String(value);values[key]=next;try{await persist();return {key,value,shared:false};}catch(error){if(values[key]===next){if(previous===undefined)delete values[key];else values[key]=previous;}throw error;}};
+ bridge.storage.setMany=async changes=>{
+  await bridge.ready;
+  const entries=Object.entries(changes);if(entries.some(([key])=>!keys.has(key)))throw Error('Invalid saved setting.');
+  const previous=Object.fromEntries(entries.map(([key])=>[key,values[key]])),next=Object.fromEntries(entries.map(([key,value])=>[key,String(value)]));
+  Object.assign(values,next);
+  try{await persist();return true;}catch(error){for(const [key,value]of Object.entries(next))if(values[key]===value){if(previous[key]===undefined)delete values[key];else values[key]=previous[key];}throw error;}
+ };
  bridge.storage.delete=async key=>{await bridge.ready;if(!keys.has(key)||values[key]===undefined)return {key,deleted:true};delete values[key];await persist();return {key,deleted:true};};
  bridge.resetSetup=async state=>{await bridge.ready;await queue;const previous=values;values={...values,'app-state':JSON.stringify(state),'income-planner':JSON.stringify({}),'linked-bills':JSON.stringify({}),onboarding:JSON.stringify({version:1,step:0,started:true,completed:false})};try{await persist();}catch(e){values=previous;throw e;}};
  function requireLogin(){if(config.authenticated)return true;message('Sign in with Google or Microsoft in Settings to connect an account.');window.selectBearTab?.('settings');return false;}

@@ -1,3 +1,4 @@
+export {removeBillFromPlanner,removeDebtsFromPlanner} from './account-removal.mjs?v=delete-accounts1';
 export {carPaymentLoans} from './car-debt.mjs?v=car-debt1';
 export {transactionCategories,categorizeTransaction,transactionMerchantKey,setTransactionCategory} from './transaction-categories.mjs?v=auto-categories1';
 export {resolveDebtConnections,resolveDebtDetails} from './connection-model.mjs?v=paid-cycle1';
@@ -117,7 +118,7 @@ export function scenarioForecast(accounts,plan,bills,start,{debtMode='full',leng
 }
 export function billEvents(legacy,planner,linked,start,end){
  const paid=new Set(planner.paid||[]),overrides=planner.covered||{},out=[];
- let bills=[...(legacy?.bills||[]).filter(b=>!['budget','baby-bear-budget'].includes(b.source)),...(planner.manual||[])];
+ let bills=[...(legacy?.bills||[]).filter(b=>!['budget','baby-bear-budget'].includes(b.source)),...(planner.manual||[])].filter(b=>!planner.deletedBills?.[b.id]);
  const replaced=new Set(bills.filter(b=>b.source==='plaid-credit').map(b=>b.replaces).filter(Boolean));
  bills=bills.filter(b=>!replaced.has(b.id));
  const electric=bills.find(b=>b.id===planner.electricBillId&&b.billKind==='electric'&&b.source!=='gmail'&&!planner.emailLinks?.['bill:'+b.id]);
@@ -128,6 +129,7 @@ export function billEvents(legacy,planner,linked,start,end){
   bills.push(...[...monthlyEmails.values()].map(b=>({...b,id:electric.id,name:electric.name,billKind:'electric',source:electric.source,groupKey:electric.groupKey,repeat:'once',gmailConfirmed:true,originalEmailId:b.id})));
  }
  for(const original of bills){
+  if(planner.deletedBills?.[original.id])continue;
   const bill=rentSchedule(original);
   if(!bill.date)continue;
   const dates=occurrences(bill.date,bill.repeat||'once',start,end);

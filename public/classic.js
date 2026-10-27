@@ -1567,7 +1567,7 @@ function buildAccountDetailHTML(d, idx){
       <input type="number" id="monthlyMin_${d.id}" value="${window.BearDenDebtPayments.monthlyMinimum(d).toFixed(2)}" step="0.01" data-bd-change="calculate()">
     </div>
     <div style="text-align:right;margin-top:8px;">
-      <span class="remove" data-bd-click="removeCard(${d.id}); closeAccountDetail();">Remove account</span>
+      <button type="button" class="account-delete-button" data-edit-debt="${d.id}">Delete debt</button>
     </div>
 
     <button class="recalc" style="margin:16px 0 20px;" id="historyToggleBtn-${d.id}" data-bd-click="togglePaymentHistoryDetail(${d.id})">${paymentHistoryExpanded ? '▾ Hide History' : '📜 History'}</button>
@@ -6855,6 +6855,21 @@ function addConnectedBill(bill,date){
 
 // Read-only snapshot for the Income overview; the original payoff engine remains authoritative.
 window.getDebtPlan=()=>({state:gatherAppState(),syncedDebtBalances:window.syncedDebtBalances||{},syncedDebtTerms:window.syncedDebtTerms||{},schedule:lastSchedule.map(r=>({...r,date:r.date.getFullYear()+'-'+String(r.date.getMonth()+1).padStart(2,'0')+'-'+String(r.date.getDate()).padStart(2,'0')}))});
+
+// Save deletion and its account links together, then update the visible plan.
+window.deleteDebtAccounts=async function(ids,nextPlanner){
+ await window.classicReady;
+ const {removeDebtsFromState}=await import('./account-removal.mjs?v=delete-accounts1');
+ clearTimeout(saveDebounceTimer);window.captureDebtHistory();
+ const next=removeDebtsFromState(gatherAppState(),ids);
+ try{await storage.setMany({'app-state':JSON.stringify(next),'income-planner':JSON.stringify(nextPlanner)});}
+ catch(error){queueSaveAppState();throw error;}
+ cardsData=next.cards;accountPaymentOverrides=next.accountPaymentOverrides||{};
+ paycheckSlices=next.paycheckSlices||{};paycheckSquashes=next.paycheckSquashes||{};extraExpenses=next.extraExpenses||{};
+ window.debtPaymentHistory=next.debtPaymentHistory||{};window.debtInterestHistory=next.debtInterestHistory||{};
+ for(const id of ids){if(window.syncedDebtBalances)delete window.syncedDebtBalances[id];if(window.syncedDebtTerms)delete window.syncedDebtTerms[id];}
+ currentDetailAccountIdx=null;calculate();clearTimeout(saveDebounceTimer);
+};
 
 // Account creation uses the same payoff state as the original tracker.
 window.saveDebtAccount=async function(data){
