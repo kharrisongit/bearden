@@ -55,16 +55,48 @@ export function classifyBillEmail({id,from,subject='',snippet='',text='',receive
  return {action:'add',candidate,bill:{id:'gmail-'+id,name,amount:parsed.amount,date:parsed.date,repeat:'once',source:'gmail',sourceId:id,sourceKey,sender}};
 }
 
+const validBalance=value=>typeof value==='number'&&Number.isFinite(value)&&Number.isSafeInteger(Math.round(value*100));
+const accountAmount=a=>['credit','loan','investment','brokerage'].includes(a.type)?a.balances?.current:(validBalance(a.balances?.available)?a.balances.available:a.balances?.current);
 // Missing provider values are not zero balances. Preserve the last known value.
 export function plaidAccountEntry(a,item,old,now=new Date().toISOString()){
- const debt=['credit','loan'].includes(a.type),raw=debt?a.balances?.current:(a.balances?.available??a.balances?.current);
+ const raw=accountAmount(a);
  const known=typeof raw==='number'&&Number.isFinite(raw)&&Number.isSafeInteger(Math.round(raw*100));
  const eligible=a.type==='depository'&&a.subtype==='checking'&&a.balances?.iso_currency_code==='USD';
- return {id:'plaid-'+a.account_id,itemId:item.id,name:a.name+(a.mask?' •'+a.mask:''),balance:known?Math.round(raw*100):(old?.balance??0),balanceUnavailable:!known,balanceUpdated:known?now:(old?.balanceUpdated||null),reportedCurrent:typeof a.balances?.current==='number'?a.balances.current:null,reportedAvailable:typeof a.balances?.available==='number'?a.balances.available:null,creditLimit:a.type==='credit'&&typeof a.balances?.limit==='number'&&Number.isFinite(a.balances.limit)&&a.balances.limit>=0&&Number.isSafeInteger(Math.round(a.balances.limit*100))?Math.round(a.balances.limit*100):null,balanceRetrieved:now,lastPositiveBalance:known&&raw>0?Math.round(raw*100):(old?.lastPositiveBalance??(old?.balance>0?old.balance:null)),include:eligible?(old?.include??true):false,source:'plaid',type:a.type,subtype:a.subtype,currency:a.balances?.iso_currency_code};
+ return {id:'plaid-'+a.account_id,itemId:item.id,name:a.name+(a.mask?' •'+a.mask:''),balance:known?Math.round(raw*100):(old?.balance??0),balanceUnavailable:!known,accountMissing:false,balanceSource:known?(a.balanceSource||'cached'):'saved',balanceUpdated:known?(a.balances?.last_updated_datetime||now):(old?.balanceUpdated||null),reportedCurrent:validBalance(a.balances?.current)?a.balances.current:null,reportedAvailable:validBalance(a.balances?.available)?a.balances.available:null,creditLimit:a.type==='credit'&&validBalance(a.balances?.limit)&&a.balances.limit>=0?Math.round(a.balances.limit*100):old?.creditLimit??null,balanceRetrieved:now,lastPositiveBalance:known&&raw>0?Math.round(raw*100):(old?.lastPositiveBalance??(old?.balance>0?old.balance:null)),include:eligible?(old?.include??true):false,source:'plaid',type:a.type,subtype:a.subtype,currency:a.balances?.iso_currency_code};
 }
 export async function bankAccounts(call,item,live=false){
- if(live){try{const result=await call('/accounts/balance/get',{access_token:item.token});delete item.balanceWarning;return result;}catch(e){item.balanceWarning='Live balance refresh unavailable ('+(e.code||e.message)+'); showing cached bank data.';}}
- return call('/accounts/get',{access_token:item.token});
+ const read=async path=>{const result=await call(path,{access_token:item.token});if(!Array.isArray(result?.accounts)||result.accounts.some(a=>!a?.account_id))throw Error('Plaid returned an invalid account list');return result;};
+ delete item.balanceWarning;
+ if(!live)return read('/accounts/get');
+ let fresh,cached,liveError,cachedError;
+ try{fresh=await read('/accounts/balance/get');}catch(e){liveError=e;}
+ // Balance responses can omit accounts or individual fields. Always discover the
+ // full authorized inventory too, without restricting the request to known IDs.
+ try{cached=await read('/accounts/get');}catch(e){cachedError=e;}
+ if(!fresh&&!cached)throw liveError||cachedError;
+ const byId=new Map((cached?.accounts||[]).map(a=>[a.account_id,{...a,balanceSource:'cached'}]));
+ for(const a of fresh?.accounts||[]){
+  const fallback=byId.get(a.account_id),usable=validBalance(accountAmount(a));
+  // Prefer a complete live amount over a cached available balance. For debt,
+  // available credit must never stand in for the principal/current amount owed.
+  const balances={...fallback?.balances,...a.balances};
+  if(usable){balances.current=validBalance(a.balances?.current)?a.balances.current:null;balances.available=validBalance(a.balances?.available)?a.balances.available:null;balances.last_updated_datetime=a.balances?.last_updated_datetime;}
+  if(!usable){for(const key of ['current','available'])if(!validBalance(balances[key])&&validBalance(fallback?.balances?.[key]))balances[key]=fallback.balances[key];balances.last_updated_datetime=fallback?.balances?.last_updated_datetime;}
+  byId.set(a.account_id,{...fallback,...a,balances,balanceSource:usable?'live':'cached'});
+ }
+ const accounts=[...byId.values()],fallbacks=accounts.filter(a=>a.balanceSource==='cached').length;
+ if(liveError)item.balanceWarning='Live balance refresh unavailable ('+(liveError.code||liveError.message)+'); showing cached bank data.';
+ else if(fallbacks)item.balanceWarning=fallbacks+' account(s) use cached bank balances because live data was incomplete.';
+ if(cachedError)item.balanceWarning=[item.balanceWarning,'Account discovery could not finish; previously imported accounts are kept.'].filter(Boolean).join(' ');
+ return {accounts};
+}
+export function mergePlaidAccounts(existing,data,item,now=new Date().toISOString()){
+ const old=new Map(existing.filter(a=>a.itemId===item.id).map(a=>[a.id,a]));
+ const next=data.accounts.map(a=>{const id='plaid-'+a.account_id,previous=old.get(id);old.delete(id);return {...previous,...plaidAccountEntry(a,item,previous,now)};});
+ for(const a of old.values())next.push({...a,accountMissing:true,balanceUnavailable:true,balanceSource:'saved',balanceRetrieved:now});
+ const missing=old.size,unavailable=next.filter(a=>a.balanceUnavailable&&!a.accountMissing).length;
+ if(missing||unavailable)item.balanceWarning=[item.balanceWarning,`${missing} account(s) missing from this response; ${unavailable} returned without a usable balance. Last known amounts and links are kept.`].filter(Boolean).join(' ');
+ return [...existing.filter(a=>a.itemId!==item.id),...next];
 }
 
 // Called only after the user confirms these are two connections to the same login.

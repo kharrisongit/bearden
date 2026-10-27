@@ -29,9 +29,10 @@ export async function claimSimplefin(token,fetcher=fetch){
  const text=await fetchText(fetcher,claim.href,{method:'POST',body:''});
  return bridgeUrl(text.trim()).href;
 }
-export async function fetchSimplefin(accessUrl,fetcher=fetch){
+export async function fetchSimplefin(accessUrl,fetcher=fetch,{balancesOnly=false}={}){
  const u=bridgeUrl(accessUrl),auth=Buffer.from(decodeURIComponent(u.username)+':'+decodeURIComponent(u.password)).toString('base64');
- u.username='';u.password='';u.pathname=u.pathname.replace(/\/$/,'')+'/accounts';u.search=new URLSearchParams({version:'2','start-date':String(Math.floor(Date.now()/1000)-90*86400)}).toString();
+ const end=Math.floor(Date.now()/1000);
+ u.username='';u.password='';u.pathname=u.pathname.replace(/\/$/,'')+'/accounts';u.search=new URLSearchParams({version:'2',...(balancesOnly?{'balances-only':'1'}:{'start-date':String(end-90*86400),'end-date':String(end)})}).toString();
  const text=await fetchText(fetcher,u.href,{headers:{Authorization:'Basic '+auth,Accept:'application/json'}});
  let data;try{data=JSON.parse(text);}catch{throw Error('SimpleFIN returned an unreadable response.');}
  if(!data||!Array.isArray(data.accounts)||data.accounts.length>500)throw Error('SimpleFIN returned an invalid account list.');
@@ -41,29 +42,39 @@ const amount=value=>typeof value==='string'&&/^-?\d+(?:\.\d+)?$/.test(value)&&Nu
 const stamp=value=>typeof value==='number'&&Number.isFinite(value)&&value>0&&value*1000<=Date.now()+day?new Date(value*1000).toISOString():null;
 function label(value,fallback){return typeof value==='string'&&value.trim()?value.trim().slice(0,150):fallback;}
 export function simplefinAccountBalance(a){
- const debt=['credit','loan'].includes(a.type),raw=a.rawBalance;
- if(a.providerUnavailable||raw===null||!Number.isSafeInteger(raw)||debt&&!['negative','positive'].includes(a.debtSign))return {...a,balanceUnavailable:true,include:false};
+ const debt=['credit','loan'].includes(a.type),raw=a.rawBalance,include=a.type==='depository'&&a.currency==='USD'&&a.include===true;
+ if(a.providerUnavailable||raw===null||!Number.isSafeInteger(raw)||debt&&!['negative','positive'].includes(a.debtSign))return {...a,balanceUnavailable:true,include};
  const balance=debt?Math.max(0,a.debtSign==='negative'?-raw:raw):a.type==='depository'?(a.rawAvailable??raw):raw;
- return {...a,balance,balanceUnavailable:!!a.providerUnavailable,include:false};
+ return {...a,balance,balanceUnavailable:!!a.providerUnavailable,include};
 }
 export const simplefinAccountId=a=>'simplefin-'+createHash('sha256').update(JSON.stringify([String(a.conn_id||a.org?.id||a.org?.['sfin-url']||''),a.id])).digest('hex').slice(0,32);
+function accountErrors(data,account,{transactions=false}={}){
+ const structured=(Array.isArray(data.errlist)?data.errlist:[]).filter(e=>e&&typeof e==='object');
+ return structured.filter(e=>{
+  if(!transactions&&e.code==='act.missingdata')return false; // Transaction completeness, not a balance error.
+  if(String(e.code||'').split('.')[0]==='gen')return true;
+  if(e.conn_id&&e.conn_id!==account.conn_id)return false;
+  if(e.account_id)return e.account_id===account.id;
+  return !!e.conn_id&&e.conn_id===account.conn_id;
+ });
+}
+const legacyWarning=data=>!(data.errlist?.length)&&Array.isArray(data.errors)&&data.errors.some(e=>typeof e==='string'&&e.trim());
 export function mergeSimplefinAccounts(existing,data,now=new Date().toISOString()){
  const old=new Map(existing.filter(a=>a.source==='simplefin').map(a=>[a.id,a])),seen=new Set();
- const errors=[...(Array.isArray(data.errlist)?data.errlist:[]),...(Array.isArray(data.errors)?data.errors:[])];
  const next=data.accounts.map(a=>{
   if(!a||typeof a.id!=='string'||!a.id||a.id.length>500)throw Error('SimpleFIN returned an invalid account identifier.');
   const id=simplefinAccountId(a);
   if(seen.has(id))throw Error('SimpleFIN returned duplicate accounts. Your previous balances were kept.');seen.add(id);
   const previous=old.get(id),org=data.connections?.find(c=>c.conn_id===a.conn_id),raw=amount(a.balance),date=stamp(a['balance-date']);
-  const failed=errors.some(e=>typeof e==='string'||e.code?.startsWith('gen.')||e.account_id===a.id||e.conn_id===a.conn_id&&!e.account_id);
+  const failed=accountErrors(data,a).length>0;
   const providerUnavailable=raw===null||!date||failed;
-  if(previous?.balanceUpdated&&date&&date<previous.balanceUpdated)return {...previous,balanceRetrieved:now};
-  const entry={...previous,id,source:'simplefin',itemId:'simplefin',name:label(a.name,'SimpleFIN account'),institution:label(org?.name||a.org?.name,'SimpleFIN'),currency:typeof a.currency==='string'&&/^[A-Z]{3}$/.test(a.currency)?a.currency:'XXX',type:previous?.type||'unknown',subtype:previous?.subtype||'',balance:previous?.balance??0,rawBalance:raw,rawAvailable:amount(a['available-balance']),providerUnavailable,balanceRetrieved:now,balanceUpdated:providerUnavailable?(previous?.balanceUpdated||null):date,include:false};
+  if(previous?.balanceUpdated&&date&&date<previous.balanceUpdated)return {...previous,balanceRetrieved:now,balanceWarning:'SimpleFIN returned an older reading; the newer saved amount is kept.',...(failed?{providerUnavailable:true,balanceUnavailable:true}:{})};
+  const entry={...previous,id,source:'simplefin',itemId:'simplefin',name:label(a.name,'SimpleFIN account'),institution:label(org?.name||a.conn_name||a.org?.name,'SimpleFIN'),currency:typeof a.currency==='string'&&/^[A-Z]{3}$/.test(a.currency)?a.currency:'XXX',type:previous?.type||'unknown',subtype:previous?.subtype||'',balance:previous?.balance??0,rawBalance:raw,rawAvailable:amount(a['available-balance']),providerUnavailable,accountMissing:false,balanceWarning:legacyWarning(data)?'SimpleFIN reported a connection warning. This account’s reported balance and date are shown.':null,balanceRetrieved:now,balanceUpdated:providerUnavailable?(previous?.balanceUpdated||null):date,include:previous?.include??false};
   if(providerUnavailable)return {...entry,balanceUnavailable:true};
   return simplefinAccountBalance(entry);
  });
  // Missing accounts can be an upstream outage. Keep them and their links as stale.
- for(const a of old.values())if(!seen.has(a.id))next.push({...a,balanceUnavailable:true,providerUnavailable:true,include:false});
+ for(const a of old.values())if(!seen.has(a.id))next.push({...a,balanceUnavailable:true,providerUnavailable:true,accountMissing:true,balanceRetrieved:now});
  return [...existing.filter(a=>a.source!=='simplefin'),...next];
 }
 export function configureSimplefinAccount(accounts,{id,kind,debtSign}){
@@ -79,14 +90,33 @@ export async function syncSimplefin(c,readAccounts,saveAccounts,fetcher=fetch){
  const now=Date.now();s.attempts=(s.attempts||[]).filter(t=>t>now-day);
  if(s.lastAttempt&&now-s.lastAttempt<300000)return 'SimpleFIN was checked less than five minutes ago. Showing saved balances; try again after '+new Date(s.lastAttempt+300000).toISOString()+'.';
  if(s.attempts.length>=20){s.status='SimpleFIN has reached today’s refresh limit. Your last balances are kept.';s.nextSync=Math.min(...s.attempts)+day;return s.status;}
- s.lastAttempt=now;s.attempts.push(now);s.nextSync=now+6*3600000;
+ s.lastAttempt=now;s.nextSync=now+6*3600000;
+ const read=async balancesOnly=>{if(s.attempts.length>=20)throw Error('SimpleFIN has reached today’s refresh limit.');s.attempts.push(Date.now());return fetchSimplefin(s.accessUrl,fetcher,{balancesOnly});};
+ let data,balanceError,historyError,history;
+ const save=async snapshot=>{
+  const accounts=mergeSimplefinAccounts(await readAccounts(),snapshot);await saveAccounts(accounts);
+  data=snapshot;s.updated=new Date().toISOString();c.bankUpdated=s.updated;
+  return accounts;
+ };
+ let accounts;
+ try{accounts=await save(await read(true));}catch(e){balanceError=e;}
+ // History is independent: it can recover balances if the lightweight request
+ // failed, and a history failure cannot roll back already saved balances.
  try{
-  const data=await fetchSimplefin(s.accessUrl,fetcher),accounts=mergeSimplefinAccounts(await readAccounts(),data);
-  await saveAccounts(accounts);c.transactions=mergeSimplefinTransactions(c.transactions||[],data);s.updated=new Date().toISOString();s.nextSync=now+day;c.bankUpdated=s.updated;
+  history=await read(false);
+  if(!data)accounts=await save(history);
+  c.transactions=mergeSimplefinTransactions(c.transactions||[],history);
+ }catch(e){historyError=e;}
+ if(data){
   const stale=accounts.filter(a=>a.source==='simplefin'&&a.providerUnavailable).length;
   const errors=(data.errlist?.length||0)+(data.errors?.length||0);
-  s.status=errors||stale?'SimpleFIN needs attention. Some balances were not refreshed; your previous balances are kept. Check the affected connection in SimpleFIN.':data.accounts.length?'SimpleFIN balances and available transactions synced. Updates run about once a day.':'SimpleFIN is connected. Add financial institutions in SimpleFIN, then refresh here.';
- }catch(e){s.status=e.message+' Your previous balances are kept.';}
+  s.status=stale?`SimpleFIN returned ${data.accounts.length} account(s); ${stale} balance(s) need attention. Last known amounts are kept. Check account sharing and the affected connection in SimpleFIN.`:data.accounts.length?`SimpleFIN loaded ${data.accounts.length} account(s).`:'SimpleFIN is connected but returned no accounts. Add financial institutions or enable accounts for BearDen in SimpleFIN, then refresh here.';
+  if(errors&&!stale)s.status+=' SimpleFIN reported a connection warning; valid reported balances are shown with their dates.';
+  const historyErrors=(history?.errlist?.length||0)+(history?.errors?.length||0);
+  s.status+=historyError?' Transaction history could not refresh. Saved history is kept.':historyErrors?' Some transaction history needs attention; saved history is kept.':' Available transactions synced.';
+  s.nextSync=now+(stale||errors||historyError||historyErrors?6*3600000:day);
+ }else s.status=(balanceError?.message||'SimpleFIN could not refresh balances.')+' Your previous balances are kept.';
+
  return s.status;
 }
 
@@ -95,9 +125,8 @@ export async function syncSimplefin(c,readAccounts,saveAccounts,fetcher=fetch){
 // Only a complete, successful account window may replace previous transactions.
 export function mergeSimplefinTransactions(existing,data,now=Date.now()){
  const since=new Date(now-90*day).toISOString().slice(0,10),today=new Date(now).toISOString().slice(0,10),replace=new Set(),incoming=[];
- const errors=[...(data.errlist||[]),...(data.errors||[])];
  for(const account of data.accounts||[]){
-  const failed=errors.some(e=>typeof e==='string'||String(e.code||'').startsWith('gen.')||e.account_id===account.id||e.conn_id===account.conn_id&&!e.account_id);
+  const failed=accountErrors(data,account,{transactions:true}).length>0;
   if(failed||!Array.isArray(account.transactions))continue;
   const id=simplefinAccountId(account),rows=[];let malformed=false;
   for(const t of account.transactions){
@@ -106,7 +135,9 @@ export function mergeSimplefinTransactions(existing,data,now=Date.now()){
    const date=posted.slice(0,10);if(t.pending||date<since||date>today)continue;
    rows.push({transaction_id:'simplefin-tx-'+createHash('sha256').update(JSON.stringify([id,t.id])).digest('hex').slice(0,32),itemId:'simplefin',account_id:id,source:'simplefin',name:label(t.description,'Transaction'),date,amount:-cents/100,pending:false,currency:account.currency,category:''});
   }
-  if(!malformed)replace.add(id);incoming.push(...rows);
+  // Legacy warnings have no reliable account scope: merge valid rows, but do
+  // not use that possibly partial window to delete previously saved history.
+  if(!malformed&&!legacyWarning(data))replace.add(id);incoming.push(...rows);
  }
  const map=new Map(existing.filter(t=>!(t.source==='simplefin'&&replace.has(t.account_id)&&t.date>=since)).map(t=>[t.transaction_id,t]));
  for(const t of incoming)map.set(t.transaction_id,t);

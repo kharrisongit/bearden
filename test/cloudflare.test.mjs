@@ -64,7 +64,7 @@ test('all scripts and styles used by the original tracker are publicly served wi
 test('widget bank refresh updates balances without scanning Gmail or leaving bank history stale',async()=>{
  const calls=[];const f=fixture(async url=>{calls.push(url);if(url.endsWith('/accounts/balance/get'))return Response.json({accounts:[]});if(url.endsWith('/transactions/sync'))return Response.json({added:[],modified:[],removed:[],next_cursor:'new',has_more:false});throw Error('Gmail must not run');});
  f.set('connections',{items:[{id:'bank',name:'ELGA',token:'secret'}],transactions:[],candidates:[],gmail:{refreshToken:'mail'},lastTask:'bank'});
- const r=await f.app.handle(f.req('/api/bank/refresh',{}));assert.equal(r.status,200);assert.equal(calls.length,2);assert.ok(calls[0].endsWith('/accounts/balance/get'));assert.equal(f.get('connections').items[0].cursor,'new');f.db.close();
+ const r=await f.app.handle(f.req('/api/bank/refresh',{}));assert.equal(r.status,200);assert.equal(calls.length,3);assert.ok(calls[0].endsWith('/accounts/balance/get'));assert.equal(f.get('connections').items[0].cursor,'new');f.db.close();
 });
 
 test('credit accounts show current amount owed, never available credit as cash',async()=>{
@@ -85,7 +85,7 @@ test('credit refresh targets the requested bank, loads payments, stays private a
  if(url.endsWith('/transactions/sync'))return Response.json({added:[{transaction_id:'pay',account_id:'visa',name:'Payment thank you',date:'2099-10-20',amount:-40,iso_currency_code:'USD'}],modified:[],removed:[],next_cursor:'new',has_more:false});throw Error('Unexpected URL');});
  f.set('connections',{items:[{id:'checking',name:'Checking',token:'other'},{id:'card',name:'Card',token:'card-token',liabilities:true}],transactions:[],candidates:[],gmail:{refreshToken:'gmail'}});
  const result=await (await f.app.handle(f.req('/api/cards/refresh',{itemId:'card'}))).json();assert.match(result.status,/Card details synced/);
- const state=await (await f.app.handle(f.req('/api/state'))).json();assert.equal(state.connections.creditCards[0].minimum,2000);assert.equal(state.connections.creditCards[0].payments[0].amount,4000);assert.equal(state.connections.items.length,2);assert.ok(!JSON.stringify(state).includes('card-token'));assert.ok(f.queries+calls.length<50);assert.equal(calls.length,3);f.db.close();
+ const state=await (await f.app.handle(f.req('/api/state'))).json();assert.equal(state.connections.creditCards[0].minimum,2000);assert.equal(state.connections.creditCards[0].payments[0].amount,4000);assert.equal(state.connections.items.length,2);assert.ok(!JSON.stringify(state).includes('card-token'));assert.ok(f.queries+calls.length<50);assert.equal(calls.length,4);f.db.close();
 });
 test('enabling card details on an existing item never exchanges a new public token',async()=>{
  const f=fixture(async url=>{assert.ok(!url.endsWith('/item/public_token/exchange'));if(url.endsWith('/liabilities/get'))return Response.json({accounts:[],liabilities:{credit:[]}});if(url.endsWith('/accounts/get'))return Response.json({accounts:[]});return Response.json({added:[],modified:[],removed:[],next_cursor:'done',has_more:false});});
@@ -261,7 +261,7 @@ test('SimpleFIN setup is private, encrypted, immediately loads balances, and rec
 test('SimpleFIN failed initial fetch keeps its consumed token and scheduled refresh recovers',async()=>{
  let ready=false,calls=0;const access='https://u:p@beta-bridge.simplefin.org/simplefin',f=fixture(async url=>{if(url.includes('/claim/'))return new Response(access);calls++;return ready?Response.json({accounts:[]}):new Response('private upstream error',{status:503});});
  const setup=Buffer.from('https://beta-bridge.simplefin.org/simplefin/claim/sample').toString('base64');await f.app.handle(f.req('/api/simplefin/connect',{token:setup}));let c=f.get('connections');assert.equal(c.simplefin.accessUrl,access);assert.match(c.simplefin.status,/503/);
- ready=true;c.simplefin.nextSync=0;c.simplefin.lastAttempt=Date.now()-300001;f.set('connections',c);await f.app.sync();assert.equal(calls,2);assert.match(f.get('connections').simplefin.status,/Add financial institutions/);f.db.close();
+ ready=true;c.simplefin.nextSync=0;c.simplefin.lastAttempt=Date.now()-300001;f.set('connections',c);await f.app.sync();assert.equal(calls,4);assert.match(f.get('connections').simplefin.status,/Add financial institutions/);f.db.close();
 });
 
 import {fakeSunBrowser} from './helpers/sun-browser.mjs';
@@ -387,3 +387,35 @@ test('mailbox-scoped email refresh checks only the requested connected inbox',as
  const response=await f.app.handle(f.req('/api/gmail/search',{query:'',mailboxId:'b'}));assert.equal(response.status,200);assert.equal(tokens.length,1);assert.match(tokens[0],/second/);assert.doesNotMatch(tokens[0],/first/);f.db.close();
 });
 
+
+test('manual Plaid refresh drains history pages and preserves each account while remaining within Worker limits',async()=>{
+ let page=0;const calls=[],today=new Date().toISOString().slice(0,10);
+ const f=fixture(async(url,options)=>{calls.push(url);if(url.endsWith('/accounts/get'))return Response.json({accounts:[{account_id:'a',name:'Checking',type:'depository',subtype:'checking',balances:{current:100,iso_currency_code:'USD'}},{account_id:'b',name:'Loan',type:'loan',balances:{current:1000,iso_currency_code:'USD'}}]});if(url.endsWith('/accounts/balance/get'))return Response.json({accounts:[{account_id:'a',name:'Checking',type:'depository',subtype:'checking',balances:{current:110,iso_currency_code:'USD'}}]});
+  const body=JSON.parse(options.body);assert.equal(body.count,500);assert.equal(body.cursor,page?'cursor-'+page:'');page++;return Response.json({added:[{transaction_id:'t'+page,account_id:page%2?'a':'b',date:today,amount:12,pending:false,name:'Purchase',iso_currency_code:'USD'}],modified:[],removed:[],next_cursor:'cursor-'+page,has_more:page<3});});
+ f.set('connections',{items:[{id:'bank',name:'Bank',token:'t'}],transactions:[],candidates:[]});const r=await(await f.app.handle(f.req('/api/bank/refresh',{itemId:'bank'}))).json();
+ assert.equal(r.transactionsPending,false);assert.equal(page,3);assert.equal(f.get('connections').transactions.length,3);assert.equal(f.get('plan').state.accounts.length,2);assert.ok(f.queries+calls.length<50);f.db.close();
+});
+test('large Plaid histories continue without repeating balance calls and commit only after the last page',async()=>{
+ let page=0,balanceCalls=0;const f=fixture(async url=>{if(url.includes('/accounts/')){balanceCalls++;return Response.json({accounts:[]});}page++;return Response.json({added:[],modified:[],removed:[],next_cursor:'cursor-'+page,has_more:page<7});});
+ f.set('connections',{items:[{id:'bank',name:'Bank',token:'t',cursor:'old'}],transactions:[],candidates:[]});let r=await(await f.app.handle(f.req('/api/bank/refresh',{itemId:'bank'}))).json();
+ assert.equal(r.transactionsPending,true);assert.equal(page,5);assert.equal(f.get('connections').items[0].cursor,'old');assert.equal(balanceCalls,2);
+ r=await(await f.app.handle(f.req('/api/bank/refresh',{itemId:'bank',continueTransactions:true}))).json();assert.equal(r.transactionsPending,false);assert.equal(page,7);assert.equal(balanceCalls,2);assert.equal(f.get('connections').items[0].cursor,'cursor-7');f.db.close();
+});
+test('empty initial Plaid history is labelled preparing and retried shortly instead of six hours later',async()=>{
+ const f=fixture(async url=>url.includes('/accounts/')?Response.json({accounts:[]}):Response.json({added:[],modified:[],removed:[],next_cursor:'',has_more:false}));
+ f.set('connections',{items:[{id:'bank',name:'Bank',token:'t'}],transactions:[],candidates:[]});const r=await(await f.app.handle(f.req('/api/bank/refresh',{itemId:'bank'}))).json();assert.equal(r.transactionsLoading,true);assert.equal(r.transactionsPending,false);assert.match(r.status,/preparing/);assert.ok(f.get('connections').items[0].nextSync<Date.now()+16*60000);f.db.close();
+});
+test('both providers import a second profile’s transactions without reading or changing the original profile',async()=>{
+ const today=new Date().toISOString().slice(0,10),stamp=Math.floor(Date.now()/1000)-60;
+ const f=fixture(async(url,options)=>{
+  if(url.includes('simplefin.org'))return Response.json({accounts:[{id:'sf-account',conn_id:'sf-bank',name:'Checking',currency:'USD',balance:'50.00','balance-date':stamp,transactions:[{id:'sf-tx',posted:stamp,amount:'-8.00',description:'SimpleFIN purchase'}]}]});
+  assert.equal(JSON.parse(options.body).access_token,'member-bank-token');
+  if(url.includes('/accounts/'))return Response.json({accounts:[{account_id:'member-account',name:'Checking',type:'depository',subtype:'checking',balances:{current:100,iso_currency_code:'USD'}}]});
+  return Response.json({added:[{transaction_id:'member-tx',account_id:'member-account',date:today,amount:12,pending:false,name:'Member purchase',iso_currency_code:'USD'}],modified:[],removed:[],next_cursor:'done',has_more:false});
+ });const member=privateSession(f),key='user:'+member.identity.scope+':connections';
+ const owner={items:[{id:'owner-bank',token:'owner-secret'}],transactions:[{transaction_id:'owner-tx',date:today}],candidates:[]};f.set('connections',owner);
+ f.set(key,{items:[{id:'member-bank',name:'Member bank',token:'member-bank-token'}],transactions:[],candidates:[],simplefin:{accessUrl:'https://member:private@bridge.simplefin.org/simplefin'}});
+ assert.equal((await f.app.handle(member.req('/api/bank/refresh',{itemId:'member-bank'}))).status,200);
+ assert.equal((await f.app.handle(member.req('/api/simplefin/refresh',{}))).status,200);
+ const data=await(await f.app.handle(member.req('/api/state'))).json();assert.equal(data.connections.transactions.length,2);assert.equal(data.state.accounts.length,2);assert.ok(data.connections.transactions.some(t=>t.name==='Member purchase'));assert.ok(data.connections.transactions.some(t=>t.name==='SimpleFIN purchase'));assert.deepEqual(f.get('connections'),owner);assert.ok(!JSON.stringify(data).includes('owner-secret'));f.db.close();
+});

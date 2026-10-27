@@ -4,7 +4,7 @@ import {rentPortalUrl} from '../rent-portal.mjs';
 import {rememberRentReadings} from '../public/rent-model.mjs';
 import {createSunBrowser,publicSun,sunMessage,syncSun,rentCredentials,rentAutoLoginSupported,SunError} from '../sun-rent.mjs';
 import {claimSimplefin,publicSimplefin,syncSimplefin,configureSimplefinAccount} from '../simplefin.mjs';
-import {plaidAccountEntry,bankAccounts,combineBankConnections} from '../providers.mjs';
+import {mergePlaidAccounts,bankAccounts,combineBankConnections} from '../providers.mjs';
 import {userScope,googleIdentity,microsoftIdentity,sessionMismatch} from '../user-scope.mjs';
 import {mailboxes,connectMailbox,connectMicrosoftMailbox,publicMail,forgetMailbox,scanMailbox,refreshSelectedEmail,mailboxWatches} from '../mailboxes.mjs';
 import {incomeFromTracker,incomeFromPlan} from '../income-preset.mjs';
@@ -58,34 +58,44 @@ export function runtime(env,fetcher=fetch){
  async function syncBalances(c,item,live=false){
    item.balanceAttempt=Date.now();
    try{const accounts=await bankAccounts(plaid,item,live);
-   await updatePlan(s=>{const active=new Set(accounts.accounts.map(a=>'plaid-'+a.account_id));s.accounts=s.accounts.filter(a=>a.itemId!==item.id||active.has(a.id));for(const a of accounts.accounts){const id='plaid-'+a.account_id,old=s.accounts.find(x=>x.id===id),entry=plaidAccountEntry(a,item,old);if(old)Object.assign(old,entry);else s.accounts.push(entry);}});
+   await updatePlan(s=>{s.accounts=mergePlaidAccounts(s.accounts,accounts,item);});
   item.balancesUpdated=Date.now();delete item.balanceError;c.bankUpdated=new Date().toISOString();
    }catch(error){item.balanceError=error.code||error.message;throw error;}
  }
- async function syncBank(c,item,force=false){
+ async function syncBank(c,item,force=false,transactionsOnly=false){
   item.lastSyncAttempt=Date.now();
-  await syncCredit(c,item,plaid,force);
-  // One page per invocation, with a staged snapshot. Never commit a partial cursor.
+  if(!transactionsOnly)await syncCredit(c,item,plaid,force);
+  // Stage a complete cursor update; manual refresh drains several pages at once.
   if(!item.pending)item.pending={original:item.cursor||'',cursor:item.cursor||'',transactions:c.transactions.filter(t=>t.itemId===item.id)};
-  try{if(!item.balancesUpdated||Date.now()-item.balancesUpdated>=sixHours){try{await syncBalances(c,item);}catch{/* Still sync transactions and liabilities. */}}const page=await plaid('/transactions/sync',{access_token:item.token,cursor:item.pending.cursor,count:100});item.pending.transactions=applyTransactions(item.pending.transactions,[page],item.id).filter(t=>t.date>=new Date(Date.now()-200*86400000).toISOString().slice(0,10)).slice(0,1500);item.pending.cursor=page.next_cursor;
-   if(page.has_more)return 'Bank history is loading in small batches. Next step within 15 minutes.';
-   c.transactions=[...c.transactions.filter(t=>t.itemId!==item.id),...item.pending.transactions].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3000);item.cursor=item.pending.cursor;delete item.pending;delete item.transactionsError;item.transactionsUpdated=new Date().toISOString();item.nextSync=Date.now()+sixHours;return item.name+' synced. Scheduled again in about 6 hours.'+(item.liabilitiesStatus?' '+item.liabilitiesStatus:'');
+  try{
+   if(!transactionsOnly&&(!item.balancesUpdated||Date.now()-item.balancesUpdated>=sixHours)){try{await syncBalances(c,item);}catch{/* Still sync transactions and liabilities. */}}
+   for(let n=0;n<(force||transactionsOnly?5:1);n++){
+    const page=await plaid('/transactions/sync',{access_token:item.token,cursor:item.pending.cursor,count:500});
+    item.pending.transactions=applyTransactions(item.pending.transactions,[page],item.id).filter(t=>t.date>=new Date(Date.now()-200*86400000).toISOString().slice(0,10)).slice(0,1500);item.pending.cursor=page.next_cursor;
+    if(page.has_more)continue;
+    const waiting=!page.next_cursor||page.transactions_update_status==='NOT_READY';
+    c.transactions=[...c.transactions.filter(t=>t.itemId!==item.id),...item.pending.transactions].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3000);item.cursor=item.pending.cursor;delete item.pending;delete item.transactionsError;item.transactionsUpdated=new Date().toISOString();item.transactionsLoading=waiting;item.nextSync=Date.now()+(waiting?900000:sixHours);
+    return item.name+(waiting?' is still preparing transaction history. BearDen will retry shortly.':' synced. Scheduled again in about 6 hours.')+(item.liabilitiesStatus?' '+item.liabilitiesStatus:'');
+   }
+   item.nextSync=Date.now()+900000;delete item.transactionsError;
+   return item.name+' transaction history is still loading. The next batch is ready to fetch.';
   }catch(e){item.transactionsError=e.code||e.message;if(e.code==='TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION')delete item.pending;item.nextSync=Date.now()+900000;throw e;}
  }
+
  async function syncGmail(c,account,query=null){
   const watches=mailboxWatches(await read('classic',{}),account.id);
   const bills=await scanMailbox(c,account,{request,googleToken,microsoftToken,query,watches,limit:query===null?3:10});
   if(bills.length){const p=await plan();let changed=false;for(const bill of bills)if(!p.state.bills.some(b=>b.sourceId===bill.sourceId||b.sourceKey===bill.sourceKey)){p.state.bills.push(bill);changed=true;}if(changed){validate(p.state);if(JSON.stringify(p.state).length>240000)throw Error('Plan storage is full.');p.revision++;await write('plan',p);}}
   return account.status;
  }
- async function sync(force=false,bankOnly=false,targetId=null,gmailOnly=false){return locked(async()=>{const c=await connections(),now=Date.now(),bank=!gmailOnly&&c.items.filter(i=>(!targetId||i.id===targetId)&&(force||i.pending||!i.nextSync||i.nextSync<=now)).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0],gmail=!bankOnly&&mailboxes(c,users.current().email).filter(a=>force||a.backlog?.length||a.page||!a.nextSync||a.nextSync<=now).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0];
+ async function sync(force=false,bankOnly=false,targetId=null,gmailOnly=false,transactionsOnly=false){return locked(async()=>{const c=await connections(),now=Date.now(),bank=!gmailOnly&&c.items.filter(i=>(!targetId||i.id===targetId)&&(force||i.pending||!i.nextSync||i.nextSync<=now)).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0],gmail=!bankOnly&&mailboxes(c,users.current().email).filter(a=>force||a.backlog?.length||a.page||!a.nextSync||a.nextSync<=now).sort((a,b)=>(a.lastSyncAttempt||0)-(b.lastSyncAttempt||0))[0];
    if(!bankOnly&&!gmailOnly&&!targetId&&c.sun?.connected&&c.sun.enabled!==false&&!c.sun.needsLogin&&(!c.sun.nextSync||c.sun.nextSync<=now)&&!(c.sun.pending?.expires>now)){c.lastTask='rent';c.status=await syncSunRent(c);await write('connections',c);return {status:c.status};}
    if(!gmailOnly&&!targetId&&c.simplefin&&(force||!c.simplefin.nextSync||c.simplefin.nextSync<=now)&&(!bank||c.lastTask==='bank')){c.lastTask='simplefin';c.status=await syncSimplefinBalances(c);await write('connections',c);return {status:c.status};}
    if(targetId&&!bank)throw Error('Bank connection not found. Reload your connections.');
-   if(!bank&&!gmail)return {status:gmailOnly?'No email accounts connected.':c.status};if(bank)bank.lastSyncAttempt=now;try{if(force&&bank){try{await syncBalances(c,bank,true);}catch{/* Independent products can still refresh. */}}if(gmail&&(!bank||c.lastTask==='bank')){c.lastTask='gmail';c.status=await syncGmail(c,gmail);}else{c.lastTask='bank';c.status=await syncBank(c,bank,force);}}catch(e){c.status='Sync needs attention: '+e.message;if(c.lastTask==='gmail'&&gmail){gmail.nextSync=now+sixHours;gmail.status=c.status;}}
+   if(!bank&&!gmail)return {status:gmailOnly?'No email accounts connected.':c.status};if(bank)bank.lastSyncAttempt=now;try{if(force&&bank&&!transactionsOnly){try{await syncBalances(c,bank,true);}catch{/* Independent products can still refresh. */}}if(gmail&&(!bank||c.lastTask==='bank')){c.lastTask='gmail';c.status=await syncGmail(c,gmail);}else{c.lastTask='bank';c.status=await syncBank(c,bank,force,transactionsOnly);}}catch(e){c.status='Sync needs attention: '+e.message;if(c.lastTask==='gmail'&&gmail){gmail.nextSync=now+sixHours;gmail.status=c.status;}}
    if(bank?.balanceError)c.status+=' Balance refresh needs attention; earlier balances are kept: '+bank.balanceError;
    if(bank?.balanceWarning)c.status+=' '+bank.balanceWarning;
-   c.lastAttempt=new Date().toISOString();c.candidates=c.candidates.filter(x=>!x.dismissed);await write('connections',c);return {status:c.status,itemId:bank?.id,balanceRefreshed:!!bank&&!bank.balanceError&&bank.balancesUpdated>=now,balanceWarning:bank?.balanceWarning||null,balanceError:bank?.balanceError||null};});}
+   c.lastAttempt=new Date().toISOString();c.candidates=c.candidates.filter(x=>!x.dismissed);await write('connections',c);return {status:c.status,itemId:bank?.id,transactionsPending:!!bank?.pending&&!bank?.transactionsError,transactionsLoading:!!bank?.transactionsLoading,balanceRefreshed:!!bank&&!bank.balanceError&&bank.balancesUpdated>=now,balanceWarning:bank?.balanceWarning||null,balanceError:bank?.balanceError||null};});}
  async function handleScoped(req){
   const u=new URL(req.url),path=u.pathname;
   if(path==='/health')return json({ok:true,hosting:'cloudflare-free',configured});
@@ -132,7 +142,7 @@ export function runtime(env,fetcher=fetch){
    if(req.method==='GET'&&path==='/api/state')return json({...await plan(),connections:publicConnections(await connections())});
    if(req.method!=='POST')return json({error:'Method not allowed'},405);if(req.headers.get('origin')!==origin)return json({error:'Request origin does not match this server'},403);const b=await body(req);
    if(path==='/api/logout'){await run('DELETE FROM sessions WHERE hash=?',hash(cookies(req).bearden));const response=json({ok:true});response.headers.append('Set-Cookie',cookie('bearden','',0));return response;}
-   if(path==='/api/bank/refresh')return json(await sync(true,true,b.itemId||null));
+   if(path==='/api/bank/refresh')return json(await sync(true,true,b.itemId||null,false,b.continueTransactions===true&&!!b.itemId));
    if(path==='/api/sync')return json(await sync(true,false,null,b.gmailOnly===true));
    if(path==='/api/plaid/link'){const c=await connections(),item=c.items.find(i=>i.id===b.itemId);const d=await plaid('/link/token/create',{user:{client_user_id:hash(users.current().scope||owner)},client_name:'BearDen',...creditLinkOptions(b,item),country_codes:['US'],language:'en',...(env.PLAID_REDIRECT_URI?{redirect_uri:env.PLAID_REDIRECT_URI}:{})});return json({link_token:d.link_token});}
    return locked(async()=>{
@@ -211,14 +221,16 @@ export function runtime(env,fetcher=fetch){
      c.status='Bank connected. Loading balances.';await write('connections',c);
      try{await syncBalances(c,item);c.status='Bank connected; balances loaded. Transaction history will load in the background.'+(item.liabilitiesStatus?' '+item.liabilitiesStatus:'');}
      catch(e){c.status='Bank connected, but balances could not load: '+e.message+'. Use Sync connections to retry.';}
-     await write('connections',c);return json({ok:true,status:c.status});}
+     await write('connections',c);return json({ok:true,status:c.status,itemId:item.id,transactionsPending:true});}
 
     if(path==='/api/plaid/updated'||path==='/api/cards/refresh'){
      const c=await connections(),item=c.items.find(i=>i.id===b.itemId);if(!item)return json({error:'Bank connection not found'},404);
      if(path==='/api/plaid/updated'&&b.kind!=='bank'){item.liabilities=true;await write('connections',c);}
-     try{await syncBalances(c,item);}catch(e){c.status='Balance refresh needs attention: '+e.message;}
+     try{await syncBalances(c,item,true);}catch(e){c.status='Balance refresh needs attention: '+e.message;}
      try{c.status=await syncBank(c,item,true);}catch(e){c.status=(item.liabilitiesStatus||'')+' Transaction sync needs attention: '+e.message;}
-     await write('connections',c);return json({status:c.status});
+     if(item.balanceError)c.status+=' Balance refresh needs attention: '+item.balanceError;
+     if(item.balanceWarning)c.status+=' '+item.balanceWarning;
+     await write('connections',c);return json({status:c.status,itemId:item.id,transactionsPending:!!item.pending&&!item.transactionsError,transactionsLoading:!!item.transactionsLoading});
     }
     if(path==='/api/plaid/combine'){
      const before={connections:await connections(),plan:await plan(),classic:await read('classic',null)};

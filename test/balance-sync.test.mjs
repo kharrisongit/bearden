@@ -9,7 +9,7 @@ test('loan balance uses principal, distinguishes missing from zero, retains last
  const zero=plaidAccountEntry({...loan,balances:{...loan.balances,current:0}},item,entry);assert.equal(zero.balance,0);assert.equal(zero.balanceUnavailable,false);
 });
 test('manual refresh requests live balance and exposes cached fallback',async()=>{
- const calls=[],item={token:'private'};await bankAccounts(async path=>{calls.push(path);return {accounts:[]};},item,true);assert.deepEqual(calls,['/accounts/balance/get']);
+ const calls=[],item={token:'private'};await bankAccounts(async path=>{calls.push(path);return {accounts:[]};},item,true);assert.deepEqual(calls,['/accounts/balance/get','/accounts/get']);
  calls.length=0;await bankAccounts(async path=>{calls.push(path);if(path==='/accounts/balance/get')throw Object.assign(Error('Unavailable'),{code:'PRODUCT_NOT_READY'});return {accounts:[]};},item,true);assert.deepEqual(calls,['/accounts/balance/get','/accounts/get']);assert.match(item.balanceWarning,/cached/);
 });
 test('linked positive bank balances replace current debt status without subtracting historical checkoffs twice',()=>{

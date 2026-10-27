@@ -39,10 +39,10 @@ test('missing, malformed, partial, and absent accounts preserve earlier debt amo
  const duplicate=payload();duplicate.accounts.push(duplicate.accounts[0]);assert.throws(()=>mergeSimplefinAccounts(accounts,duplicate),/duplicate/);
  const two=payload();two.accounts.push({...two.accounts[0],conn_id:'spouse'});assert.notEqual(mergeSimplefinAccounts([],two)[0].id,mergeSimplefinAccounts([],two)[1].id);
 });
-test('daily syncing is rate limited, retains access after failure, and only sends balances requests',async()=>{
+test('daily syncing is rate limited, retains access after failure, and counts each balance and history request',async()=>{
  let accounts=[],calls=0;const c={simplefin:{accessUrl:access}},f=async()=>{calls++;return Response.json(payload());};
- await syncSimplefin(c,()=>accounts,v=>{accounts=v;},f);assert.equal(calls,1);assert.equal(accounts.length,1);assert.ok(c.simplefin.nextSync>Date.now()+23*3600000);
- await syncSimplefin(c,()=>accounts,v=>{accounts=v;},f);assert.equal(calls,1);
+ await syncSimplefin(c,()=>accounts,v=>{accounts=v;},f);assert.equal(calls,2);assert.equal(accounts.length,1);assert.ok(c.simplefin.nextSync>Date.now()+23*3600000);
+ await syncSimplefin(c,()=>accounts,v=>{accounts=v;},f);assert.equal(calls,2);
  c.simplefin.lastAttempt=Date.now()-300001;await syncSimplefin(c,()=>accounts,v=>{accounts=v;},async()=>new Response(access,{status:503}));assert.equal(accounts.length,1);assert.equal(c.simplefin.accessUrl,access);assert.ok(!c.simplefin.status.includes('private-'));
- c.simplefin.lastAttempt=0;c.simplefin.attempts=Array(20).fill(Date.now()-600000);await syncSimplefin(c,()=>accounts,v=>{accounts=v;},f);assert.equal(calls,1);assert.match(c.simplefin.status,/limit/);
+ c.simplefin.lastAttempt=0;c.simplefin.attempts=Array(20).fill(Date.now()-600000);await syncSimplefin(c,()=>accounts,v=>{accounts=v;},f);assert.equal(calls,2);assert.match(c.simplefin.status,/limit/);
 });
