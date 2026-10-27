@@ -100,13 +100,14 @@ body{background:radial-gradient(ellipse at 0 0,#bbaad316,transparent 38%),var(--
 .bank-card .income-widget-actions>button:hover,.bank-card .income-widget-actions>button[aria-expanded=true]{background:#ffffff16;border-color:#ffffff22;color:#fff}
 .bank-card .bank-refresh{min-height:30px;padding:4px 6px;gap:5px;background:transparent;border-color:transparent;box-shadow:none;font-size:.65rem}
 .bank-card .bank-refresh svg{width:14px;height:14px}
-.forecast-stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+.forecast-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+:root .forecast-stats>.forecast-starting{background:var(--amount-bg);color:var(--amount-ink)}
 .forecast-stats>div{min-width:0;padding:10px}
 .forecast-stats strong{font-size:.9rem;overflow-wrap:anywhere}
 .transaction-filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .income-card .transaction-filters label{flex:1 1 125px;min-width:0;margin:0;font-size:.68rem}
 .income-card .transaction-filters select{padding:7px 5px;font-size:.76rem;min-height:34px}
-@media(max-width:600px){.income-card .compact-account-picker select,.income-card .transaction-filters select{font-size:16px}.bill-amount>strong{font-size:1.2rem}.forecast-stats small{font-size:.6rem}.forecast-stats strong{font-size:.8rem}}
+@media(max-width:600px){.income-card .compact-account-picker select,.income-card .transaction-filters select{font-size:16px}.bill-amount>strong{font-size:1.2rem}.forecast-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.forecast-stats small{font-size:.6rem}.forecast-stats strong{font-size:.8rem}}
 
 /* Keep the card's actions together at its upper right without covering its title. */
 .debt-card-header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:10px}
