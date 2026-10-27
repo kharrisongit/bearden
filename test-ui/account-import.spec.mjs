@@ -27,7 +27,8 @@ test('mobile Settings repairs the existing bank and finishes transaction batches
  await page.goto('https://bearden.test/');await page.evaluate(()=>window.classicReady);await page.locator('#nav-settings').click();await page.locator('#configurePlaid').click();
  await expect(page.locator('#plaidConnections')).toContainText('ITEM_LOGIN_REQUIRED');await expect(page.locator('#classicBank')).toHaveText('Add another bank');
  await page.locator('#plaidAccountSummary').click();await expect(page.locator('#classicBalances')).toContainText('Last known balance: $123.45');await expect(page.locator('#classicBalances')).toContainText('Account missing');
- await page.locator('[data-bank-update="bank"]').click();expect(requests.find(r=>r.path==='/api/plaid/link').body).toEqual({kind:'bank',itemId:'bank'});
+ await page.locator('[data-bank-update="bank"]').click();await expect.poll(()=>requests.find(r=>r.path==='/api/plaid/link')?.body).toEqual({kind:'bank',itemId:'bank'});
+ await expect.poll(()=>page.evaluate(()=>typeof window.testPlaid?.onSuccess)).toBe('function');
  await page.evaluate(()=>window.testPlaid.onSuccess('unused',{institution:{name:'Family Bank'}}));
  expect(batches).toBe(2);expect(requests.some(r=>r.path==='/api/plaid/exchange')).toBe(false);
  await page.locator('#nav-settings').click();await expect(page.locator('#plaidConnections')).toContainText('1 saved transaction(s)');
