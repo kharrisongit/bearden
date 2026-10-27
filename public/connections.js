@@ -109,7 +109,7 @@ window.BearDen=(()=>{
   catch(error){$('#rentFeedback').textContent=error.message;}finally{button.disabled=false;}
  };
  window.addEventListener('pagehide',()=>{$('#rentPassword').value='';});
- $('#rentEnabledToggle').onchange=async e=>{const button=e.currentTarget,enabled=button.checked;button.disabled=true;try{await queue;await api('/api/rent/settings',{enabled});await refresh();$('#featureSettingsStatus').textContent=enabled?'Rent enabled.':'Rent hidden; your saved connection is kept.';}catch(error){button.checked=!enabled;$('#featureSettingsStatus').textContent=error.message;}finally{button.disabled=false;}};
+ $('#rentEnabledToggle').onchange=async e=>{const button=e.currentTarget,enabled=button.checked;button.disabled=true;try{await queue;await api('/api/rent/settings',{enabled});await refresh();$('#featureSettingsStatus').textContent=enabled?'Rent enabled.':'Rent hidden; your saved connection is kept.';window.showBearToast?.('Preference saved');}catch(error){button.checked=!enabled;$('#featureSettingsStatus').textContent=error.message;}finally{button.disabled=false;}};
  $('#rentComplete').onclick=e=>rentAction(e.currentTarget,'complete');
  $('#rentCancel').onclick=e=>rentAction(e.currentTarget,'cancel');
  $('#rentRefresh').onclick=e=>rentAction(e.currentTarget,'refresh');
@@ -133,7 +133,7 @@ window.BearDen=(()=>{
  $('#lunchflowAccounts').addEventListener('change',e=>{const form=e.target.closest('[data-lunchflow-account]');if(form&&e.target.name==='kind')form.querySelector('[data-lunchflow-sign]').hidden=!['credit','loan'].includes(e.target.value);});
  $('#lunchflowAccounts').addEventListener('submit',async e=>{
   e.preventDefault();const form=e.target.closest('[data-lunchflow-account]');if(!form)return;const b=form.querySelector('button[type=submit]'),status=form.querySelector('[data-lunchflow-account-status]');b.disabled=true;
-  try{await queue;await api('/api/lunchflow/account',{id:form.dataset.lunchflowAccount,kind:form.elements.kind.value,debtSign:form.elements.debtSign.value});await refresh();$('#lunchflowFeedback').textContent='Account type saved. To update an existing debt, open Accounts, edit that debt, and select its linked account.';}catch(error){status.textContent=error.message;}finally{b.disabled=false;}
+  try{await queue;await api('/api/lunchflow/account',{id:form.dataset.lunchflowAccount,kind:form.elements.kind.value,debtSign:form.elements.debtSign.value});await refresh();window.showBearToast?.('Account type saved');$('#lunchflowFeedback').textContent='Account type saved. To update an existing debt, open Accounts, edit that debt, and select its linked account.';}catch(error){status.textContent=error.message;}finally{b.disabled=false;}
  });
  async function finishLunchflow(result,report){
   for(let batch=0;result.pending&&batch<50;batch++){report(result.status);result=await api('/api/lunchflow/refresh',{});}

@@ -729,12 +729,12 @@ function prepareIncomeForSave(){
 }
 async function saveIncome(button){
  const status=document.getElementById('incomeEditorStatus');status.textContent='';button.disabled=true;
- try{prepareIncomeForSave();await window.flushBearDenState();setIncomePanel(null);document.getElementById('incomeToggleBtn').focus();}
+ try{prepareIncomeForSave();await window.flushBearDenState();setIncomePanel(null);document.getElementById('incomeToggleBtn').focus();window.showBearToast?.('Income saved');}
  catch(error){status.textContent=error.message;}finally{button.disabled=false;}
 }
 async function saveBudget(button){
  const status=document.getElementById('budgetEditorStatus');status.textContent='';button.disabled=true;
- try{await window.flushBearDenState();setIncomePanel(null);document.getElementById('incomeBudgetToggleBtn').focus();}
+ try{await window.flushBearDenState();setIncomePanel(null);document.getElementById('incomeBudgetToggleBtn').focus();window.showBearToast?.('Budget saved');}
  catch(error){status.textContent=error.message;}finally{button.disabled=false;}
 }
 
@@ -6892,7 +6892,7 @@ window.applyIncomePreset=async function(preset){
  await window.classicReady;
  if(!Number.isFinite(preset.hourlyRate)||preset.hourlyRate<0||!Number.isFinite(preset.hoursPerCheck)||preset.hoursPerCheck<0||!Number.isSafeInteger(preset.amount)||preset.amount<=0)throw Error('Income preset is unavailable.');
  const fields=['hourlyRate','hoursPerCheck','takeHome'],before=fields.map(id=>document.getElementById(id).value),values=[preset.hourlyRate,preset.hoursPerCheck,(preset.amount/100).toFixed(2)];
- try{fields.forEach((id,i)=>document.getElementById(id).value=values[i]);updateIncomeEstimateDisplay();calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));setStorageStatus('Income saved');}
+ try{fields.forEach((id,i)=>document.getElementById(id).value=values[i]);updateIncomeEstimateDisplay();calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));setStorageStatus('Income saved');window.showBearToast?.('Income saved');}
  catch(e){fields.forEach((id,i)=>document.getElementById(id).value=before[i]);updateIncomeEstimateDisplay();calculate();clearTimeout(saveDebounceTimer);throw e;}
 };
 
@@ -6926,21 +6926,21 @@ window.setPaycheckBills=(signature,resolve,sharedForecast)=>{
 document.getElementById('savingsTrackerToggle').onchange=async e=>{
  const before=showSavingsTracker;showSavingsTracker=e.target.checked;e.target.disabled=true;
  document.getElementById('savingsHeroContainer').hidden=!showSavingsTracker;
- try{clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('featureSettingsStatus').textContent='Savings Tracker preference saved.';}
+ try{clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('featureSettingsStatus').textContent='Savings Tracker preference saved.';window.showBearToast?.('Preference saved');}
  catch(error){showSavingsTracker=before;e.target.checked=before;document.getElementById('savingsHeroContainer').hidden=!before;document.getElementById('featureSettingsStatus').textContent=error.message;}
  finally{e.target.disabled=false;}
 };
 
 document.getElementById('payoffControlsToggle').onchange=async e=>{
  const before=payoffControlsEnabled;payoffControlsEnabled=e.target.checked;e.target.disabled=true;
- try{calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('featureSettingsStatus').textContent='Slice / Squash preference saved.';}
+ try{calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('featureSettingsStatus').textContent='Slice / Squash preference saved.';window.showBearToast?.('Preference saved');}
  catch(error){payoffControlsEnabled=before;e.target.checked=before;calculate();clearTimeout(saveDebounceTimer);document.getElementById('featureSettingsStatus').textContent=error.message;}
  finally{e.target.disabled=false;}
 };
 
 document.getElementById('bonusControlsToggle').onchange=async e=>{
  const before=bonusControlsEnabled;bonusControlsEnabled=e.target.checked;bonusInputOpenForPaycheck=null;e.target.disabled=true;
- try{calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('featureSettingsStatus').textContent='Bonus preference saved.';}
+ try{calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('featureSettingsStatus').textContent='Bonus preference saved.';window.showBearToast?.('Preference saved');}
  catch(error){bonusControlsEnabled=before;e.target.checked=before;calculate();clearTimeout(saveDebounceTimer);document.getElementById('featureSettingsStatus').textContent=error.message;}
  finally{e.target.disabled=false;}
 };
@@ -6980,7 +6980,7 @@ async function saveDebtTimingSettings(){
  window.debtPaymentHistory??={};
  for(const row of lastSchedule)if(checkedPaychecks[row.paycheck]&&!window.debtPaymentHistory[row.paycheck])window.debtPaymentHistory[row.paycheck]=Object.fromEntries(cardsData.map((c,i)=>[c.id,row.payments[i]]));
  window.debtPaymentSettings=window.BearDenDebtPayments.paymentTiming({mode:document.getElementById('debtPaymentTiming').value,leadDays:document.getElementById('debtPaymentLeadDays').value});
- try{renderDebtTimingSettings();await window.flushBearDenState();status.textContent='Debt payment timing saved.';}
+ try{renderDebtTimingSettings();await window.flushBearDenState();status.textContent='Debt payment timing saved.';window.showBearToast?.('Payment timing saved');}
  catch(error){window.debtPaymentSettings=before;window.debtPaymentHistory=history;renderDebtTimingSettings();calculate();clearTimeout(saveDebounceTimer);status.textContent=error.message;}
 }
 for(const id of ['debtPaymentTiming','debtPaymentLeadDays'])document.getElementById(id).onchange=saveDebtTimingSettings;

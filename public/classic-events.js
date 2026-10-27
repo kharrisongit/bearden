@@ -1,4 +1,44 @@
 'use strict';
+// Explicit save confirmations only; background sync and autosave stay quiet.
+(()=>{
+ let toast,fadeTimer,hideTimer,frame;
+ function place(){
+  if(!toast||toast.hidden)return;
+  const dialogs=[...document.querySelectorAll('dialog[open]')],host=dialogs.at(-1)||document.body;
+  if(toast.parentElement!==host){
+   if(typeof toast.hidePopover==='function'&&toast.matches(':popover-open'))toast.hidePopover();
+   host.append(toast);
+  }
+  if(typeof toast.showPopover==='function'&&!toast.matches(':popover-open'))toast.showPopover();
+ }
+ function position(){
+  if(!toast)return;
+  const viewport=window.visualViewport;
+  toast.style.setProperty('--toast-top',(viewport?.offsetTop||0)+'px');
+  toast.style.setProperty('--toast-left',((viewport?.offsetLeft||0)+(viewport?.width||innerWidth)/2)+'px');
+  toast.style.setProperty('--toast-width',Math.max(0,(viewport?.width||innerWidth)-32)+'px');
+ }
+ window.showBearToast=message=>{
+  if(!message)return;
+  if(!toast){
+   toast=document.createElement('div');toast.id='bearToast';toast.hidden=true;
+   toast.setAttribute('role','status');toast.setAttribute('aria-live','polite');toast.setAttribute('aria-atomic','true');
+   if(typeof toast.showPopover==='function')toast.setAttribute('popover','manual');
+  }
+  clearTimeout(fadeTimer);clearTimeout(hideTimer);cancelAnimationFrame(frame);
+  toast.textContent='';toast.hidden=false;place();position();
+  frame=requestAnimationFrame(()=>{toast.textContent=String(message);toast.classList.add('is-visible');});
+  fadeTimer=setTimeout(()=>{
+   toast.classList.remove('is-visible');
+   hideTimer=setTimeout(()=>{if(typeof toast.hidePopover==='function'&&toast.matches(':popover-open'))toast.hidePopover();toast.hidden=true;toast.textContent='';},220);
+  },2800);
+ };
+ // Keep the live region inside the active dialog and above its top layer.
+ new MutationObserver(place).observe(document.body,{subtree:true,attributes:true,attributeFilter:['open']});
+ window.visualViewport?.addEventListener('resize',position);window.visualViewport?.addEventListener('scroll',position);
+ window.addEventListener('resize',position);
+})();
+
 // Preserve the source's declarative controls under a strict script policy.
 // Only named tracker actions with literal arguments are dispatched; no eval.
 (()=>{
