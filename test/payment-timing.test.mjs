@@ -55,3 +55,12 @@ test('synced minimum, due date and APR affect future checks while recorded amoun
  const events=paydayEvents({state:{cards:[card],startDate:'2026-11-06',takeHome:1000,debtPaymentSettings:settings},schedule:[],syncedDebtTerms:terms},'2026-11-06','2026-12-05',{debtMode:'minimum'});
  assert.deepEqual(events.map(e=>e.allocations),[10000,20000,0]);
 });
+
+test('payment warnings begin after the actual due date, never inside the buffer or for a completed payment',()=>{
+ const timing={dueDate:'2026-11-07',late:true};
+ for(const today of ['2026-11-04','2026-11-06','2026-11-07'])assert.equal(payments.paymentIsLate(timing,'2026-11-06',today,false,100),false);
+ assert.equal(payments.paymentIsLate(timing,'2026-11-06','2026-11-08',false,100),true);
+ assert.equal(payments.paymentIsLate(timing,'2026-11-06','2026-11-08',true,100),false);
+ assert.equal(payments.paymentIsLate(timing,'2026-11-06','2026-11-08',false,0),false);
+ assert.equal(payments.paymentIsLate({},'2026-11-06','2026-11-08',false,100),false);
+});

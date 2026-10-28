@@ -1356,7 +1356,7 @@ function toggleTheme(){
 // way as the light/dark toggle above.
 function applyHolidayMenuState(){
   const current = document.documentElement.getAttribute('data-holiday') || 'standard';
-  ['christmas', 'halloween', 'standard'].forEach(key => {
+  ['christmas', 'halloween', 'thanksgiving', 'valentine', 'newyear', 'standard'].forEach(key => {
     const el = document.getElementById('holidayItem' + key[0].toUpperCase() + key.slice(1));
     if (el) el.classList.toggle('active', key === current);
   });
@@ -1368,7 +1368,9 @@ function toggleHolidayMenu(){
 }
 
 function setHolidayTheme(theme){
-  if (theme === 'christmas' || theme === 'halloween') {
+  document.documentElement.removeAttribute('data-color-scheme');
+  try { localStorage.removeItem('bearden:classic:color-scheme'); } catch (e) {}
+  if (['christmas','halloween','thanksgiving','valentine','newyear'].includes(theme)) {
     document.documentElement.setAttribute('data-holiday', theme);
   } else {
     document.documentElement.removeAttribute('data-holiday');
@@ -2243,7 +2245,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
       const sliceTitle=sliceSelected?'Undo Slice':sliceAllowance.allowed?'Pay half the balance at this paycheck, at least the minimum':'Slice needs '+money(sliceAllowance.shortfall)+' more in this paycheck';
       const squashTitle=squashSelected?'Undo Squash':squashAllowance.allowed?'Pay off the full balance, including this paycheck’s projected interest':'Squash needs '+money(squashAllowance.shortfall)+' more in this paycheck';
       lines += `<div class="line paycheck-debt-row" data-paycheck-debt="${bdEscape(c.id)}">
-        <span class="name paycheck-debt-name"><span>${bdEscape(c.name)}${isPayOverridden ? ' <span class="edited-tag">edited</span>' : ''}${justPaidOff ? '<span class="paidoff-badge">PAID OFF</span>' : ''}</span>${payoffControlsEnabled?`<span class="paycheck-debt-actions"><button type="button" class="slice-payment" aria-pressed="${sliceSelected}" title="${bdEscape(sliceTitle)}" aria-label="${bdEscape(sliceTitle+' for '+c.name)}" data-bd-click="togglePaycheckSlice(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!sliceAllowance.allowed&&!sliceSelected?'disabled':''}>${sliceSelected?'Undo Slice':'Slice'}</button><button type="button" class="slice-payment squash-payment" aria-pressed="${squashSelected}" title="${bdEscape(squashTitle)}" aria-label="${bdEscape(squashTitle+' for '+c.name)}" data-bd-click="togglePaycheckSquash(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!squashAllowance.allowed&&!squashSelected?'disabled':''}>${squashSelected?'Undo Squash':'Squash'}</button></span>`:''}</span>
+        <span class="name paycheck-debt-name"><span><button type="button" class="paycheck-creditor" data-paycheck-creditor="${bdEscape(c.id)}" data-paycheck-number="${row.paycheck}" aria-label="Quick view for ${bdEscape(c.name)}" aria-haspopup="dialog" aria-controls="debtProgressDialog">${bdEscape(c.name)}</button>${isPayOverridden ? ' <span class="edited-tag">edited</span>' : ''}${justPaidOff ? '<span class="paidoff-badge">PAID OFF</span>' : ''}</span>${payoffControlsEnabled?`<span class="paycheck-debt-actions"><button type="button" class="slice-payment" aria-pressed="${sliceSelected}" title="${bdEscape(sliceTitle)}" aria-label="${bdEscape(sliceTitle+' for '+c.name)}" data-bd-click="togglePaycheckSlice(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!sliceAllowance.allowed&&!sliceSelected?'disabled':''}>${sliceSelected?'Undo Slice':'Slice'}</button><button type="button" class="slice-payment squash-payment" aria-pressed="${squashSelected}" title="${bdEscape(squashTitle)}" aria-label="${bdEscape(squashTitle+' for '+c.name)}" data-bd-click="togglePaycheckSquash(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!squashAllowance.allowed&&!squashSelected?'disabled':''}>${squashSelected?'Undo Squash':'Squash'}</button></span>`:''}</span>
         <div class="paycheck-debt-amounts">
           <div><small>Before</small><span class="balance-before">${money(row.balancesBefore[i])}</span></div>
           <div><small>Interest</small><span class="interest">${money(row.interestByAccount[i])}</span></div>
@@ -2321,7 +2323,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
     }
 
     if(!isChecked&&row.balancesBefore.some(n=>n>0))accountsSection+=`<button type="button" class="add-debt-payment" data-add-debt-payment="${row.paycheck}">+ Add debt payment</button>`;
-    const timingWarnings=(row.debtTiming||[]).flatMap((t,i)=>row.balancesBefore[i]>0&&t.missingDate?[cards[i].name+': add a due date; paying every paycheck for now.']:row.balancesBefore[i]>0&&t.late?[cards[i].name+': this paycheck is inside your payment buffer. Pay promptly.']:[]);
+    const timingWarnings=(row.debtTiming||[]).flatMap((t,i)=>row.balancesBefore[i]>0&&t.missingDate?[cards[i].name+': add a due date; paying every paycheck for now.']:window.BearDenDebtPayments.paymentIsLate(t,dateKey(row.date),dateKey(new Date()),isChecked,row.payments[i])?[cards[i].name+': payment is late (due '+fmtDate(new Date(t.dueDate+'T12:00:00'))+').']:[]);
     if(row.cashAfterDebt<-.005)timingWarnings.push('This paycheck is short by '+money(-row.cashAfterDebt)+'. Adjust your plan to cover the payments.');
     if(timingWarnings.length)accountsSection+='<p class="subtle" role="status">'+timingWarnings.map(bdEscape).join('<br>')+'</p>';
 
@@ -6806,7 +6808,7 @@ function setupPaycheckBears(){
 
 window.classicReady=(async function init(){
   await window.BearDen.ready;
-  window.BearDenDebtPayments=await import('./debt-payments.mjs?v=paid-cycle1');
+  window.BearDenDebtPayments=await import('./debt-payments.mjs?v=creditor-themes2');
   window.BearDenCarDebt=await import('./car-debt.mjs?v=car-debt1');
   window.BearDenTaxes=await import('./tax-ui.mjs?v=tracker-401k1');window.BearDenTaxes.mount();
   applyThemeButtonIcon(); // reflect whatever the early <head> script already applied

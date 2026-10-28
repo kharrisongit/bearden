@@ -11,11 +11,11 @@
         document.documentElement.setAttribute('data-theme', 'dark');
       }
       const savedHoliday = localStorage.getItem('bearden:classic:holiday');
-      if (savedHoliday === 'christmas' || savedHoliday === 'halloween') {
+      if (['christmas','halloween','thanksgiving','valentine','newyear'].includes(savedHoliday)) {
         document.documentElement.setAttribute('data-holiday', savedHoliday);
       }
       const color = localStorage.getItem('bearden:classic:color-scheme');
-      if (['ocean','sapphire','violet','plum','rose','sunset','amber','forest','olive','slate'].includes(color)) {
+      if (['ocean','sapphire','violet','plum','rose','sunset','amber','forest','olive','slate','mint','aqua','lavender','cherry','coral','cocoa','aurora','dusk','lagoon','ember','twilight','meadow'].includes(color)) {
         document.documentElement.setAttribute('data-color-scheme', color);
       }
     } catch (e) {}
@@ -32,12 +32,14 @@ document.addEventListener('DOMContentLoaded',()=>{
   let remembered=true;
   function sync(){
     const current=root.getAttribute('data-color-scheme'),dark=root.getAttribute('data-theme')==='dark';
+    const holiday=root.getAttribute('data-holiday');
+    for(const button of dialog.querySelectorAll('[data-holiday-choice]'))button.setAttribute('aria-pressed',String(button.dataset.holidayChoice===holiday&&!current));
     const selected=swatches.find(button=>button.dataset.colorSchemeChoice===current);
     for(const button of swatches)button.setAttribute('aria-pressed',String(button===selected));
     for(const button of dialog.querySelectorAll('[data-color-mode]'))button.setAttribute('aria-pressed',String((button.dataset.colorMode==='dark')===dark));
-    document.getElementById('resetColorScheme').setAttribute('aria-pressed',String(!selected));
-    opener.classList.toggle('active',!!selected);
-    status.textContent=(selected?selected.dataset.colorName:'Standard colors')+' · '+(dark?'Dark':'Light')+' mode'+(remembered?'':'. Applied, but this browser could not remember the preference.');
+    document.getElementById('resetColorScheme').setAttribute('aria-pressed',String(!selected&&!holiday));
+    opener.classList.toggle('active',!!selected||!!holiday);
+    status.textContent=(selected?selected.dataset.colorName:dialog.querySelector('[data-holiday-choice][aria-pressed="true"]')?.dataset.colorName||'Standard colors')+' · '+(dark?'Dark':'Light')+' mode'+(remembered?'':'. Applied, but this browser could not remember the preference.');
   }
   function select(value){
     if(value&&!swatches.some(button=>button.dataset.colorSchemeChoice===value))return;
@@ -50,11 +52,13 @@ document.addEventListener('DOMContentLoaded',()=>{
     document.getElementById('holidayMenu')?.classList.remove('open');
     sync();if(!dialog.open)dialog.showModal();
     dialog.setAttribute('closedby','closerequest');
-    (swatches.find(button=>button.getAttribute('aria-pressed')==='true')||swatches[0])?.focus({preventScroll:true});
+    (dialog.querySelector('.color-swatch[aria-pressed="true"]')||swatches[0])?.focus({preventScroll:true});
   });
   dialog.addEventListener('click',event=>{
     const choice=event.target.closest('[data-color-scheme-choice]');
     if(choice&&dialog.contains(choice)){select(choice.dataset.colorSchemeChoice);return;}
+    const holiday=event.target.closest('[data-holiday-choice]');
+    if(holiday){window.setHolidayTheme?.(holiday.dataset.holidayChoice);sync();return;}
     const mode=event.target.closest('[data-color-mode]');
     if(mode&&dialog.contains(mode)){
       const dark=root.getAttribute('data-theme')==='dark';
@@ -63,11 +67,11 @@ document.addEventListener('DOMContentLoaded',()=>{
     }
   });
   document.getElementById('closeColorPicker').addEventListener('click',()=>dialog.close());
-  document.getElementById('resetColorScheme').addEventListener('click',()=>select(null));
+  document.getElementById('resetColorScheme').addEventListener('click',()=>{select(null);window.setHolidayTheme?.('standard');});
   document.getElementById('holidayItemStandard')?.addEventListener('click',()=>select(null));
   dialog.addEventListener('cancel',event=>{event.preventDefault();dialog.close();});
   dialog.addEventListener('close',()=>document.getElementById('holidayToggleBtn')?.focus({preventScroll:true}));
-  new MutationObserver(sync).observe(root,{attributes:true,attributeFilter:['data-theme','data-color-scheme']});
+  new MutationObserver(sync).observe(root,{attributes:true,attributeFilter:['data-theme','data-color-scheme','data-holiday']});
   window.addEventListener('storage',event=>{
     if(event.key!=='bearden:classic:color-scheme')return;
     const valid=swatches.some(button=>button.dataset.colorSchemeChoice===event.newValue);

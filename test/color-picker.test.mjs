@@ -12,8 +12,8 @@ const blocks=[...css.replace(/\/\*[\s\S]*?\*\//g,'').matchAll(/([^{}]+)\{([^{}]*
 const luminance=hex=>hex.slice(1).match(/../g).map(n=>parseInt(n,16)/255).map(n=>n<=.04045?n/12.92:((n+.055)/1.055)**2.4).reduce((sum,n,i)=>sum+n*[.2126,.7152,.0722][i],0);
 const contrast=(a,b)=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
 
-test('Color Picker offers ten distinct named schemes and a matching light/dark palette for each',()=>{
- assert.equal(names.length,10);assert.equal(new Set(names).size,10);
+test('Color Picker offers 22 distinct named schemes and a matching light/dark palette for each',()=>{
+ assert.equal(names.length,22);assert.equal(new Set(names).size,22);
  for(const name of names)for(const mode of ['light','dark']){
   const selector=`:root[data-color-scheme="${name}"]`+(mode==='dark'?'[data-theme="dark"]':':not([data-theme="dark"])');
   const block=blocks.find(b=>b.selector===selector);assert.ok(block,`${name} ${mode}`);assert.equal(Object.keys(block.values).length,23);
@@ -23,6 +23,7 @@ test('Color Picker offers ten distinct named schemes and a matching light/dark p
 for(const name of names)for(const mode of ['light','dark'])test(`${name} ${mode}: text and focus colors remain readable on their intended surfaces`,()=>{
  let colors={};
  for(const block of blocks){
+  if(block.selector.includes('data-holiday'))continue;
   if(!block.selector.includes(':root')||!Object.keys(block.values).length)continue;
   if(block.selector.includes('data-color-scheme')){
    if(!block.selector.includes(`data-color-scheme="${name}"`))continue;
@@ -47,4 +48,23 @@ test('saved schemes restore before paint without losing dark mode or holiday dec
 test('invalid or blocked stored preferences fall back without preventing app startup',()=>{
  assert.deepEqual(boot({'bearden:classic:color-scheme':'invalid'}),{});
  assert.deepEqual(boot({},true),{});
+});
+
+test('seasonal themes restore and all gradient stops retain readable banner text',()=>{
+ for(const name of ['christmas','halloween','thanksgiving','valentine','newyear']){
+  assert.equal(boot({'bearden:classic:holiday':name})['data-holiday'],name);
+  for(const mode of ['light','dark']){
+   const selector=`:root[data-holiday="${name}"]:not([data-color-scheme])`+(mode==='dark'?'[data-theme="dark"]':':not([data-theme="dark"])');
+   const colors=blocks.find(b=>b.selector===selector)?.values;assert.ok(colors);
+   for(const bg of ['card','paper','surface-inset','surface-subtle'])for(const fg of ['ink','muted'])assert.ok(contrast(colors[fg],colors[bg])>=4.5,`${name} ${mode} ${fg}/${bg}`);
+   for(const bg of ['gradient-start','gradient-end'])for(const fg of ['on-dark','on-dark-muted','on-dark-accent'])assert.ok(contrast(colors[fg],colors[bg])>=4.5,`${name} ${mode} ${fg}/${bg}`);
+  }
+ }
+ for(const name of names){
+  const stops=blocks.find(b=>b.selector===`:root[data-color-scheme="${name}"]`)?.values;if(!stops)continue;
+  for(const mode of ['light','dark']){
+   const colors=blocks.find(b=>b.selector===`:root[data-color-scheme="${name}"]`+(mode==='dark'?'[data-theme="dark"]':':not([data-theme="dark"])')).values;
+   for(const bg of ['gradient-start','gradient-end'])for(const fg of ['on-dark','on-dark-muted','on-dark-accent'])assert.ok(contrast(colors[fg],stops[bg])>=4.5,`${name} ${mode} ${fg}/${bg}`);
+  }
+ }
 });

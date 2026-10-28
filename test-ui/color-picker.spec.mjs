@@ -67,7 +67,7 @@ async function openPicker(page){
  await expect(page.locator('#colorPickerDialog')).toBeVisible();
 }
 
-test('tap all ten colors, switch light/dark, remember across reload, reset and restore focus',async({page})=>{
+test('tap every color and gradient, switch light/dark, remember across reload, reset and restore focus',async({page})=>{
  await page.setViewportSize({width:390,height:844});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await app(page);await openPicker(page);
  for(const name of names){
@@ -77,8 +77,8 @@ test('tap all ten colors, switch light/dark, remember across reload, reset and r
   for(const mode of ['dark','light']){await page.locator(`[data-color-mode="${mode}"]`).click();await expect(page.locator(`#colorPickerStatus`)).toContainText(mode==='dark'?'Dark mode':'Light mode');}
  }
  await page.locator('[data-color-mode="dark"]').click();await page.locator('#closeColorPicker').click();await expect(page.locator('#holidayToggleBtn')).toBeFocused();
- await page.reload();await page.evaluate(()=>window.classicReady);await expect(page.locator('html')).toHaveAttribute('data-color-scheme','slate');await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
- await openPicker(page);await expect(page.locator('[data-color-scheme-choice="slate"]')).toBeFocused();await page.locator('#resetColorScheme').click();
+ await page.reload();await page.evaluate(()=>window.classicReady);await expect(page.locator('html')).toHaveAttribute('data-color-scheme',names.at(-1));await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+ await openPicker(page);await expect(page.locator(`[data-color-scheme-choice="${names.at(-1)}"]`)).toBeFocused();await page.locator('#resetColorScheme').click();
  await expect(page.locator('html')).not.toHaveAttribute('data-color-scheme');await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
  await page.keyboard.press('Escape');await expect(page.locator('#colorPickerDialog')).not.toBeVisible();await expect(page.locator('#holidayToggleBtn')).toBeFocused();
  expect(await page.evaluate(()=>localStorage.getItem('bearden:classic:color-scheme'))).toBeNull();expect(errors).toEqual([]);
@@ -90,4 +90,19 @@ test('saved color works with holiday bears and the existing header mode toggle',
  await page.locator('#nav-settings').click();await page.locator('#themeToggleBtn').click();await expect(page.locator('html')).not.toHaveAttribute('data-theme','dark');await expect(page.locator('html')).toHaveAttribute('data-color-scheme','rose');
  await openPicker(page);await page.locator('[data-color-scheme-choice="forest"]').click();await expect(page.locator('html')).toHaveAttribute('data-holiday','christmas');await page.locator('#closeColorPicker').click();
  await page.locator('#holidayToggleBtn').click();await page.locator('#holidayItemStandard').click();await expect(page.locator('html')).not.toHaveAttribute('data-color-scheme');await expect(page.locator('html')).not.toHaveAttribute('data-holiday');
+});
+
+test('holiday themes apply complete palettes, remember selections, and respect reduced motion',async({page},testInfo)=>{
+ await page.setViewportSize({width:390,height:844});await app(page);
+ for(const holiday of ['christmas','halloween','thanksgiving','valentine','newyear']){
+  await openPicker(page);await page.locator(`[data-holiday-choice="${holiday}"]`).click();await expect(page.locator('html')).toHaveAttribute('data-holiday',holiday);await expect(page.locator('html')).not.toHaveAttribute('data-color-scheme');await expect(page.locator(`[data-holiday-choice="${holiday}"]`)).toHaveAttribute('aria-pressed','true');
+  for(const mode of ['dark','light']){await page.locator(`[data-color-mode="${mode}"]`).click();await expect.poll(async()=>(await page.evaluate(contrastAudit)).filter(result=>result.ratio<4.5).map(result=>result.text)).toEqual([]);}
+  await page.locator('#closeColorPicker').click();await page.locator('#nav-debt').click();await page.emulateMedia({reducedMotion:'reduce'});
+  expect(await page.locator('#debtHeroBox').evaluate(el=>getComputedStyle(el).backgroundImage)).toContain('linear-gradient');
+  expect(await page.locator('#debtHeroBox').evaluate(el=>({animation:getComputedStyle(el,'::before').animationName,reduced:matchMedia('(prefers-reduced-motion: reduce)').matches}))).toEqual({animation:'none',reduced:true});
+  await page.screenshot({path:testInfo.outputPath(`${holiday}.png`)});
+  await page.reload();await page.evaluate(()=>window.classicReady);await expect(page.locator('html')).toHaveAttribute('data-holiday',holiday);
+ }
+ await openPicker(page);await page.locator('[data-color-scheme-choice="aurora"]').click();await page.screenshot({path:testInfo.outputPath('themes-picker.png')});await page.locator('#closeColorPicker').click();await page.locator('#nav-debt').click();await page.screenshot({path:testInfo.outputPath('aurora-dashboard.png')});
+ await openPicker(page);await page.locator('#resetColorScheme').click();await expect(page.locator('html')).not.toHaveAttribute('data-holiday');await expect(page.locator('html')).not.toHaveAttribute('data-color-scheme');
 });

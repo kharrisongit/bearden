@@ -17,6 +17,9 @@ export function paymentTiming(value={}){
 export function validDueDate(value){
  return /^\d{4}-\d{2}-\d{2}$/.test(value||'')&&Number.isFinite(Date.parse(value+'T12:00Z'))&&new Date(value+'T12:00Z').toISOString().slice(0,10)===value;
 }
+export function paymentIsLate(timing,payday,today,checked,amount){
+ return !checked&&amount>0&&validDueDate(timing?.dueDate)&&timing.dueDate<(payday>today?payday:today);
+}
 // Each monthly due date belongs to the last biweekly payday before its buffer.
 // Calendar arithmetic uses UTC noon so daylight-saving changes cannot move a day.
 export function scheduledPayment(card,payday,startDate,settings={}){

@@ -4,8 +4,8 @@ export {transactionCategories,categorizeTransaction,transactionMerchantKey,setTr
 export {resolveDebtConnections,resolveDebtDetails,remapConnectedAccountReferences} from './connection-model.mjs?v=lunchflow-only1';
 import {transactionAccountId,matchingPayments,postedPayment} from './transaction-links.mjs?v=plaid-restore1';
 import {transactionKey} from './bank-activity.mjs?v=plaid-restore1';
-import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=paid-cycle1';
-export {monthlyMinimum} from './debt-payments.mjs?v=paid-cycle1';
+import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=creditor-themes2';
+export {monthlyMinimum} from './debt-payments.mjs?v=creditor-themes2';
 import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-portal1';
 import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=plaid-restore1';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
@@ -27,6 +27,21 @@ export function trackerDebtStatus(plan,id){
  const synced=plan.syncedDebtBalances?.[card.id];
  const balance=synced? synced.balance : Math.max(0,cents(card.balance)+interest-paid);
  return {index,balance,paid,paidOff:balance<=1,lastPayment:payments.at(-1)||null};
+}
+// Estimates come from this account's actual payoff schedule, in cents.
+// An unfinished schedule must never look like a complete interest estimate.
+export function trackerDebtForecast(plan,id){
+ const status=trackerDebtStatus(plan,id);
+ if(!status)return {date:null,interest:null,reason:'Link a payoff plan'};
+ const card=plan.state.cards[status.index],synced=plan.syncedDebtBalances?.[card.id];
+ const rows=(plan.schedule||[]).filter(r=>r.paycheck>(card.cycleStartPaycheck||0));
+ const payoff=rows.find(r=>(!synced?.date||r.date>=synced.date&&!plan.state.checkedPaychecks?.[r.paycheck])&&Number.isFinite(r.balancesAfter?.[status.index])&&r.balancesAfter[status.index]<=.01);
+ if(status.paidOff){
+  const completed=card.activelyPaidOff?card.payoffHistory?.at(-1):null;
+  return {date:status.lastPayment?.date||null,interest:Number.isFinite(completed?.interestPaid)?cents(completed.interestPaid):rows.filter(r=>plan.state.checkedPaychecks?.[r.paycheck]).reduce((sum,r)=>sum+cents(r.interestByAccount?.[status.index]),0),paidOff:true};
+ }
+ if(!payoff)return {date:null,interest:null,reason:rows.some(r=>r.debtTiming?.[status.index]?.missingFutureMinimum)?'Future payment needed':rows.length?'No payoff in forecast':'Set up income'};
+ return {date:payoff.date,interest:rows.filter(r=>r.paycheck<=payoff.paycheck).reduce((sum,r)=>sum+cents(r.interestByAccount?.[status.index]),0)};
 }
 export function paycheckPaidCreditBills(plan,cardBills=[],cards=[],preferences={}){
  return cardBills.flatMap(bill=>{
