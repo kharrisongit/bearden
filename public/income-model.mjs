@@ -7,7 +7,7 @@ import {transactionKey} from './bank-activity.mjs?v=plaid-restore1';
 import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=creditor-themes2';
 export {monthlyMinimum} from './debt-payments.mjs?v=creditor-themes2';
 import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-portal1';
-import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=plaid-restore1';
+import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=personal-forecast1';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
 export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs?v=plaid-restore1';
 export {creditBills,creditCapacity} from './credit-model.mjs?v=paid-cycle1';
@@ -15,7 +15,7 @@ export {transactionAccountId};
 export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment,paymentOwner,paymentTargets} from './transaction-links.mjs?v=plaid-restore1';
 import {day,occurrences} from './engine.mjs';
 const cents=n=>Math.round((Number(n)||0)*100);
-const isPersonal=b=>/\b(food|dining|grocer(?:y|ies)|gas|fuel|transport|shopping|personal|spending|entertainment|misc(?:ellaneous)?|allowance|fun|restaurants)\b/i.test(b.name||'');
+const isPersonal=b=>/\b(food|dining|grocer(?:y|ies)|gas|fuel|transport|shopping|personal|spending|entertainment|misc(?:ellaneous)?|allowance|fun|restaurants)\b/i.test(b.label||b.name||'');
 // Derive completion from checked payments so undo/reset never leaves a stale paid flag.
 export function trackerDebtStatus(plan,id){
  const index=(plan.state?.cards||[]).findIndex(c=>String(c.id)===String(id));
@@ -146,7 +146,7 @@ export function accountPaymentRows(events,selected=null){
  }
  return rows;
 }
-export function paydayEvents(plan,start,end,{billsOnly=false,debtMode='full'}={}){
+export function paydayEvents(plan,start,end,{billsOnly=false,debtMode='full',retainPersonalBudget=false}={}){
  const s=plan.state||{},rows=new Map((plan.schedule||[]).map(r=>[r.paycheck,r]));
  if(!s.startDate)return [];
  // A comparison starts from completed payments, not future full-plan payoff dates.
@@ -167,14 +167,20 @@ export function paydayEvents(plan,start,end,{billsOnly=false,debtMode='full'}={}
    const owed=remaining[index]+interest,payment=Math.min(owed,Math.max(0,cents(scheduledPayment(card,date,s.startDate,s.debtPaymentSettings).minimum)));
    remaining[index]=owed-payment;return sum+payment;
   },0);
-  const allocations=[...(budget||[]),...(extras||[])].filter(b=>!billsOnly||!isPersonal(b)).reduce((a,b)=>a+cents(b.amount),0)+debtAllocations+(row&&!billsOnly?(row.savingsByGoal||[]).reduce((a,b)=>a+cents(b.contribution),0):0);
+  // A recurring spending allowance stays in checking until it is spent. The
+  // debt plan already protects it; subtracting it here hides that available cash.
+  const budgetAllocations=(budget||[]).filter(b=>!(billsOnly||retainPersonalBudget)||!isPersonal(b)).reduce((sum,b)=>sum+cents(b.amount),0);
+  // One-time expenses are actual planned outflows, even when named Food or Gas.
+  const extraAllocations=(extras||[]).filter(b=>!billsOnly||!isPersonal(b)).reduce((sum,b)=>sum+cents(b.amount),0);
+  const savingsAllocations=row&&!billsOnly?(row.savingsByGoal||[]).reduce((sum,b)=>sum+cents(b.contribution),0):0;
+  const allocations=budgetAllocations+extraAllocations+debtAllocations+savingsAllocations;
   if(income||allocations)out.push({id:'paycheck-'+n,date,name:'Paycheck '+n,type:'income',amount:income,allocations});
  }
  return out;
 }
-export function scenarioForecast(accounts,plan,bills,start,{debtMode='full',length=30,household,scope,transactions=[],includePersonalSpending=false}={}){
+export function scenarioForecast(accounts,plan,bills,start,{debtMode='full',length=30,household,scope,transactions=[],personalSpending=false}={}){
  const mode=['full','minimum','none'].includes(debtMode)?debtMode:'full';
- const paydays=paydayEvents(plan,start,day(start,length),{billsOnly:!includePersonalSpending,debtMode:mode});
+ const paydays=paydayEvents(plan,start,day(start,length),{billsOnly:!personalSpending,debtMode:mode,retainPersonalBudget:personalSpending});
  // Matched credit cards remain covered by the paycheck allocation, preventing
  // an issuer minimum and a tracker minimum from being deducted twice.
  const scheduled=mode==='none'?bills.filter(b=>!isDebtPayment(b)):bills;

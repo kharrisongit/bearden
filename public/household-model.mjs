@@ -35,6 +35,13 @@ export function householdForecast(accounts,plan,paydays,bills,start,{household:h
   const debit=credit&&transactions.find(t=>eligible(t)&&transactionAccountId(t)===h.personalAccountId&&Math.round(t.amount*100)===event.amount&&/TRANSFER_OUT/.test(t.category||''));
   const bankMatched=!!debit;if(debit){used.add(credit.transaction_id);used.add(debit.transaction_id);}
   if(h.received?.[event.id]||bankMatched){events.push({...event,delta:0,incoming:0,outgoing:0,received:true,bankMatched});continue;}
+  // This transfer is funded by the same paycheck. Show its remaining personal
+  // money in one entry, rather than debiting the old balance before payday.
+  const payday=view==='personal'&&own?events.find(e=>e.type==='income'&&e.date===event.date):null;
+  if(payday){
+   payday.delta-=event.amount;payday.allocations+=event.amount;payday.outgoing+=event.amount;
+   payday.fixedBillsTransfer=event.amount;continue;
+  }
   const delta=own?(view==='combined'?0:view==='shared'?event.amount:-event.amount):event.amount;
   events.push({...event,delta,incoming:delta>0?delta:0,outgoing:delta<0?-delta:0});
  }
