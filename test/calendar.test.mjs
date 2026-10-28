@@ -30,3 +30,35 @@ test('payoff completion follows checked payments and reverses when a payment is 
  p.state.checkedPaychecks[1]=false;assert.equal(payoff().completed,false);
  p.state.checkedPaychecks={};assert.equal(payoff().completed,false);
 });
+
+test('bills-only calendars retain paid bills, car payments and paydays while excluding every debt source and payoff',()=>{
+ const p=plan(),payments=[
+  {id:'rent',date:'2026-11-01',amount:80000,billKind:'rent',source:'manual'},
+  {id:'car',date:'2026-11-06',amount:29500,billKind:'car-payment',source:'manual',isPaid:true},
+  {id:'electric',date:'2026-11-06',amount:10000,billKind:'electric',source:'manual',isPaid:true},
+  {id:'tracker',date:'2026-11-06',amount:6000,source:'tracker-debt'},
+  {id:'connected',date:'2026-11-06',amount:5000,source:'plaid-credit',isPaid:true},
+  {id:'manual-loan',date:'2026-11-10',amount:2500,billKind:'loan',source:'manual'},
+  {id:'manual-credit',date:'2026-11-12',amount:3000,billKind:'credit-card',source:'manual',isPaid:true},
+  {id:'outside',date:'2026-12-01',amount:80000,billKind:'rent',source:'manual'},
+ ];
+ const before=structuredClone({p,household,payments}),start='2026-11-01',end='2026-11-30';
+ const onlyBills=calendarEvents(p,household,payments,start,end,{includeDebt:false});
+ assert.deepEqual(onlyBills.map(event=>event.date),['2026-11-01','2026-11-06','2026-11-20']);
+ assert.deepEqual(onlyBills.flatMap(event=>event.billPayments),payments.slice(0,3));
+ assert.equal(onlyBills.flatMap(event=>event.debtPayments).length,0);
+ assert.equal(onlyBills.flatMap(event=>event.payoffs).length,0);
+ assert.equal(onlyBills[1].myPayday,true);assert.equal(onlyBills[1].spousePayday,true);
+ assert.equal(onlyBills[2].myPayday,true);assert.equal(onlyBills[2].spousePayday,true);
+ const combined=calendarEvents(p,household,payments,start,end,{includeDebt:true});
+ assert.deepEqual(combined,calendarEvents(p,household,payments,start,end));
+ assert.deepEqual(combined.flatMap(event=>event.debtPayments),payments.slice(3,7));
+ assert.deepEqual(combined.flatMap(event=>event.payoffs).map(payoff=>payoff.name),['Visa','Loan']);
+ assert.deepEqual({p,household,payments},before);
+});
+
+test('bills-only calendars do not create an empty day for a debt payoff without a payday',()=>{
+ const p=plan();delete p.state.startDate;
+ assert.deepEqual(calendarEvents(p,{},[],'2026-11-01','2026-11-30',{includeDebt:false}),[]);
+ assert.deepEqual(calendarEvents(p,{},[],'2026-11-01','2026-11-30').map(event=>event.date),['2026-11-06','2026-11-20']);
+});

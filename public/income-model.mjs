@@ -112,26 +112,28 @@ export function billTrackerSummary(legacy,planner,linked,today,{transactions=[]}
   overdueCount:pending.filter(b=>b.date<today).length,upcoming:pending.slice(0,3),hasBills:[...known.values()].some(b=>b.date&&Number.isSafeInteger(b.amount)&&b.amount>0)};
 }
 // Calendar markers retain received paydays and paid bills; forecasts exclude them.
-export function calendarEvents(plan,household,payments,start,end){
+export function calendarEvents(plan,household,payments,start,end,{includeDebt=true}={}){
  const days=new Map(),state=plan.state||{};
  const entry=date=>{
   if(!days.has(date))days.set(date,{date,billPayments:[],debtPayments:[],myPayday:false,spousePayday:false,payoffs:[]});
   return days.get(date);
  };
- for(const payment of payments)if(payment.date>=start&&payment.date<=end){
+ for(const payment of payments)if((includeDebt||!isDebtPayment(payment))&&payment.date>=start&&payment.date<=end){
   entry(payment.date)[isDebtPayment(payment)?'debtPayments':'billPayments'].push(payment);
  }
  if(state.startDate)for(const date of occurrences(state.startDate,'biweekly',start,end))entry(date).myPayday=true;
  if(householdEnabled(household)&&household.spouseStartDate)for(const date of occurrences(household.spouseStartDate,household.spouseRepeat||'biweekly',start,end))entry(date).spousePayday=true;
- const previous=(state.cards||[]).map(c=>cents(c.balance));
- for(const row of plan.schedule||[])for(const [index,card] of (state.cards||[]).entries()){
-  const balance=row.balancesAfter?.[index];
-  if(!Number.isFinite(balance))continue;
-  const remaining=cents(balance);
-  if(previous[index]>1&&remaining<=1&&cents(row.payments?.[index])>0&&row.date>=start&&row.date<=end){
-   entry(row.date).payoffs.push({id:String(card.id),name:card.name,completed:!!state.checkedPaychecks?.[row.paycheck]&&!!trackerDebtStatus(plan,card.id)?.paidOff});
+ if(includeDebt){
+  const previous=(state.cards||[]).map(c=>cents(c.balance));
+  for(const row of plan.schedule||[])for(const [index,card] of (state.cards||[]).entries()){
+   const balance=row.balancesAfter?.[index];
+   if(!Number.isFinite(balance))continue;
+   const remaining=cents(balance);
+   if(previous[index]>1&&remaining<=1&&cents(row.payments?.[index])>0&&row.date>=start&&row.date<=end){
+    entry(row.date).payoffs.push({id:String(card.id),name:card.name,completed:!!state.checkedPaychecks?.[row.paycheck]&&!!trackerDebtStatus(plan,card.id)?.paidOff});
+   }
+   previous[index]=remaining;
   }
-  previous[index]=remaining;
  }
  return [...days.values()].sort((a,b)=>a.date.localeCompare(b.date));
 }
