@@ -159,22 +159,30 @@ export function paydayEvents(plan,start,end,{billsOnly=false,debtMode='full',ret
   const row=rows.get(n),income=cents(row?row.takeHomeThisCheck+row.bonusAmount:(s.paycheckOverrides?.[n]??s.takeHome))+(row?0:cents(s.appliedBonuses?.[n]));
   const budget=row?row.budgetLineItemsThisCheck:(s.budgetItems||[]).map(b=>({...b,amount:s.budgetItemOverrides?.[b.id]?.[n]??b.amount}));
   const extras=row?row.extrasThisCheck:(s.extraExpenses?.[n]||[]);
-  let debtAllocations=(row?.payments||[]).reduce((sum,p)=>sum+cents(p),0);
-  if(debtMode==='none')debtAllocations=0;
-  if(debtMode==='minimum')debtAllocations=(s.cards||[]).reduce((sum,card,index)=>{
+  let debtPayments=(row?.payments||[]).map(cents);
+  if(debtMode==='none')debtPayments=[];
+  if(debtMode==='minimum')debtPayments=(s.cards||[]).map((card,index)=>{
    card=effectiveDebtTerms(card,plan.syncedDebtTerms?.[card.id],date);
    const interest=Math.round(remaining[index]*Math.max(0,Number(card.apr)||0)/100/26);
    const owed=remaining[index]+interest,payment=Math.min(owed,Math.max(0,cents(scheduledPayment(card,date,s.startDate,s.debtPaymentSettings).minimum)));
-   remaining[index]=owed-payment;return sum+payment;
-  },0);
+   remaining[index]=owed-payment;return payment;
+  });
   // A recurring spending allowance stays in checking until it is spent. The
   // debt plan already protects it; subtracting it here hides that available cash.
-  const budgetAllocations=(budget||[]).filter(b=>!(billsOnly||retainPersonalBudget)||!isPersonal(b)).reduce((sum,b)=>sum+cents(b.amount),0);
+  const budgetAllocations=(budget||[]).filter(b=>!(billsOnly||retainPersonalBudget)||!isPersonal(b));
   // One-time expenses are actual planned outflows, even when named Food or Gas.
-  const extraAllocations=(extras||[]).filter(b=>!billsOnly||!isPersonal(b)).reduce((sum,b)=>sum+cents(b.amount),0);
-  const savingsAllocations=row&&!billsOnly?(row.savingsByGoal||[]).reduce((sum,b)=>sum+cents(b.contribution),0):0;
-  const allocations=budgetAllocations+extraAllocations+debtAllocations+savingsAllocations;
-  if(income||allocations)out.push({id:'paycheck-'+n,date,name:'Paycheck '+n,type:'income',amount:income,allocations});
+  const extraAllocations=(extras||[]).filter(b=>!billsOnly||!isPersonal(b));
+  const savingsAllocations=row&&!billsOnly?(row.savingsByGoal||[]):[];
+  // Keep the exact deductions alongside the total so exported reports can
+  // explain each debt, savings goal and expense without rebuilding the math.
+  const allocationDetails=[
+   ...budgetAllocations.map(b=>({kind:'budget',label:b.label||b.name||'Budget obligation',amount:cents(b.amount)})),
+   ...extraAllocations.map(b=>({kind:'expense',label:b.label||b.name||'One-time expense',amount:cents(b.amount)})),
+   ...debtPayments.map((amount,index)=>({kind:'debt',label:s.cards?.[index]?.name||'Debt payment '+(index+1),amount})),
+   ...savingsAllocations.map(b=>({kind:'savings',label:b.name||'Savings goal',amount:cents(b.contribution)})),
+  ].filter(item=>item.amount!==0);
+  const allocations=allocationDetails.reduce((sum,item)=>sum+item.amount,0);
+  if(income||allocations)out.push({id:'paycheck-'+n,date,name:'Paycheck '+n,type:'income',amount:income,allocations,allocationDetails});
  }
  return out;
 }

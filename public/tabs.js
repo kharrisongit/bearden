@@ -176,7 +176,7 @@
  async function save(message){if(!ready)throw Error('Accounts have not loaded. Reload before saving changes.');await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();if(message)window.showBearToast?.(message);}
  let initializing;
  $('#configureHousehold').disabled=true;$('#billTrackerChooseAccount').disabled=true;$('#sharedBillsToggle').disabled=true;$('#carPaymentsInDebtToggle').disabled=true;
- function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=personal-forecast1'),import('./email-model.mjs?v=connections-audit1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=short-share1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#billTrackerChooseAccount').disabled=false;$('#sharedBillsToggle').disabled=false;$('#carPaymentsInDebtToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
+ function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=forecast-report1'),import('./email-model.mjs?v=connections-audit1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=short-share1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#billTrackerChooseAccount').disabled=false;$('#sharedBillsToggle').disabled=false;$('#carPaymentsInDebtToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
  window.addEventListener('load',initialize,{once:true});
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});
@@ -884,7 +884,7 @@
    $('#personalSpending').innerHTML=groups.map((g,i)=>'<button type="button" class="spending-category" data-spending-category="'+esc(g.key)+'"><span class="category-heading"><span><i style="background:'+chartColors[i%chartColors.length]+'"></i>'+esc(g.label)+'</span><strong>'+money(g.amount)+'</strong></span><span class="category-bar"><i style="width:'+g.amount/spendingTotal*100+'%;background:'+chartColors[i%chartColors.length]+'"></i></span><small>'+g.count+' purchase'+(g.count===1?'':'s')+' · '+Math.round(g.amount/spendingTotal*100)+'%</small></button>').join('');
    $('#spendingForecastNote').textContent=personalAccount?'Last 30 days from '+connectedAccountName(personalAccount)+' only: '+money(spendingTotal)+'. Unspent personal budget money stays available in the forecast; past purchases are already in your bank balance.':'Choose your personal checking account above. Spending from other accounts is excluded.';
    renderBillsSpending(model.billsAccountSpending(connections.transactions||[],billsAccount,currentDay,planner.bankRules,planner.transactionLinks,planner.transactionCategories),billsAccount);
-   renderAccountForecast(f,today,plan,'personal');renderAccountForecast(billsForecast,today,plan,'bills');
+   renderAccountForecast(f,today,plan,'personal',personalAccount);renderAccountForecast(billsForecast,today,plan,'bills',billsAccount);
    billsSavingsContext={accounts,plan,billPlan,paymentsPlanner,linked:structuredClone(linked),today,end:future,length:forecastLength,household:structuredClone(planner.household),transactions:connections.transactions||[],account:billsAccount};
    resetBillsSavings();renderExtraDeposits();
    paymentDisplaySignature=mailDisplaySignature();
@@ -1002,11 +1002,11 @@
   }catch(err){planner.household=before;if(planButton)billsTool(mode).status.textContent=err.message;else $('#extraDepositStatus').textContent=err.message;}
   finally{button.disabled=false;savingExtraDeposits=false;}
  });
- function renderAccountForecast(f,today,plan,scope){
+ function renderAccountForecast(f,today,plan,scope,account){
   const prefix=scope==='bills'?'billsForecast':'forecast';
    const forecastPoints=model.forecastTimeline(f,today);
    const previous=forecastViews[scope],sameRange=previous?.start===today&&previous?.length===forecastLength;
-   forecastViews[scope]={points:forecastPoints,start:today,length:forecastLength,forecast:f,plan,index:sameRange?previous.index:forecastLength,rowLimit:sameRange?previous.rowLimit:100};
+   forecastViews[scope]={points:forecastPoints,start:today,length:forecastLength,forecast:f,plan,account,index:sameRange?previous.index:forecastLength,rowLimit:sameRange?previous.rowLimit:100};
    const forecastDate=d=>new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',...(forecastLength>180?{year:'numeric'}:{})});
    if(f.opening!==null){
     // Keep extrema from each bucket so a long chart does not hide a shortfall.
@@ -1018,6 +1018,26 @@
    }else $(scope==='bills'?'#billsForecastChart':'#forecastChart').innerHTML='';
    updateForecastSelection(scope);
  }
+ document.addEventListener('click',async e=>{
+  const button=e.target.closest('[data-export-forecast]');if(!button||button.disabled)return;
+  const scope=button.dataset.exportForecast,status=document.querySelector('[data-forecast-export-status="'+scope+'"]');
+  if(status)status.textContent='';button.disabled=true;button.setAttribute('aria-busy','true');
+  try{
+   if(forecastViews[scope]?.start!==iso(new Date()))await renderIncome();
+   const view=forecastViews[scope],context=billsSavingsContext;
+   if(!view||!context)throw Error('Wait for your forecast to load, then try again.');
+   const rawBuffer=$('#billsSavingsBuffer').value;
+   const buffer=rawBuffer.trim()===''?NaN:Math.round(Number(rawBuffer)*100);
+   // Capture the whole selected range before loading optional report tools.
+   // Scrubbing the chart or changing settings later cannot alter this PDF.
+   const snapshot=structuredClone({scope,forecast:view.forecast,start:view.start,plan:view.plan,account:view.account,context,buffer,generatedAt:new Date().toISOString()});
+   const {openForecastReport}=await import('./forecast-report-export.mjs?v=forecast-report1');
+   // The modal makes the page inert; keep the trigger focusable for Close.
+   button.disabled=false;
+   await openForecastReport(snapshot,button);
+  }catch(error){if(status)status.textContent='Could not open the report exporter. Wait for your forecast to load, then tap Export PDF to try again.';}
+  finally{button.disabled=false;button.removeAttribute('aria-busy');}
+ });
  function updateForecastSelection(scope){
   const view=forecastViews[scope],prefix=scope==='bills'?'billsForecast':'forecast';
   const date=modelDay(view.start,view.index),balance=model.forecastBalanceOn(view.points,date);

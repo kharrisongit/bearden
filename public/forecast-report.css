@@ -1,0 +1,28 @@
+.income-card .forecast-export{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:42px;white-space:nowrap}
+.forecast-export svg{width:17px;height:17px;flex-shrink:0}
+.forecast-export-status:empty{display:none}
+.forecast-export-status{color:var(--warn)}
+#personalForecastCard>.card-heading h3,#billsForecastCard>.card-heading h3{flex:1 1 180px}
+.forecast-report-dialog{box-sizing:border-box;width:min(520px,calc(100vw - 28px));padding:26px;color:var(--ink);border:1px solid var(--line);background:var(--card);border-radius:22px;max-height:85dvh;margin:auto;overflow:auto;box-shadow:0 24px 90px #11182750}
+.forecast-report-dialog::backdrop{background:#11182788;backdrop-filter:blur(4px)}
+.report-dialog-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.report-dialog-brand{font-size:.65rem;font-weight:750;letter-spacing:.14em;color:var(--muted)}
+.report-dialog-top button{background:transparent;color:var(--ink);flex-shrink:0}
+.report-document-icon{display:grid;place-items:center;width:64px;height:78px;margin:22px 0 18px;background:var(--accent-soft);color:var(--accent);border:1px solid var(--line);border-radius:12px;box-shadow:5px 5px 0 var(--paper)}
+.report-document-icon svg{height:37px;width:37px}
+.forecast-report-dialog h2{font-size:1.55rem;line-height:1.2;letter-spacing:-.035em;margin:0 0 12px;overflow-wrap:anywhere;color:var(--ink)}
+.forecast-report-dialog p{overflow-wrap:anywhere}
+.report-includes{list-style:none;padding:15px 0;margin:14px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);font-size:.78rem;line-height:1.5}
+.report-includes li{position:relative;padding-left:17px;margin:8px 0;color:var(--ink)}
+.report-includes li:before{position:absolute;left:0;top:.52em;content:"";height:5px;width:5px;border-radius:50%;background:var(--accent)}
+.report-download-actions{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0 12px}
+.report-download-actions>*{box-sizing:border-box;flex:1 1 135px;text-align:center;display:inline-flex;align-items:center;justify-content:center;min-height:46px;font:inherit;font-size:.8rem;font-weight:700;border-radius:10px;padding:12px;text-decoration:none;cursor:pointer}
+.report-download-actions .report-primary{background:var(--accent);color:var(--on-accent,var(--card));border:1px solid var(--accent)}
+.report-download-actions [hidden],.report-progress[hidden]{display:none!important}
+.report-device-note{margin-bottom:0;font-size:.67rem!important}
+#forecastReportStatus{font-size:.77rem;line-height:1.5;color:var(--muted);min-height:1.5em}
+.report-progress{height:5px;background:var(--paper);border-radius:8px;overflow:hidden;margin:18px 0}
+.report-progress span{display:block;width:35%;height:100%;background:var(--accent);animation:report-progress 1.2s ease-in-out infinite alternate}
+@keyframes report-progress{to{transform:translateX(185%)}}
+@media(prefers-reduced-motion:reduce){.report-progress span{animation:none;width:100%;opacity:.6}}
+@media(max-width:460px){#personalForecastCard>.card-heading h3,#billsForecastCard>.card-heading h3{flex-basis:100%}.forecast-report-dialog{padding:20px}.forecast-report-dialog h2{font-size:1.4rem}}
