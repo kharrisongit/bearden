@@ -446,6 +446,27 @@ test('existing Plaid loan consent imports principal when general balances are ze
  const state=await(await f.app.handle(f.req('/api/state'))).json(),loan=state.state.accounts[0];assert.equal(loan.balance,712345);assert.equal(loan.balanceSource,'liabilities');assert.equal(loan.reportedCurrent,0);assert.equal(loan.balanceUnavailable,false);
  assert.ok(calls.every(c=>c.body.access_token==='private-token'));assert.ok(!JSON.stringify(state).includes('private-token'));assert.ok(!JSON.stringify(state).includes('do-not-expose'));assert.equal(f.get('connections').items.length,1);f.db.close();
 });
+for(const balanceResult of ['unavailable','zero'])test('Plaid empty loan checks persist diagnostics with '+balanceResult+' balances',async t=>{
+ const calls=[],priorTime=new Date(Date.now()-3600000).toISOString();
+ const f=fixture(async(url,options)=>{
+  const path=new URL(url).pathname;calls.push(path);assert.equal(JSON.parse(options.body).access_token,'private-token');
+  if(path==='/accounts/get'||path==='/accounts/balance/get')return balanceResult==='unavailable'?Response.json({error_code:'INSTITUTION_NOT_RESPONDING'},{status:400}):Response.json({accounts:[{account_id:'auto',name:'Auto',type:'loan',subtype:'auto',balances:{current:0,available:0,iso_currency_code:'USD'}}],request_id:'balance-request'});
+  if(path==='/liabilities/get')return Response.json({accounts:[],liabilities:{},request_id:'empty-loan-request'});
+  if(path==='/transactions/sync')return Response.json({added:[],modified:[],removed:[],next_cursor:'done',has_more:false});
+  throw Error('Unexpected endpoint '+path);
+ });t.after(()=>f.db.close());
+ const state=blank(),saved={id:'plaid-auto',itemId:'bank',source:'plaid',name:'Auto',type:'loan',subtype:'auto',currency:'USD',include:false,balance:712345,balanceSource:'liabilities',balanceUnavailable:false,balanceUpdated:priorTime,lastPositiveBalance:712345,lastPositiveBalanceUpdated:priorTime,liabilityPrincipal:712345,liabilityAccountCurrent:0,liabilityUpdated:priorTime,liabilityRequestId:'previous-loan-request'};
+ state.accounts=[saved];f.set('plan',{state,revision:3});
+ f.set('connections',{items:[{id:'bank',name:'ELGA',token:'private-token',liabilities:true,liabilitiesUpdated:priorTime,liabilitiesAttempt:Date.parse(priorTime),liabilitiesRequestId:'previous-loan-request',balancesUpdated:Date.parse(priorTime)}],loanDetails:[],transactions:[],candidates:[]});
+ const started=Date.now(),result=await f.app.handle(f.req('/api/cards/refresh',{itemId:'bank'}));assert.equal(result.status,200);
+ const connections=f.get('connections'),persisted=f.get('plan').state.accounts[0],data=await(await f.app.handle(f.req('/api/state'))).json(),loan=data.state.accounts[0],item=data.connections.items[0];
+ assert.equal(calls.filter(path=>path==='/liabilities/get').length,1);assert.equal(connections.loanDetails.length,0);assert.equal(item.liabilities,true);
+ assert.ok(item.liabilitiesAttempt>=started);assert.equal(item.liabilitiesAttempt,connections.items[0].liabilitiesAttempt);assert.ok(Date.parse(item.liabilitiesUpdated)>=started);
+ assert.equal(item.liabilitiesUpdated,connections.items[0].liabilitiesUpdated);assert.equal(item.liabilitiesRequestId,'empty-loan-request');assert.equal(loan.liabilityCheckedAt,item.liabilitiesUpdated);assert.equal(loan.liabilityStatus,'account-not-returned');
+ assert.deepEqual(loan,persisted);for(const key of ['balance','liabilityPrincipal','liabilityAccountCurrent','liabilityUpdated','liabilityRequestId'])assert.equal(loan[key],saved[key]);
+ if(balanceResult==='unavailable')assert.equal(item.balanceError,'INSTITUTION_NOT_RESPONDING');else assert.equal(loan.zeroUnconfirmed,true);
+ assert.equal('token' in item,false);
+});
 test('Plaid connection diagnosis is scoped, persisted, and excludes raw private payloads',async()=>{
  const f=fixture(async url=>{assert.ok(url.endsWith('/item/get'));return Response.json({item:{institution_id:'ins_elga',available_products:['liabilities'],consented_products:['transactions'],access_token:'private-token',error:null},status:{transactions:{last_successful_update:'2026-10-26T12:00:00Z'}},request_id:'check-request'});});
  f.set('connections',{items:[{id:'bank',name:'ELGA',token:'private-token'}],transactions:[],candidates:[]});

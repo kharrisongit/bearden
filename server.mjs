@@ -57,7 +57,7 @@ async function doSync(bankOnly=false,targetId=null,gmailOnly=false){
   try{const accounts=await bankAccounts(plaid,item,bankOnly);
    updatePlan(s=>{s.accounts=applyPlaidLoanBalances(mergePlaidAccounts(s.accounts,accounts,item),c,item);});c.bankUpdated=now;item.balancesUpdated=Date.now();delete item.balanceError;if(item.balanceWarning)errors.push(item.balanceWarning);
   }catch(e){item.balanceError=e.code||e.message;errors.push(item.name+' balances: '+e.message);}
-  if(c.loanDetails?.some(l=>l.itemId===item.id))updatePlan(s=>{s.accounts=applyPlaidLoanBalances(s.accounts,c,item);});
+  if(item.liabilitiesUpdated||c.loanDetails?.some(l=>l.itemId===item.id))updatePlan(s=>{s.accounts=applyPlaidLoanBalances(s.accounts,c,item);});
   try{const synced=await transactionSync(item);c.transactions=applyTransactions(c.transactions,synced.changes,item.id);item.cursor=synced.cursor;delete item.transactionsError;item.transactionsUpdated=now;}
   catch(e){item.transactionsError=e.code||e.message;errors.push(item.name+' transactions: '+e.message);}
  }

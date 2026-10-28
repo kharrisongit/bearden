@@ -12,10 +12,14 @@ export function normalizePlaidLoans(response,item,now=new Date().toISOString()){
 export function applyPlaidLoanBalances(accounts,connections,item,now=Date.now()){
  return accounts.map(a=>{
   if(a.source!=='plaid'||a.itemId!==item.id||a.type!=='loan')return a;
-  const loan=connections.loanDetails?.find(l=>l.id===a.id&&l.itemId===item.id);if(!loan)return a;
+  const loan=connections.loanDetails?.find(l=>l.id===a.id&&l.itemId===item.id),checkedAt=timestamp(item.liabilitiesUpdated);
+  // A successful Item request can omit this loan. Keep its last observation
+  // separately from the result of the latest successful check.
+  const checked=checkedAt?{liabilityCheckedAt:checkedAt,liabilityStatus:!loan||loan.stale?'account-not-returned':!loan.detailsAvailable?'details-not-returned':loan.principal==null?'principal-unavailable':'principal-reported'}:{};
+  if(!loan||checkedAt&&loan.stale)return {...a,...checked};
   const fresh=!loan.stale&&!item.liabilitiesError&&Date.parse(loan.updated)>now-48*3600000;
   const principal=loan.principal??loan.accountCurrent;
-  const observation={...a,liabilityPrincipal:loan.principal,liabilityAccountCurrent:loan.accountCurrent,liabilityUpdated:loan.updated,liabilityRequestId:loan.requestId};
+  const observation={...a,...checked,liabilityPrincipal:loan.principal,liabilityAccountCurrent:loan.accountCurrent,liabilityUpdated:loan.updated,liabilityRequestId:loan.requestId};
   const keepBalance=!a.balanceUnavailable&&a.balance>0&&(a.balanceSource!=='liabilities'||Date.parse(a.balanceUpdated)>Date.parse(loan.updated));
   if(!fresh||loan.currency!==a.currency||!(principal>0)||keepBalance)return observation;
   return {...observation,balance:principal,balanceUnavailable:false,zeroUnconfirmed:false,balanceSource:'liabilities',balanceUpdated:loan.updated,lastPositiveBalance:principal,lastPositiveBalanceUpdated:loan.updated,balanceWarning:'Using the principal reported by Plaid loan details. The general balance response was missing or unconfirmed.'};

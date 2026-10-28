@@ -67,7 +67,7 @@ export function runtime(env,fetcher=fetch){
  }
  async function syncBank(c,item,force=false,transactionsOnly=false){
   item.lastSyncAttempt=Date.now();
-  if(!transactionsOnly){await syncCredit(c,item,plaid,force);if(c.loanDetails?.some(l=>l.itemId===item.id))await updatePlan(s=>{s.accounts=applyPlaidLoanBalances(s.accounts,c,item);});}
+  if(!transactionsOnly){await syncCredit(c,item,plaid,force);if(item.liabilitiesUpdated||c.loanDetails?.some(l=>l.itemId===item.id))await updatePlan(s=>{s.accounts=applyPlaidLoanBalances(s.accounts,c,item);});}
   // Stage a complete cursor update; manual refresh drains several pages at once.
   if(!item.pending)item.pending={original:item.cursor||'',cursor:item.cursor||'',transactions:c.transactions.filter(t=>t.itemId===item.id)};
   try{

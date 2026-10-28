@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {applyPlaidLoanBalances,normalizePlaidLoans,diagnosePlaid} from '../plaid-loans.mjs';
 import {mergePlaidAccounts} from '../providers.mjs';
 import {creditLinkOptions,syncCredit,publicItem} from '../credit.mjs';
+import {blank,validate} from '../public/engine.mjs';
 import {mergeSimplefinAccounts,configureSimplefinAccount,syncSimplefin} from '../simplefin.mjs';
 const item={id:'bank',token:'secret',name:'ELGA',liabilities:true};
 const account={account_id:'auto',type:'loan',subtype:'auto',name:'Auto',balances:{current:0,available:0,iso_currency_code:'USD'}};
@@ -22,6 +23,52 @@ test('loan details preserve usable live balances and do not promote stale, wrong
  assert.equal(applyPlaidLoanBalances(old,{loanDetails:[loan]},{...item,liabilitiesError:'ITEM_LOGIN_REQUIRED'})[0].balanceUnavailable,true);
  const live=mergePlaidAccounts([],{accounts:[{...account,balanceSource:'live',balances:{...account.balances,current:7000}}]},item);
  assert.equal(applyPlaidLoanBalances(live,{loanDetails:[loan]},item)[0].balance,700000);
+});
+test('a successful Liabilities request records an omitted loan without erasing its previous observation',async()=>{
+ const c={items:[{...item}],transactions:[]},i=c.items[0],accounts=mergePlaidAccounts([],{accounts:[account]},i);
+ await syncCredit(c,i,async()=>({accounts:[],liabilities:{},request_id:'request-empty'}),true);
+ const first=applyPlaidLoanBalances(accounts,c,i)[0];
+ assert.equal(first.liabilityCheckedAt,i.liabilitiesUpdated);assert.equal(first.liabilityStatus,'account-not-returned');assert.equal(first.liabilityUpdated,undefined);assert.equal(first.balanceUnavailable,true);
+ const priorTime='2026-10-26T10:00:00.000Z',prior=normalizePlaidLoans(response,i,priorTime)[0];
+ c.loanDetails=[prior];
+ const saved={...accounts[0],liabilityPrincipal:prior.principal,liabilityAccountCurrent:prior.accountCurrent,liabilityUpdated:priorTime,liabilityRequestId:prior.requestId};
+ await syncCredit(c,i,async()=>({accounts:[{...account,account_id:'another-loan'}],liabilities:{},request_id:'request-omitted'}),true);
+ const next=applyPlaidLoanBalances([saved],c,i)[0];
+ assert.equal(c.loanDetails.find(l=>l.id===saved.id).stale,true);assert.equal(next.liabilityStatus,'account-not-returned');assert.equal(next.liabilityCheckedAt,i.liabilitiesUpdated);
+ assert.equal(next.liabilityPrincipal,712345);assert.equal(next.liabilityUpdated,priorTime);assert.equal(next.liabilityRequestId,prior.requestId);assert.equal(next.balance,saved.balance);
+});
+test('a returned loan without liability details records the successful check and account balance observation',async()=>{
+ const c={items:[{...item}],transactions:[]},i=c.items[0];
+ await syncCredit(c,i,async()=>({accounts:[account],liabilities:{},request_id:'request-no-details'}),true);
+ const row=applyPlaidLoanBalances(mergePlaidAccounts([],{accounts:[account]},i),c,i)[0];
+ assert.equal(row.liabilityStatus,'details-not-returned');assert.equal(row.liabilityCheckedAt,i.liabilitiesUpdated);assert.equal(row.liabilityUpdated,c.loanDetails[0].updated);
+ assert.equal(row.liabilityPrincipal,null);assert.equal(row.liabilityAccountCurrent,0);assert.equal(row.balanceUnavailable,true);
+});
+test('missing principal and a reported zero principal have different diagnostics without confirming payoff',async()=>{
+ for(const [details,status,principal]of [[{origination_principal_amount:25000,next_payment_amount:250},'principal-unavailable',null],[{principal_balance:0},'principal-reported',0]]){
+  const c={items:[{...item}],transactions:[]},i=c.items[0];
+  await syncCredit(c,i,async()=>({...response,liabilities:{loan:[{account_id:'auto',...details}]}}),true);
+  const row=applyPlaidLoanBalances(mergePlaidAccounts([],{accounts:[account]},i),c,i)[0];
+  assert.equal(row.liabilityStatus,status);assert.equal(row.liabilityPrincipal,principal);assert.equal(row.liabilityCheckedAt,i.liabilitiesUpdated);
+  assert.equal(row.balanceUnavailable,true);assert.equal(row.zeroUnconfirmed,true);
+ }
+});
+test('a failed Liabilities retry preserves the last successful check and saved observation',async()=>{
+ const c={items:[{...item}],transactions:[]},i=c.items[0];
+ await syncCredit(c,i,async()=>response,true);
+ const saved=applyPlaidLoanBalances(mergePlaidAccounts([],{accounts:[account]},i),c,i)[0],successfulAt=i.liabilitiesUpdated;
+ await syncCredit(c,i,async()=>{throw Object.assign(Error('ITEM_LOGIN_REQUIRED'),{code:'ITEM_LOGIN_REQUIRED',requestId:'request-failed'});},true);
+ const next=applyPlaidLoanBalances([saved],c,i)[0];
+ assert.equal(i.liabilitiesError,'ITEM_LOGIN_REQUIRED');assert.equal(i.liabilitiesUpdated,successfulAt);assert.equal(next.liabilityStatus,'principal-reported');assert.equal(next.liabilityCheckedAt,successfulAt);
+ for(const key of ['liabilityPrincipal','liabilityAccountCurrent','liabilityUpdated','liabilityRequestId','balance','balanceUpdated'])assert.equal(next[key],saved[key]);
+});
+test('loan diagnostic metadata survives plan serialization, validation, and later account balance merges',async()=>{
+ const c={items:[{...item}],transactions:[]},i=c.items[0];
+ await syncCredit(c,i,async()=>({...response,liabilities:{loan:[{account_id:'auto',principal_balance:0}]}}),true);
+ const state=blank();state.accounts=applyPlaidLoanBalances(mergePlaidAccounts([],{accounts:[account]},i),c,i);
+ const restored=validate(JSON.parse(JSON.stringify(state))),next=mergePlaidAccounts(restored.accounts,{accounts:[account]},i)[0];
+ for(const key of ['liabilityCheckedAt','liabilityStatus','liabilityPrincipal','liabilityAccountCurrent','liabilityUpdated','liabilityRequestId'])assert.equal(next[key],state.accounts[0][key]);
+ assert.equal(next.liabilityStatus,'principal-reported');assert.equal(next.liabilityPrincipal,0);assert.equal(next.zeroUnconfirmed,true);
 });
 test('loan update consent uses the existing Plaid Item without credit-card-only filters',()=>{
  const options=creditLinkOptions({kind:'loan',itemId:item.id},item);

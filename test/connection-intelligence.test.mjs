@@ -6,7 +6,7 @@ import {transactionAccountId,paymentLink,matchingPayments} from '../public/trans
 import {parseAccountEmail} from '../email-parser.mjs';
 import {scanMailbox,mailboxWatches} from '../mailboxes.mjs';
 import {microsoftMessagesUrl} from '../microsoft.mjs';
-import {syncCredit,publicCredit} from '../credit.mjs';
+import {syncCredit,publicCredit,publicItem} from '../credit.mjs';
 const now=Date.now(),fresh=new Date(now-3600000).toISOString(),old=new Date(now-5*86400000).toISOString();
 const card={id:1,balance:1000,monthlyMinimum:100,min:46.15,apr:20,dueDate:'2026-11-15',debtKind:'credit-card'};
 const primary={id:'plaid-a',itemId:'p',source:'plaid',currency:'USD',balance:90000,balanceUpdated:fresh};
@@ -71,6 +71,17 @@ test('partial Plaid liabilities retain earlier fields with original timestamps',
  const saved=c.creditCards[0];assert.equal(saved.minimum,8000);assert.equal(saved.fieldUpdated.minimum,old);
  const r=resolveDebtDetails({card,primary,issuers:c.creditCards,now});assert.equal(r.monthlyMinimum.stale,true);
  await syncCredit(c,item,async()=>({accounts:[],liabilities:{credit:[]}}),true);assert.equal(c.creditCards.length,1);assert.equal(publicCredit(c)[0].stale,true);
+});
+
+test('loan checks expose attempts separately from successful observations',async()=>{
+ const item={id:'p',name:'Bank',token:'private-access-token',liabilities:true},c={items:[item]};
+ await syncCredit(c,item,async(path,body)=>{
+  assert.equal(path,'/liabilities/get');assert.equal(body.access_token,item.token);
+  return {request_id:'success-1',accounts:[{account_id:'auto',type:'loan',balances:{current:0,iso_currency_code:'USD'}}],liabilities:{loan:[{account_id:'auto',principal_balance:0}]}};
+ },true);
+ const success=publicItem(item);assert.ok(Number.isFinite(success.liabilitiesAttempt));assert.equal(success.liabilitiesUpdated,c.loanDetails[0].updated);assert.equal(success.liabilitiesRequestId,'success-1');assert.equal('token' in success,false);
+ await syncCredit(c,item,async()=>{throw Object.assign(new Error('Unavailable'),{code:'INSTITUTION_DOWN',requestId:'failed-2'});},true);
+ const failed=publicItem(item);assert.ok(failed.liabilitiesAttempt>=success.liabilitiesAttempt);assert.equal(failed.liabilitiesUpdated,success.liabilitiesUpdated);assert.equal(failed.liabilitiesError,'INSTITUTION_DOWN');assert.equal(failed.liabilitiesRequestId,'failed-2');assert.equal(c.loanDetails[0].principal,0);
 });
 
 test('an older email cannot replace a more recently reported balance or minimum during an outage',()=>{
