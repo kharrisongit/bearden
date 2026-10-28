@@ -25,7 +25,7 @@ async function fixture(page,{connected=false,legacy=false}={}){
  await page.goto('https://bearden.test/');await page.evaluate(()=>window.classicReady);await expect(page.locator('#configureHousehold')).toBeEnabled();
  return {failSave:value=>fail=value,saves,get tracker(){return tracker;}};
 }
-async function openDebt(page,connected=false){await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();await page.locator(connected?'[data-edit-credit="credit-a"]':'[data-edit-debt="1"]').first().click();}
+async function openDebt(page,connected=false){await page.locator('#nav-debts').click();await page.locator(connected?'[data-edit-credit="credit-a"]':'[data-edit-debt="1"]').first().click();}
 async function confirmDelete(page,selector,accept=true){page.once('dialog',dialog=>accept?dialog.accept():dialog.dismiss());await page.locator(selector).click();}
 
 test('manual debt deletion is at the bottom, can be cancelled, and removes only that debt after reload',async({page})=>{
@@ -46,7 +46,7 @@ test('deleting a connected debt removes its matched tracker debt in the same sav
 });
 
 for(const legacy of [false,true])test((legacy?'synced':'manual')+' bill deletion clears future payments and stays deleted after reload',async({page})=>{
- const f=await fixture(page,{legacy});await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-bills').click();await page.locator('[data-edit-bill="water"]').first().click();
+ const f=await fixture(page,{legacy});await page.locator('#nav-bills').click();await page.locator('#accounts-nav-bills').click();await page.locator('[data-edit-bill="water"]').first().click();
  await expect(page.locator('#stopTrackingBill')).toHaveText('Delete bill');expect(await page.locator('#stopTrackingBill').evaluate(el=>el.closest('dialog').lastElementChild.contains(el)&&!!(el.closest('dialog').querySelector('form').compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
  await confirmDelete(page,'#stopTrackingBill',false);await expect(page.locator('#billEditor')).toBeVisible();expect(JSON.parse(f.tracker.state.values['income-planner']).deletedBills?.water).toBeUndefined();
  await confirmDelete(page,'#stopTrackingBill');await expect(page.locator('#billEditor')).toBeHidden();await expect(page.locator('[data-edit-bill="water"]')).toHaveCount(0);
@@ -67,6 +67,6 @@ test('desktop popups keep unsaved edits after backdrop clicks and Escape until C
  await page.locator('#debtEditorForm [name="name"]').fill('Unsaved name');
  await page.mouse.click(3,3);await expect(page.locator('#debtEditor')).toBeVisible();await expect(page.locator('#debtEditorForm [name="name"]')).toHaveValue('Unsaved name');
  await page.keyboard.press('Escape');await expect(page.locator('#debtEditor')).toBeVisible();await page.locator('#closeDebtEditor').click();await expect(page.locator('#debtEditor')).toBeHidden();
- await page.locator('#accounts-nav-bills').click();await page.locator('[data-edit-bill="water"]').first().click();await page.mouse.click(3,3);await expect(page.locator('#billEditor')).toBeVisible();await page.locator('#closeBillEditor').click();await expect(page.locator('#billEditor')).toBeHidden();
+ await page.locator('#nav-bills').click();await page.locator('#accounts-nav-bills').click();await page.locator('[data-edit-bill="water"]').first().click();await page.mouse.click(3,3);await expect(page.locator('#billEditor')).toBeVisible();await page.locator('#closeBillEditor').click();await expect(page.locator('#billEditor')).toBeHidden();
  await page.evaluate(()=>document.querySelector('#accountPicker').showModal());await page.mouse.click(3,3);await expect(page.locator('#accountPicker')).toBeVisible();await page.locator('#closeAccountPicker').click();await expect(page.locator('#accountPicker')).toBeHidden();
 });

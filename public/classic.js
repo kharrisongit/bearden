@@ -2097,7 +2097,7 @@ function debtForecastNotice(cards,schedule,debtFreeDate,checked={},today=new Dat
   const last=schedule.at(-1);
   if(!last||last.total<=0.01)return '';
   const missing=cards.filter((card,i)=>last.balancesAfter[i]>0.005&&future.some(row=>row.debtTiming?.[i]?.missingFutureMinimum)).map(c=>c.name);
-  if(missing.length)return 'Nothing is due for the current cycle on '+missing.join(', ')+', but a balance remains. Add a future monthly payment estimate in Accounts, or wait for the next statement. A due date alone cannot supply that amount; the payoff date is unavailable until it is known.';
+  if(missing.length)return 'Nothing is due for the current cycle on '+missing.join(', ')+', but a balance remains. Add a future monthly payment estimate in Debt, or wait for the next statement. A due date alone cannot supply that amount; the payoff date is unavailable until it is known.';
   const upcoming=future.slice(0,26);
   const unpaid=[],notReducing=[];
   if(upcoming.length===26)cards.forEach((card,i)=>{
@@ -2110,7 +2110,7 @@ function debtForecastNotice(cards,schedule,debtFreeDate,checked={},today=new Dat
   const reasons=[];
   if(unpaid.length)reasons.push('No payments scheduled over the next 26 paychecks for: '+unpaid.join(', ')+'.');
   if(notReducing.length)reasons.push('Payments do not exceed projected interest over the next 26 paychecks for: '+notReducing.join(', ')+'.');
-  if(reasons.length)reasons.push('Review payment amounts and monthly minimums in Accounts.');
+  if(reasons.length)reasons.push('Review payment amounts and monthly minimums in Debt.');
   else reasons.push('The current plan still has debt at the end of the 30-year forecast.');
   reasons.push('Total payoff interest is unavailable until the plan pays off.');
   return reasons.join(' ');
@@ -2383,7 +2383,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
             : `<button class="bonus-inline-btn" data-bd-click="toggleBonusInlineInput(${row.paycheck})">🎁 Add Bonus</button>`
         )}
         ${budgetLines}
-        ${accountBillLines?`<div class="paycheck-bills-heading">Bills from Accounts</div>${accountBillLines}`:''}
+        ${accountBillLines?`<div class="paycheck-bills-heading">Bills</div>${accountBillLines}`:''}
         ${extraExpenseLines}
         ${extraExpenseControl}
         <div class="check-summary-row prominent-row"><span>Left over after budget and bills</span><span>${money(row.avail)}</span></div>

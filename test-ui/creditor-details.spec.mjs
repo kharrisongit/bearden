@@ -28,7 +28,7 @@ test('paycheck creditor opens the right quick view, preserves the tab, and offer
  await expect(dialog).toContainText('Est. payoff date');await expect(dialog).toContainText('Est. interest paid');await expect(dialog).toContainText('12.00%');
  expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);await page.screenshot({path:testInfo.outputPath('creditor-quick-view.png')});
  await page.locator('#closeDebtProgress').click();await expect(page.locator('#nav-debt')).toHaveAttribute('aria-selected','true');await expect(trigger).toBeFocused();
- await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();
+ await page.locator('#nav-debts').click();
  const card=page.locator('[data-tracker-account="1"]');await expect(card.locator('.debt-card-estimates')).toContainText('2027');await page.screenshot({path:testInfo.outputPath('debt-card.png')});
  await card.locator('[data-show-debt-details]').click();await expect(dialog.getByRole('heading',{name:/Paycheck/})).toHaveCount(0);
  await dialog.getByRole('button',{name:'Edit account',exact:true}).click();await expect(dialog).toBeHidden();

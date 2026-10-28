@@ -52,13 +52,13 @@ for(const [width,theme]of [[390,'light'],[1440,'dark']])test(`${width}px: a save
 test('failed saves show the error without a success toast; bill saves confirm after persistence',async({page})=>{
  await page.setViewportSize({width:390,height:844});const f=await fixture(page);await openAccounts(page);f.failSave(true);
  const account=page.locator('[data-lunchflow-account]').last();await account.locator('[type=submit]').click();await expect(account.locator('[data-lunchflow-account-status]')).toContainText(/could not be saved|Save failed/);await expect(page.locator('#bearToast')).toHaveCount(0);
- await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-bills').click();await page.locator('[data-edit-bill="water"]').first().click();
+ await page.locator('#nav-bills').click();await page.locator('#accounts-nav-bills').click();await page.locator('[data-edit-bill="water"]').first().click();
  await page.locator('#billEditorForm [name=name]').fill('Water updated');await page.locator('#billEditorForm [type=submit]').click();await expect(page.locator('#billEditorError')).toContainText('Save failed');await expect(page.locator('#bearToast')).toHaveCount(0);
  f.failSave(false);await page.locator('#billEditorForm [type=submit]').click();await expect(page.locator('#billEditor')).toBeHidden();await expect(page.locator('#bearToast')).toHaveText('Bill saved');expect(f.planner.manual[0].name).toBe('Water updated');
 });
 
 test('confirmation stays above dialogs without changing focus and repeated saves reuse one toast',async({page})=>{
- await page.setViewportSize({width:1280,height:900});await fixture(page);await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-bills').click();await page.locator('[data-edit-bill="water"]').first().click();
+ await page.setViewportSize({width:1280,height:900});await fixture(page);await page.locator('#nav-bills').click();await page.locator('#accounts-nav-bills').click();await page.locator('[data-edit-bill="water"]').first().click();
  const name=page.locator('#billEditorForm [name=name]');await name.focus();await page.evaluate(()=>window.showBearToast('Saved'));
  const toast=page.locator('#bearToast');await expect(toast).toBeVisible();await expect(name).toBeFocused();expect(await toast.evaluate(el=>el.matches(':popover-open')&&el.parentElement.id==='billEditor')).toBe(true);expect((await toast.boundingBox()).y).toBeLessThan(30);
  await page.evaluate(()=>window.showBearToast('Changes saved'));await expect(toast).toHaveCount(1);await expect(toast).toHaveText('Changes saved');await page.locator('#closeBillEditor').click();await expect(toast).toBeVisible();expect(await toast.evaluate(el=>el.parentElement===document.body&&el.matches(':popover-open'))).toBe(true);

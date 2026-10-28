@@ -24,7 +24,7 @@ body{background:radial-gradient(ellipse at 0 0,#bbaad316,transparent 38%),var(--
 #incomeDropdown .subtle{color:var(--muted)}.income-estimate-options{margin-top:12px}.income-estimate-options summary{font-size:.73rem;color:var(--accent)}.income-estimate-options label{color:var(--ink)}
 
 /* Account views and compact debt rows. */
-.account-view-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;padding:5px;margin:0 0 20px;border:1px solid var(--line);border-radius:16px;background:var(--card)}
+.account-view-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;padding:5px;margin:0 0 20px;border:1px solid var(--line);border-radius:16px;background:var(--card)}
 .account-view-tabs button{border:0;border-radius:11px;min-height:44px;background:transparent;color:var(--muted);font:inherit;font-size:.8rem;font-weight:700;cursor:pointer}
 .account-view-tabs button[aria-selected=true]{background:var(--accent);color:#fff;box-shadow:0 3px 9px #28233018}
 .account-view-tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}

@@ -23,7 +23,7 @@ async function profile(browser,db,id,manual=[]){
 test('a sender shares a short code and the recipient opens a link, previews and imports once',async({browser})=>{
  const db=new Map(),sender=await profile(browser,db,'sender',[water]),receiver=await profile(browser,db,'receiver'),errors=[];
  for(const p of [sender.page,receiver.page])p.on('pageerror',e=>errors.push(e.message));
- const page=sender.page;await page.goto('https://bearden.test/');await page.evaluate(()=>window.classicReady);await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-bills').click();await page.locator('#accounts-bills [data-open-bill-sharing]').click();
+ const page=sender.page;await page.goto('https://bearden.test/');await page.evaluate(()=>window.classicReady);await page.locator('#nav-bills').click();await page.locator('#accounts-nav-bills').click();await page.locator('#accounts-bills [data-open-bill-sharing]').click();
  await page.locator('#createBillShare').click();await expect(page.locator('#billShareCode')).toHaveValue(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/);
  const code=await page.locator('#billShareCode').inputValue();await page.locator('#createBillShare').click();await expect(page.locator('#billShareCode')).toHaveValue(code);
  const recipient=receiver.page;await recipient.goto('https://bearden.test/#bills='+code.toLowerCase());

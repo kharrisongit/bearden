@@ -25,7 +25,7 @@ async function fixture(page,{goals=true,empty=false,unavailable=false}={}){
  return {accounts,set failSavings(value){failSavings=value;},get tracker(){return tracker;}};
 }
 
-for(const [width,theme]of [[390,'light'],[320,'dark']])test(`Bill Tracker at ${width}px ${theme} shows current-month bills and navigates to Accounts`,async({page})=>{
+for(const [width,theme]of [[390,'light'],[320,'dark']])test(`Bill Tracker at ${width}px ${theme} shows current-month bills and navigates to Bills`,async({page})=>{
  await page.setViewportSize({width,height:844});const errors=[];page.on('pageerror',e=>errors.push(e.message));await fixture(page);await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
  await expect(page.locator('#billTrackerBalance')).toHaveText('$750.25');await expect(page.locator('#billTrackerAccountName')).toHaveText('Household bills checking');
  await expect(page.locator('#billTrackerPaidCount')).toHaveText('1 of 4 paid');await expect(page.locator('#billTrackerTotal')).toHaveText('$1,285.00');await expect(page.locator('#billTrackerRemaining')).toHaveText('$485.00');
@@ -33,7 +33,7 @@ for(const [width,theme]of [[390,'light'],[320,'dark']])test(`Bill Tracker at ${w
  expect(await page.locator('#debtIncomeCard').evaluate(el=>el.parentElement.nextElementSibling.querySelector('#billTracker')!==null)).toBe(true);
  await page.locator('#billTracker').scrollIntoViewIfNeeded();expect(await page.locator('#billTracker').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
  await page.screenshot({path:`test-results/bill-tracker-${width}-${theme}.png`});
- await page.locator('[data-open-dashboard-bills]').click();await expect(page.locator('#nav-accounts')).toHaveAttribute('aria-selected','true');await expect(page.locator('#accounts-nav-bills')).toHaveAttribute('aria-selected','true');
+ await page.locator('[data-open-dashboard-bills]').click();await expect(page.locator('#nav-bills')).toHaveAttribute('aria-selected','true');await expect(page.locator('#accounts-nav-bills')).toHaveAttribute('aria-selected','true');
  await page.locator('#accounts-nav-calendar').click();await page.locator('#monthNext').click();await expect(page.locator('#calendarMonth')).toHaveText('November 2026');
  await page.locator('#nav-debt').click();await expect(page.locator('#billTrackerMonth')).toHaveText('October bills');await expect(page.locator('#billTrackerPaidCount')).toHaveText('1 of 4 paid');
  await page.locator('[data-open-dashboard-bills]').click();await page.locator('[data-bill-paid="car:2026-10-28"]').click();await page.locator('#nav-debt').click();

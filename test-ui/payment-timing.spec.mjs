@@ -28,7 +28,7 @@ test('optional car payments update debt totals and payoff, persist, and reserve 
  await expect(page.locator('#featureSettingsStatus')).toHaveText('Car payment preference saved.');await expect(page.locator('#heroTotal')).toHaveText('$350.00');await expect(page.locator('#heroDate')).toContainText('Jan 12, 2027');
  const after=await page.evaluate(()=>window.getDebtPlan().schedule[0]);expect(after.accountBillsThisCheck).toEqual(before.accountBillsThisCheck);expect(after.accountBillsThisCheck.filter(b=>b.id==='car')).toHaveLength(1);expect(after.accountBillsThisCheck.reduce((sum,b)=>sum+b.amount,0)).toBe(10000);expect(after.cashAfterDebt).toBe(before.cashAfterDebt);expect(after.carDebt.balance).toBe(15000);expect(after.carDebt.reduction).toBe(10000);expect(after.payments).toEqual(before.payments);
  expect(JSON.parse(f.tracker.state.values['income-planner']).showCarPaymentsInDebt).toBe(true);
- await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();await expect(page.locator('[data-car-payment="car"]')).toContainText('$250.00');
+ await page.locator('#nav-debts').click();await expect(page.locator('[data-car-payment="car"]')).toContainText('$250.00');
  await page.locator('[data-car-payment="car"] [data-edit-bill]').click();await expect(page.locator('[name="carLoanBalance"]')).toHaveValue('250');await expect(page.locator('[name="carLoanBalance"]')).toHaveAttribute('readonly','');await expect(page.locator('[name="carLoanApr"]')).toHaveValue('0');
  await page.screenshot({path:'test-results/car-loan-editor.png'});await page.locator('[name="carLoanApr"]').fill('6');await page.locator('#billEditorForm [type="submit"]').click();await expect(page.locator('#billEditor')).toBeHidden();
  await expect(page.locator('#heroInterest')).not.toHaveText('$0.00');
@@ -40,7 +40,7 @@ test('a manual car loan can supply missing balance and APR from its existing bil
  await page.clock.setFixedTime(new Date('2026-10-26T12:00:00Z'));
  await fixture(page,{goalContribution:50,debtOverrides:{balance:100,monthlyMinimum:100},incomePlanner:{showCarPaymentsInDebt:true,manual:[{id:'car',name:'Car payment',billKind:'car-payment',amount:10000,date:'2026-11-12',repeat:'monthly',source:'manual'}]}});
  await expect(page.locator('#heroDate')).toHaveText('Car loan details needed');await expect(page.locator('#heroInterest')).toHaveText('Unavailable');
- await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();await page.locator('[data-car-payment="car"]').getByRole('button',{name:'Add loan details'}).click();
+ await page.locator('#nav-debts').click();await page.locator('[data-car-payment="car"]').getByRole('button',{name:'Add loan details'}).click();
  await page.locator('[name="carLoanBalance"]').fill('250');await page.locator('[name="carLoanApr"]').fill('0');await page.locator('#billEditorForm [type="submit"]').click();
  await expect(page.locator('#heroDate')).toContainText('Jan 12, 2027');await expect(page.locator('#heroTotal')).toHaveText('$350.00');await expect(page.locator('#debtForecastNote')).toBeHidden();
 });
@@ -90,7 +90,7 @@ test('a paid Credit One cycle keeps $0 due while its future estimate can be edit
  const f=await fixture(page,{goalContribution:50,debtOverrides:{name:'Credit One',balance:142.03,apr:29,min:16.15,monthlyMinimum:35,dueDate:''},connectionOverrides:{creditCards:[issuer]},incomePlanner:{creditCards:{'credit-a':{tracking:true,trackerCardId:'1',fallbackDate:'2026-11-23',fallbackAmount:3500}}}});
  await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().syncedDebtTerms[1]?.forecastMonthlyMinimum)).toBe(35);
  await expect(page.locator('#heroDate')).not.toContainText('30 years');await expect(page.locator('#debtForecastNote')).toBeHidden();
- await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();
+ await page.locator('#nav-debts').click();
  const edit=page.locator('[data-edit-credit="credit-a"]');await edit.click();
  const amount=page.locator('#creditEditorForm [name="amount"]');await expect(amount).toBeEnabled();await expect(amount).toHaveValue('35');
  await expect(page.locator('#creditCycleNote')).toContainText('current cycle');await expect(page.locator('#creditEditorForm [name="date"]')).toHaveValue('2026-11-23');
@@ -109,7 +109,7 @@ test('an unknown future minimum uses a clear prompt and the debt editor can supp
  await fixture(page,{goalContribution:50,debtOverrides:{name:'Credit One',balance:142.03,apr:29,min:0,monthlyMinimum:0},accounts:[{id:'plaid-a',itemId:'bank',source:'plaid',type:'credit',currency:'USD',balance:14203,balanceUpdated:'2026-10-26T10:00:00Z'}],connectionOverrides:{creditCards:[{id:'credit-a',accountId:'a',itemId:'bank',currency:'USD',name:'Credit One Visa',balance:14203,minimum:0,dueDate:'2026-11-23',updated:'2026-10-26T10:00:00Z'}]},incomePlanner:{debtAccountLinks:{1:'plaid-a'}}});
  await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().syncedDebtTerms[1]?.currentCycleMinimum),{timeout:30000}).toBe(true);
  await expect(page.locator('#heroDate')).toHaveText('Future minimum needed');await expect(page.locator('#debtForecastNote')).toContainText('Add a future monthly payment estimate');
- await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();await page.locator('[data-edit-debt="1"]').first().click();
+ await page.locator('#nav-debts').click();await page.locator('[data-edit-debt="1"]').first().click();
  const future=page.locator('#debtEditorForm [name="futureMinimum"]');await expect(future).toBeVisible();await expect(future).toBeEditable();await future.fill('35');
  await page.locator('#debtEditorForm [type="submit"]').click();await expect(page.locator('#debtEditor')).not.toBeVisible();
  await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().syncedDebtTerms[1]?.forecastMonthlyMinimum)).toBe(35);
@@ -124,7 +124,7 @@ test('timing settings persist, debt due dates edit, and an extra payment can be 
  await page.locator('#addDebtPaymentForm input[name="amount"]').fill('75');await page.getByRole('button',{name:'Add to this paycheck',exact:true}).click();await expect(page.locator('#addDebtPaymentDialog')).not.toBeVisible();
  expect(await page.evaluate(()=>window.getDebtPlan().schedule[0].payments[0])).toBe(75);
  await page.reload();await page.evaluate(()=>window.classicReady);expect(await page.evaluate(()=>window.getDebtPlan().state.debtPaymentSettings.mode)).toBe('due-date');expect(await page.evaluate(()=>window.getDebtPlan().schedule[0].payments[0])).toBe(75);
- await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();await page.locator('[data-edit-debt="1"]').first().click();await expect(page.locator('#debtEditorForm input[name="dueDate"]')).toHaveValue('2026-11-30');await page.locator('#debtEditorForm input[name="dueDate"]').fill('2026-11-15');await page.getByRole('button',{name:'Save debt',exact:true}).click();await expect(page.locator('#debtEditor')).not.toBeVisible();
+ await page.locator('#nav-debts').click();await page.locator('[data-edit-debt="1"]').first().click();await expect(page.locator('#debtEditorForm input[name="dueDate"]')).toHaveValue('2026-11-30');await page.locator('#debtEditorForm input[name="dueDate"]').fill('2026-11-15');await page.getByRole('button',{name:'Save debt',exact:true}).click();await expect(page.locator('#debtEditor')).not.toBeVisible();
  expect(JSON.parse(f.tracker.state.values['app-state']).cards[0].dueDate).toBe('2026-11-15');expect(errors).toEqual([]);
 });
 test('connection badges sit beside headings, saving footer is absent, and dismissed sync stays dismissed',async({page})=>{
@@ -141,7 +141,7 @@ for(const debtKind of ['credit-card','loan'])test(debtKind+': linking an email f
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const message={id:'mail:statement',mailboxId:'mail',sender:'billing@example.com',senderName:'Visa',subject:'Visa statement ready',receivedAt:'2026-10-25T12:00:00Z',dueDate:null,fullText:'Your statement is ready. Payment due date: November 15, 2026. Account ending in 1234.'};
  const f=await fixture(page,{messages:[message],debtKind});
- const open=async()=>{await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();await page.locator('[data-edit-debt="1"]').first().click();};await open();
+ const open=async()=>{await page.locator('#nav-debts').click();await page.locator('[data-edit-debt="1"]').first().click();};await open();
  await page.locator('#debtEditorForm summary').filter({hasText:'Email & payment matching'}).click();await page.locator('[data-pick-email="debt"]').click();await page.locator('[data-link-email="mail:statement"]').click();await expect(page.locator('#emailLinkPicker')).not.toBeVisible();await expect(page.locator('#debtEditorForm input[name="dueDate"]')).toHaveValue('2026-11-15');await expect(page.locator('#debtEditorError')).toContainText('due date filled in');
  await page.getByRole('button',{name:'Save debt',exact:true}).click();await expect(page.locator('#debtEditor')).not.toBeVisible();expect(JSON.parse(f.tracker.state.values['app-state']).cards[0].dueDate).toBe('2026-11-15');
  f.connections.gmailMessages=[];await page.reload();await page.evaluate(()=>window.classicReady);await open();await expect(page.locator('#debtEditorForm input[name="dueDate"]')).toHaveValue('2026-11-15');await expect(page.locator('#debtEmailLink')).toContainText('Latest email');
@@ -150,7 +150,7 @@ for(const debtKind of ['credit-card','loan'])test(debtKind+': linking an email f
 });
 test('linking a payment receipt keeps the debt due date intact',async({page})=>{
  await fixture(page,{messages:[{id:'mail:receipt',mailboxId:'mail',sender:'billing@example.com',senderName:'Visa',subject:'Visa payment received',receivedAt:'2026-10-25T12:00:00Z',dueDate:null,fullText:'Payment received on November 1, 2026. Due date: November 20, 2026. Payment amount: $50.00.'}]});
- await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();await page.locator('[data-edit-debt="1"]').first().click();await page.locator('#debtEditorForm summary').filter({hasText:'Email & payment matching'}).click();await page.locator('[data-pick-email="debt"]').click();await page.locator('[data-link-email="mail:receipt"]').click();await expect(page.locator('#emailLinkPicker')).not.toBeVisible();await expect(page.locator('#debtEditorForm input[name="dueDate"]')).toHaveValue('2026-11-30');await expect(page.locator('#debtEditorError')).toContainText('payment notice');
+ await page.locator('#nav-debts').click();await page.locator('[data-edit-debt="1"]').first().click();await page.locator('#debtEditorForm summary').filter({hasText:'Email & payment matching'}).click();await page.locator('[data-pick-email="debt"]').click();await page.locator('[data-link-email="mail:receipt"]').click();await expect(page.locator('#emailLinkPicker')).not.toBeVisible();await expect(page.locator('#debtEditorForm input[name="dueDate"]')).toHaveValue('2026-11-30');await expect(page.locator('#debtEditorError')).toContainText('payment notice');
 });
 
 test('same-debt backup supplies current balance and email terms update future paychecks with a manual override',async({page})=>{
@@ -158,14 +158,14 @@ test('same-debt backup supplies current balance and email terms update future pa
  const statement={id:'mail:s',mailboxId:'mail',sender:'bank@example.com',receivedAt,balance:88000,minimum:12500,apr:26,dueDate:'2026-11-15'};
  const accounts=[{id:'plaid-a',itemId:'bank',name:'Visa primary',source:'plaid',type:'credit',currency:'USD',balance:0,balanceUnavailable:true,balanceUpdated:receivedAt},{id:'lunchflow-b',itemId:'lunchflow',name:'Visa backup',source:'lunchflow',type:'credit',currency:'USD',balance:85000,balanceUpdated:receivedAt,include:false}];
  const f=await fixture(page,{accounts,messages:[statement],incomePlanner:{debtAccountLinks:{1:'plaid-a'},emailLinks:{'debt:1':{mailboxId:'mail',sender:'bank@example.com',selectedMessage:statement}}}});
- await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();await page.locator('[data-edit-debt="1"]').first().click();
+ await page.locator('#nav-debts').click();await page.locator('[data-edit-debt="1"]').first().click();
  await page.locator('[name="backupDebtAccount"]').selectOption('lunchflow-b');await expect(page.locator('#debtSources')).toContainText('Lunch Flow backup');
  await expect(page.locator('#debtEditorForm [name="minimum"]')).toHaveValue('125.00');await expect(page.locator('#debtEditorForm [name="apr"]')).toHaveValue('26');await expect(page.locator('#debtEditorForm [name="balance"]')).toHaveValue('10000');
  await page.getByRole('button',{name:'Save debt',exact:true}).click();await expect(page.locator('#debtEditor')).not.toBeVisible();
  await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().syncedDebtBalances[1]?.balance)).toBe(85000);
  await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().schedule[0].payments[0])).toBe(57.69);
  expect(JSON.parse(f.tracker.state.values['income-planner']).debtBackupLinks[1]).toBe('lunchflow-b');
- await page.reload();await page.evaluate(()=>window.classicReady);await page.locator('#nav-accounts').click();await page.locator('#accounts-nav-debt').click();await page.locator('[data-edit-debt="1"]').first().click();await expect(page.locator('[name="backupDebtAccount"]')).toHaveValue('lunchflow-b');
+ await page.reload();await page.evaluate(()=>window.classicReady);await page.locator('#nav-debts').click();await page.locator('[data-edit-debt="1"]').first().click();await expect(page.locator('[name="backupDebtAccount"]')).toHaveValue('lunchflow-b');
  await page.locator('[name="autoDebtDetails"]').uncheck();await page.locator('#debtEditorForm [name="minimum"]').fill('90');await page.getByRole('button',{name:'Save debt',exact:true}).click();await expect(page.locator('#debtEditor')).not.toBeVisible();
  await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().schedule[0].payments[0])).toBe(41.54);expect(errors).toEqual([]);
 });

@@ -1,30 +1,32 @@
 'use strict';
 (()=>{
- const $=s=>document.querySelector(s),tabs=['debt','income','accounts','tools','settings'],positions={};let active='debt';
+ const $=s=>document.querySelector(s),tabs=['debt','income','bills','debts','tools','settings'],positions={};let active='debt';
  window.selectBearTab=name=>{
   if(!tabs.includes(name))return;
   if(active==='tools'&&name!=='tools'&&$('#gamesSection').classList.contains('open'))window.toggleGamesSection();
   positions[active]=scrollY;active=name;
   for(const tab of tabs){$('#tab-'+tab).hidden=tab!==name;const b=$('#nav-'+tab);b.setAttribute('aria-selected',String(tab===name));b.tabIndex=tab===name?0:-1;}
+  if(['bills','debts'].includes(name))$('#tab-'+name).append($('#accountFeedback'));
   window.scrollTo(0,positions[name]||0);
-  if(['income','accounts','debt'].includes(name))renderIncome();
+  if(['income','bills','debts','debt'].includes(name))renderIncome();
   if(name==='tools')window.dispatchEvent(new Event('resize'));
  };
  document.addEventListener('click',e=>{const tab=e.target.closest('[data-tab]');if(tab)window.selectBearTab(tab.dataset.tab);if(e.target.closest('[data-open-settings]'))window.selectBearTab('settings');});
  $('.bottom-tabs').addEventListener('keydown',e=>{const i=tabs.indexOf(e.target.closest('[data-tab]')?.dataset.tab);if(i<0)return;const n=e.key==='ArrowRight'?(i+1)%tabs.length:e.key==='ArrowLeft'?(i+tabs.length-1)%tabs.length:e.key==='Home'?0:e.key==='End'?tabs.length-1:-1;if(n<0)return;e.preventDefault();window.selectBearTab(tabs[n]);$('#nav-'+tabs[n]).focus();});
- const accountViews=['calendar','bills','debt'];
- function selectAccountView(name){
-  if(!accountViews.includes(name))return;
-  for(const view of accountViews){
+ const billViews=['bills','calendar'];
+ function selectBillView(name){
+  if(!billViews.includes(name))return;
+  if(active!=='bills')window.selectBearTab('bills');
+  for(const view of billViews){
    $('#accounts-'+view).hidden=view!==name;
    const button=$('#accounts-nav-'+view);button.setAttribute('aria-selected',String(view===name));button.tabIndex=view===name?0:-1;
   }
  }
- document.addEventListener('click',e=>{const button=e.target.closest('[data-account-view]');if(button)selectAccountView(button.dataset.accountView);if(e.target.closest('[data-open-dashboard-bills]')){window.selectBearTab('accounts');selectAccountView('bills');window.scrollTo(0,0);}});
+ document.addEventListener('click',e=>{const button=e.target.closest('[data-account-view]');if(button)selectBillView(button.dataset.accountView);if(e.target.closest('[data-open-dashboard-bills]')){selectBillView('bills');window.scrollTo(0,0);}});
  $('.account-view-tabs').addEventListener('keydown',e=>{
-  const i=accountViews.indexOf(e.target.dataset.accountView);if(i<0)return;
-  const n=e.key==='ArrowRight'?(i+1)%3:e.key==='ArrowLeft'?(i+2)%3:e.key==='Home'?0:e.key==='End'?2:-1;if(n<0)return;
-  e.preventDefault();selectAccountView(accountViews[n]);$('#accounts-nav-'+accountViews[n]).focus();
+  const i=billViews.indexOf(e.target.dataset.accountView);if(i<0)return;
+  const n=e.key==='ArrowRight'?(i+1)%billViews.length:e.key==='ArrowLeft'?(i+billViews.length-1)%billViews.length:e.key==='Home'?0:e.key==='End'?billViews.length-1:-1;if(n<0)return;
+  e.preventDefault();selectBillView(billViews[n]);$('#accounts-nav-'+billViews[n]).focus();
  });
  let expandedAccountView=null;
  function restoreExpandedAccountView(){
@@ -155,7 +157,7 @@
   $('#billTrackerTotal').textContent=money(summary.total);$('#billTrackerRemaining').textContent=money(summary.remaining);
   $('#billTrackerUpcomingLabel').textContent=summary.overdueCount?'Next bills · '+summary.overdueCount+' overdue':'Next bills';
   $('#billTrackerUpcoming').innerHTML=summary.upcoming.map(b=>'<li><span><strong>'+esc(b.name)+'</strong><small class="'+(b.date<today?'is-overdue':'')+'">'+esc((b.date<today?'Overdue · ':b.date===today?'Due today · ':'Due ')+dateLabel(b.date))+'</small></span><b>'+money(b.amount)+'</b></li>').join('');
-  $('#billTrackerEmpty').hidden=!!summary.upcoming.length;$('#billTrackerEmpty').textContent=summary.hasBills?'No upcoming bills.':'Add bills in Accounts to see them here.';
+  $('#billTrackerEmpty').hidden=!!summary.upcoming.length;$('#billTrackerEmpty').textContent=summary.hasBills?'No upcoming bills.':'Add bills in the Bills tab to see them here.';
  }
  function error(e){$('#incomeStatus').textContent=e.message||String(e);$('#accountStatus').textContent=e.message||String(e);$('#accountSaveStatus').textContent=e.message||String(e);}
  async function save(message){if(!ready)throw Error('Accounts have not loaded. Reload before saving changes.');await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();if(message)window.showBearToast?.(message);}
@@ -554,8 +556,8 @@
  $('#closeDebtHistory').onclick=()=>{$('#debtHistoryDialog').close();renderIncome();};
  $('#closeDebtEditor').onclick=()=>$('#debtEditor').close();$('#closeAccountTypePicker').onclick=()=>$('#accountTypePicker').close();
  document.addEventListener('click',e=>{
-  if(e.target.closest('[data-add-account],[data-open-account-add]')){$('#debtHistoryDialog').close();window.selectBearTab('accounts');$('#accountTypePicker').showModal();}
-  const type=e.target.closest('[data-account-kind]');if(type){$('#accountTypePicker').close();if(type.dataset.accountKind==='debt'){selectAccountView('debt');openDebtEditor();}else{selectAccountView('bills');openBillEditor(null,null,true);}}
+  if(e.target.closest('[data-add-account],[data-open-account-add]')){$('#debtHistoryDialog').close();$('#accountTypePicker').showModal();}
+  const type=e.target.closest('[data-account-kind]');if(type){$('#accountTypePicker').close();if(type.dataset.accountKind==='debt'){window.selectBearTab('debts');openDebtEditor();}else{selectBillView('bills');openBillEditor(null,null,true);}}
   const history=e.target.closest('[data-debt-history]');if(history){$('#debtProgressDialog').close();window.showDebtAccountHistory(history.dataset.debtHistory);return;}
   const debt=e.target.closest('[data-edit-debt]');if(debt){$('#debtProgressDialog').close();$('#debtHistoryDialog').close();openDebtEditor(debt.dataset.editDebt);}
  });
@@ -566,7 +568,7 @@
  };
  window.prepareDebtConnection=()=>{const draft=Object.fromEntries(new FormData($('#debtEditorForm')));sessionStorage.setItem('bearden-debt-draft',JSON.stringify(draft));$('#debtEditor').close();return {fromAccount:true,draftName:draft.name,beforeCardIds:(window.BearDen.plan?.connections?.creditCards||[]).map(c=>c.id)};};
  window.addEventListener('bearden-credit-connected',async e=>{
-  window.selectBearTab('accounts');selectAccountView('debt');await initialize();if(!ready)return;await renderIncome();
+  window.selectBearTab('debts');await initialize();if(!ready)return;await renderIncome();
   const options=e.detail.options,cards=window.BearDen.plan?.connections?.creditCards||[],newCards=cards.filter(c=>options.itemId?c.itemId===options.itemId:!(options.beforeCardIds||[]).includes(c.id));
   $('#creditStatus').textContent=e.detail.status||'Connected. Choose a debt below to finish setup.';
   if(options.fromAccount&&newCards.length===1)openCreditEditor(newCards[0].id,options.draftName);
@@ -625,7 +627,7 @@
   await initialize();if(!ready)return;
   if(!window.BearDen.config?.authenticated){window.selectBearTab('settings');$('#connectionMessage').textContent='Sign in to BearDen to share or import fixed bills.';return;}
   await renderIncome();shareCandidates=householdBills.filter(b=>Number.isSafeInteger(b.amount)&&b.date);
-  $('#billShareChoices').innerHTML=shareCandidates.map((b,i)=>shareRow(b,'<input type="checkbox" data-share-bill="'+i+'" '+(planner.billFunding[b.id]==='shared'||model.sharedBill(b,planner)?'checked':'')+'>')).join('')||'<p class="subtle">Add recurring bills in Accounts first. You can still import bills using a code.</p>';
+  $('#billShareChoices').innerHTML=shareCandidates.map((b,i)=>shareRow(b,'<input type="checkbox" data-share-bill="'+i+'" '+(planner.billFunding[b.id]==='shared'||model.sharedBill(b,planner)?'checked':'')+'>')).join('')||'<p class="subtle">Add recurring bills in the Bills tab first. You can still import bills using a code.</p>';
   sharePreview=null;$('#billSharePreview').hidden=true;$('#billShareImportStatus').textContent='';
   showShareMode('send');shareDialog.showModal();showActiveShare({code:null});
   try{showActiveShare(await window.BearDen.billShare('status'));}catch(e){shareMessage(e.message);}
@@ -665,7 +667,7 @@
   if(bundle.id!==sharePreview.bundle.id)throw Error('The shared bills changed. Preview the code again.');
   const before=planner,result=sharingModel.importSharedBills(planner,bundle,selected,householdBills);planner=result.planner;
   try{await save();}catch(e){planner=before;throw e;}
-  sharePreview=null;$('#billSharePreview').hidden=true;$('#billShareImportCode').value='';shareDialog.close();window.selectBearTab('accounts');selectAccountView('bills');
+  sharePreview=null;$('#billSharePreview').hidden=true;$('#billShareImportCode').value='';shareDialog.close();selectBillView('bills');
   $('#accountStatus').textContent=result.added.length+' fixed bill'+(result.added.length===1?'':'s')+' added.'+(result.skipped.length?' '+result.skipped.length+' already existed.':'');
   sessionStorage.removeItem('bearden-pending-bill-share');
  });
@@ -673,7 +675,7 @@
   const h=planner.household,form=$('#householdForm'),accounts=(window.BearDen.plan?.state?.accounts||[]).filter(a=>['plaid','lunchflow'].includes(a.source)&&(a.currency||'USD')==='USD'&&!['credit','loan'].includes(a.type)&&(!['simplefin','lunchflow'].includes(a.source)||a.type==='depository'));
   form.reset();for(const key of ['personalAccountId','billsAccountId']){form.elements[key].innerHTML='<option value="">Choose an account</option>'+accounts.filter(a=>accountShown(a.id)||a.id===h[key]).map(a=>'<option value="'+esc(a.id)+'">'+esc(connectedAccountName(a))+' · '+money(a.balance)+'</option>').join('');form.elements[key].value=h[key]||'';}
   form.elements.enabled.checked=h.enabled??true;form.elements.personalAmount.value=(h.personalAmount??72500)/100;form.elements.spouseAmount.value=(h.spouseAmount??72500)/100;form.elements.spouseStartDate.value=h.spouseStartDate||window.getDebtPlan().state.startDate||'';form.elements.spouseRepeat.value=h.spouseRepeat||'biweekly';
-  $('#householdBillChoices').innerHTML=householdBills.map(b=>'<label class="check-label"><input type="checkbox" data-shared-bill="'+esc(b.id)+'" '+(planner.billFunding[b.id]==='shared'||model.sharedBill(b,planner)?'checked':'')+'> '+esc(b.name)+'</label>').join('')||'<p class="subtle">Add bills in Accounts, then choose Shared bills account in their editors.</p>';
+  $('#householdBillChoices').innerHTML=householdBills.map(b=>'<label class="check-label"><input type="checkbox" data-shared-bill="'+esc(b.id)+'" '+(planner.billFunding[b.id]==='shared'||model.sharedBill(b,planner)?'checked':'')+'> '+esc(b.name)+'</label>').join('')||'<p class="subtle">Add bills in the Bills tab, then choose Shared bills account in their editors.</p>';
   $('#householdEditorStatus').textContent='';$('#householdEditor').showModal();
  }
  $('#carPaymentsInDebtToggle').onchange=async e=>{
