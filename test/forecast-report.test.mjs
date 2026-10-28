@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {buildForecastReport} from '../public/forecast-report-data.mjs';
 import {billEvents,scenarioForecast,paydayEvents} from '../public/income-model.mjs';
+import {renderForecastPdf} from '../public/forecast-report-pdf.mjs';
+import {PDFDocument,decodePDFRawStream} from '../public/vendor/pdf-lib.mjs';
 
 const start='2026-10-28',generatedAt='2026-10-28T16:00:00Z';
 function fixture({opening=500000,billAmount=200000,personalStart='2026-11-06',spouseRepeat='biweekly',additionalDeposits=[]}={}){
@@ -24,6 +26,66 @@ function assertReconciles(section){
  let running=s.opening;
  for(const row of section.ledger){running+=row.delta;assert.equal(row.incoming-row.outgoing,row.delta);assert.equal(row.balance,running);}
 }
+
+// Extract the text actually written into the vector PDF, including pages beyond
+// the first. This catches accidentally omitted rows in optional detailed exports.
+async function pdfText(bytes){
+ const pdf=await PDFDocument.load(bytes),text=[];
+ for(const page of pdf.getPages()){
+  const contents=page.node.Contents();
+  for(let i=0;i<contents.size();i++){
+   const stream=Buffer.from(decodePDFRawStream(pdf.context.lookup(contents.get(i))).decode()).toString();
+   for(const [,hex]of stream.matchAll(/<([\da-f]+)>\s*Tj/gi))text.push(Buffer.from(hex,'hex').toString('latin1'));
+  }
+ }
+ return text.join('\n');
+}
+
+test('compact PDF keeps the financial findings in two pages and makes full ledgers optional',async()=>{
+ const r=buildForecastReport(fixture({opening:10000})),copy=structuredClone(r);
+ const compact=await renderForecastPdf(r),text=await pdfText(compact.bytes);
+ assert.equal(compact.pageCount,2);assert.match(compact.filename,/-summary\.pdf$/);
+ assert.match(text,/Lowest balance: -\$1,900.00/);assert.match(text,/Negative balance periods/);
+ assert.match(text,/2 negative periods already exist before reclaiming/);
+ assert.match(text,/source unassigned/);assert.match(text,/NET RETURNED/);
+ assert.match(text,/Dec 31, 2027/);assert.match(text,/Jan 1, 2029/);
+ assert.doesNotMatch(text,/Full forecast ledger|Full reclamation audit ledger/);
+ const detailed=await renderForecastPdf(r,{includeLedgers:true}),full=await pdfText(detailed.bytes);
+ assert.ok(detailed.pageCount>compact.pageCount);assert.match(detailed.filename,/-detailed\.pdf$/);
+ assert.match(full,/Full forecast ledger/);assert.match(full,/Full reclamation audit ledger/);
+ assert.ok(full.includes(r.reclamation.projected.ledger.at(-1).name));
+ assert.deepEqual(r,copy);
+});
+
+test('a report without reclamation fits one page and warns about a stale balance',async()=>{
+ const input=fixture();input.context.account.balanceStale=true;
+ const r=buildForecastReport(input),pdf=await renderForecastPdf(r),text=await pdfText(pdf.bytes);
+ assert.equal(pdf.pageCount,1);assert.match(text,/Refresh the bank balance/);
+ assert.match(text,/Reclamation unavailable/);assert.doesNotMatch(text,/No negative balance.*reclaiming/);
+});
+
+test('six-month personal and bills summaries stay compact without dropping monthly totals or shortfalls',async()=>{
+ const input=fixture({opening:10000}),end='2027-04-26';
+ const bills=billEvents(input.context.billPlan,input.context.paymentsPlanner,{},start,end);
+ for(const scope of ['personal','bills']){
+  input.scope=scope;input.account=input.context.accounts[scope==='personal'?0:1];
+  input.forecast=scenarioForecast(input.context.accounts,input.plan,bills,start,{scope:scope==='bills'?'shared':'personal',debtMode:'none',household:input.context.household,length:180,personalSpending:scope==='personal'});
+  const r=buildForecastReport(input),pdf=await renderForecastPdf(r),text=await pdfText(pdf.bytes);
+  assert.equal(pdf.pageCount,2);assert.equal(r.monthly.length,7);
+  assert.match(text,/Apr 2027/);
+  if(scope==='personal')assert.match(text,/13 checks/);
+  for(const gap of r.shortfalls)assert.ok(text.includes(new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(gap.low/100)));
+ }
+});
+
+test('summary totals use every event and detailed PDF includes every row beyond the screen limit',async()=>{
+ const input=fixture();input.context=null;
+ input.forecast={opening:10000,end:'2026-11-27',debtMode:'none',rows:Array.from({length:140},(_,i)=>({date:'2026-11-06',name:'Unique bill '+i+' end',type:'bill',amount:25,delta:-25}))};
+ const r=buildForecastReport(input),compact=await renderForecastPdf(r),summary=await pdfText(compact.bytes);
+ assert.equal(compact.pageCount,1);assert.match(summary,/\$35.00/);assert.match(summary,/\$65.00/);
+ const detailed=await renderForecastPdf(r,{includeLedgers:true}),full=await pdfText(detailed.bytes);
+ for(let i=0;i<140;i++)assert.ok(full.includes('Unique bill '+i+' end'),'Missing detailed row '+i);
+});
 
 test('report preserves the selected forecast totals and includes every ledger entry beyond UI limits',()=>{
  const input=fixture();

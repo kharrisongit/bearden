@@ -70,11 +70,11 @@ async function downloadedPdf(page){
  const bytes=readFileSync(await download.path());
  expect(bytes.subarray(0,5).toString()).toBe('%PDF-');
  const pdf=await PDFDocument.load(bytes);
- expect(pdf.getPageCount()).toBeGreaterThan(1);
+ expect(pdf.getPageCount()).toBeGreaterThanOrEqual(1);
  return {pdf,filename:download.suggestedFilename(),bytes};
 }
 
-test('PDF exports the full selected personal simulation, downloads real pages, and leaves financial state unchanged',async({page})=>{
+test('PDF summarizes the full personal simulation in two pages and offers optional complete ledgers without changing financial state',async({page})=>{
  test.setTimeout(60000);
  const errors=[];page.on('pageerror',e=>errors.push(e.message));const f=await fixture(page);
  await page.locator('#nav-income').click();await page.locator('#forecastScrub').fill('9');
@@ -86,8 +86,18 @@ test('PDF exports the full selected personal simulation, downloads real pages, a
  await expect(page.locator('#forecastReportShare')).toBeHidden();
  const {pdf,filename}=await downloadedPdf(page);
  expect(filename).toContain('2026-10-28');
- expect(pdf.getPageCount()).toBeGreaterThan(3);
+ expect(pdf.getPageCount()).toBe(2);
+ expect(filename).toContain('-summary.pdf');
  expect(pdf.getTitle()).toMatch(/personal/i);
+ await expect(page.locator('#forecastReportIncludeLedgers')).not.toBeChecked();
+ await page.locator('#forecastReportIncludeLedgers').check();await ready(page);
+ const detailed=await downloadedPdf(page);
+ expect(detailed.filename).toContain('-detailed.pdf');
+ expect(detailed.pdf.getPageCount()).toBeGreaterThan(pdf.getPageCount());
+ await expect(page.locator('#forecastReportDetails')).toContainText('included in the ledgers');
+ await page.locator('#forecastReportIncludeLedgers').uncheck();await ready(page);
+ const compact=await downloadedPdf(page);
+ expect(compact.pdf.getPageCount()).toBe(pdf.getPageCount());
  expect(f.state).toEqual(before);expect(f.writes.length).toBe(writes);
  await page.locator('#closeForecastReport').click();await expect(page.locator('#forecastReportDialog')).not.toBeVisible();
  await expect(page.locator('#incomeForecast .forecast-main')).toHaveText('$283.72');
@@ -110,7 +120,7 @@ test('a stale bills balance exports an explanatory report and sharing requires a
  const [share]=await page.evaluate(()=>window.reportShares);
  expect(share.files).toHaveLength(1);expect(share.files[0].type).toBe('application/pdf');
  expect(share.files[0].size).toBeGreaterThan(1000);expect(share.files[0].name).toMatch(/^BearDen-.*\.pdf$/i);
- const {pdf}=await downloadedPdf(page);expect(pdf.getTitle()).toMatch(/bills/i);
+ const {pdf}=await downloadedPdf(page);expect(pdf.getTitle()).toMatch(/bills/i);expect(pdf.getPageCount()).toBe(1);
  expect(f.state).toEqual(before);expect(f.writes.length).toBe(writes);
  await page.locator('#closeForecastReport').click();await expect(page.locator('html')).not.toHaveClass(/popup-scroll-locked/);
 });

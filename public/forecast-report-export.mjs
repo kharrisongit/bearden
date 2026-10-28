@@ -20,7 +20,8 @@ function ensureDialog(){
  dialog.innerHTML='<div class="report-dialog-top"><span class="report-dialog-brand">BEARDEN / REPORTS</span><button type="button" id="closeForecastReport" aria-label="Close forecast report">Close</button></div>'+
   '<div class="report-document-icon">'+icon+'</div><h2 id="forecastReportTitle">Preparing your report</h2><p id="forecastReportSummary" class="subtle"></p>'+
   '<div id="forecastReportProgress" class="report-progress" role="progressbar" aria-label="Creating forecast PDF"><span></span></div>'+
-  '<ul class="report-includes"><li>Balance graphs and monthly breakdowns</li><li>Negative balances, causes and recovery dates</li><li>Contribution reclamation and funding analysis</li><li>Complete forecast and safety-check ledgers</li></ul>'+
+  '<p class="report-contents subtle">A compact summary with your balance graph, monthly totals, shortfalls and contribution reclamation plan.</p>'+
+  '<label class="report-ledger-option"><input type="checkbox" id="forecastReportIncludeLedgers" aria-describedby="forecastReportLedgerHint"><span>Include detailed ledgers<small id="forecastReportLedgerHint">Adds every forecast and extended safety-check entry. More pages.</small></span></label>'+
   '<p id="forecastReportDetails" class="subtle"></p><p id="forecastReportStatus" role="status" aria-live="polite"></p>'+
   '<div class="report-download-actions"><a id="forecastReportDownload" class="report-primary" hidden>Save PDF</a><button type="button" id="forecastReportShare" hidden>Share PDF</button><button type="button" id="retryForecastReport" hidden>Try again</button></div>'+
   '<p class="report-device-note subtle">Created on your device from this simulation. Exporting does not change your plan.</p>';
@@ -28,6 +29,7 @@ function ensureDialog(){
  $('closeForecastReport').onclick=()=>dialog.close();
  dialog.addEventListener('close',()=>{request++;release();currentSnapshot=null;returnFocus?.focus({preventScroll:true});});
  $('retryForecastReport').onclick=()=>{if(currentSnapshot)generate(currentSnapshot);};
+ $('forecastReportIncludeLedgers').onchange=()=>{if(currentSnapshot)generate(currentSnapshot);};
  $('forecastReportShare').onclick=async()=>{
   if(!currentFile)return;
   const file=currentFile,token=request;const button=$('forecastReportShare');button.disabled=true;
@@ -43,23 +45,24 @@ function ensureDialog(){
 
 async function generate(snapshot){
  const token=++request;release();currentSnapshot=snapshot;
+ const includeLedgers=$('forecastReportIncludeLedgers').checked;
  $('forecastReportTitle').textContent='Preparing your report';
- $('forecastReportSummary').textContent=dateLabel(snapshot.start)+' - '+dateLabel(snapshot.forecast.end)+' · Full selected forecast';
- $('forecastReportDetails').textContent='Building the graphs, explanations and every ledger entry.';
+ $('forecastReportSummary').textContent=dateLabel(snapshot.start)+' - '+dateLabel(snapshot.forecast.end)+' · '+(includeLedgers?'Summary and detailed ledgers':'Compact summary');
+ $('forecastReportDetails').textContent=includeLedgers?'Adding the complete forecast and safety-check ledgers.':'Summarizing the full forecast and reclamation plan.';
  $('forecastReportStatus').textContent='';$('retryForecastReport').hidden=true;$('forecastReportProgress').hidden=false;
  dialog.setAttribute('aria-busy','true');
  try{
   const suffix=retry?'&retry='+retry:'';
   const [{buildForecastReport},{renderForecastPdf}]=await Promise.all([
    import('./forecast-report-data.mjs?v=forecast-report1'+suffix),
-   import('./forecast-report-pdf.mjs?v=forecast-report1'+suffix),
+   import('./forecast-report-pdf.mjs?v=compact-report1'+suffix),
   ]);
   if(token!==request||!dialog.open)return;
   const report=buildForecastReport(snapshot);
   // Let the loading state paint before laying out a long ledger.
   await new Promise(resolve=>setTimeout(resolve,0));
   if(token!==request||!dialog.open)return;
-  const result=await renderForecastPdf(report,{retry});
+  const result=await renderForecastPdf(report,{retry,includeLedgers});
   if(token!==request||!dialog.open)return;
   const blob=new Blob([result.bytes],{type:'application/pdf'});
   objectUrl=URL.createObjectURL(blob);
@@ -69,8 +72,8 @@ async function generate(snapshot){
   try{canShare=!!(currentFile&&navigator.share&&navigator.canShare?.({files:[currentFile]}));}catch{}
   $('forecastReportShare').hidden=!canShare;$('forecastReportShare').disabled=false;
   $('forecastReportTitle').textContent='Your report is ready';
-  $('forecastReportSummary').textContent=report.accountName+' · '+dateLabel(report.start)+' - '+dateLabel(report.end)+' · '+result.pageCount+' pages';
-  $('forecastReportDetails').textContent=report.ledger.length+' forecast entries'+(report.reclamation.status==='ready'?', plus the complete reclamation safety check through '+dateLabel(report.reclamation.checkedThrough)+'.':'. '+report.reclamation.reason);
+  $('forecastReportSummary').textContent=report.accountName+' · '+dateLabel(report.start)+' - '+dateLabel(report.end)+' · '+result.pageCount+(result.pageCount===1?' page':' pages');
+  $('forecastReportDetails').textContent=report.ledger.length+' forecast entries '+(includeLedgers?'included in the ledgers.':'summarized.')+(report.reclamation.status==='ready'?' Reclamation checked through '+dateLabel(report.reclamation.checkedThrough)+'.':' Reclamation unavailable: '+report.reclamation.reason);
   $('forecastReportStatus').textContent=canShare?'Save a copy or choose Share PDF to send it.':'Choose Save PDF to download your report.';
  }catch(error){
   if(token!==request||!dialog.open)return;
@@ -85,6 +88,7 @@ async function generate(snapshot){
 
 export function openForecastReport(snapshot,trigger){
  ensureDialog();returnFocus=trigger||document.activeElement;
+ $('forecastReportIncludeLedgers').checked=false;
  if(!dialog.open)dialog.showModal();
  return generate(structuredClone(snapshot));
 }

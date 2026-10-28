@@ -12,9 +12,10 @@
 .report-document-icon svg{height:37px;width:37px}
 .forecast-report-dialog h2{font-size:1.55rem;line-height:1.2;letter-spacing:-.035em;margin:0 0 12px;overflow-wrap:anywhere;color:var(--ink)}
 .forecast-report-dialog p{overflow-wrap:anywhere}
-.report-includes{list-style:none;padding:15px 0;margin:14px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);font-size:.78rem;line-height:1.5}
-.report-includes li{position:relative;padding-left:17px;margin:8px 0;color:var(--ink)}
-.report-includes li:before{position:absolute;left:0;top:.52em;content:"";height:5px;width:5px;border-radius:50%;background:var(--accent)}
+.report-contents{font-size:.78rem;line-height:1.5}
+.forecast-report-dialog .report-ledger-option{display:flex;align-items:flex-start;gap:10px;padding:14px 0;margin:14px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);font-size:.8rem;line-height:1.5;cursor:pointer}
+.forecast-report-dialog .report-ledger-option input{width:18px;height:18px;flex:0 0 18px;margin:2px 0;accent-color:var(--accent)}
+.report-ledger-option small{display:block;margin-top:3px;color:var(--muted);font-size:.72rem;font-weight:400}
 .report-download-actions{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0 12px}
 .report-download-actions>*{box-sizing:border-box;flex:1 1 135px;text-align:center;display:inline-flex;align-items:center;justify-content:center;min-height:46px;font:inherit;font-size:.8rem;font-weight:700;border-radius:10px;padding:12px;text-decoration:none;cursor:pointer}
 .report-download-actions .report-primary{background:var(--accent);color:var(--on-accent,var(--card));border:1px solid var(--accent)}

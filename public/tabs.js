@@ -1031,7 +1031,7 @@
    // Capture the whole selected range before loading optional report tools.
    // Scrubbing the chart or changing settings later cannot alter this PDF.
    const snapshot=structuredClone({scope,forecast:view.forecast,start:view.start,plan:view.plan,account:view.account,context,buffer,generatedAt:new Date().toISOString()});
-   const {openForecastReport}=await import('./forecast-report-export.mjs?v=forecast-report1');
+   const {openForecastReport}=await import('./forecast-report-export.mjs?v=compact-report1');
    // The modal makes the page inert; keep the trigger focusable for Close.
    button.disabled=false;
    await openForecastReport(snapshot,button);

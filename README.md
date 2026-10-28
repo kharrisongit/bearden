@@ -77,3 +77,5 @@ Personal spending and its forecast use only the selected personal checking accou
 
 
 **Microsoft / Hotmail / Outlook:** Direct Microsoft sign-in opens a separate private BearDen profile, without creating a Google account or reusing a Google profile with the same email. Optional read-only inbox access uses Microsoft Graph. Both Cloudflare and Node support this; follow [Microsoft setup](docs/microsoft.md) to register the app and configure its credentials. Gmail access remains separate.
+
+**Forecast PDF reports:** Export PDF creates a compact summary of the entire selected range, including a balance graph, monthly totals, negative-balance periods and the contribution reclamation plan. Reclamation keeps its full future-bill safety check; the summary shows the checked-through date, funding requirements and reclaim schedule. Enable **Include detailed ledgers** in the export dialog to append every forecast and extended safety-check entry, plus itemized paycheck allocations. Summary and detailed files use distinct names; downloading or sharing never changes the saved forecast.
