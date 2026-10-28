@@ -2066,7 +2066,7 @@ function buildSavingsGoalHeroHTML(g, canDelete, isEditing, isWithdrawing){
       </div>
       <div class="hero-date-banner" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-top:6px;">
         <div style="flex:1;min-width:0;">
-          <div style="font-size:0.9rem;font-weight:800;color:#f0f3f5;text-transform:uppercase;letter-spacing:0.07em;">Reached by</div>
+          <div style="font-size:0.9rem;font-weight:800;color:var(--on-dark);text-transform:uppercase;letter-spacing:0.07em;">Reached by</div>
           <div class="big">${g.reachedDate ? fmtDate(g.reachedDate) : 'Add a contribution to see a date'}</div>
           <div class="day-counter">${g.reachedDate ? daysCounterText(g.reachedDate) : ''}</div>
           <div class="paycheck-counter">${g.reachedDate ? paychecksCounterText(g.reachedPaycheck) : ''}</div>
@@ -2077,7 +2077,7 @@ function buildSavingsGoalHeroHTML(g, canDelete, isEditing, isWithdrawing){
               <span class="pct" id="savingsHeroPiePct-${g.id}">0%</span>
             </div>
           </div>
-          <div style="font-size:0.58rem;color:#e6f0ec;text-align:center;margin-top:3px;max-width:64px;line-height:1.2;">% of goal saved</div>
+          <div style="font-size:0.58rem;color:var(--on-dark-muted);text-align:center;margin-top:3px;max-width:64px;line-height:1.2;">% of goal saved</div>
         </div>
       </div>
       <div class="row"><span>Saved so far</span><span id="savingsHeroCurrent-${g.id}">—</span></div>

@@ -15,7 +15,7 @@
         document.documentElement.setAttribute('data-holiday', savedHoliday);
       }
       const color = localStorage.getItem('bearden:classic:color-scheme');
-      if (['ocean','sapphire','violet','plum','rose','sunset','amber','forest','olive','slate','mint','aqua','lavender','cherry','coral','cocoa','aurora','dusk','lagoon','ember','twilight','meadow'].includes(color)) {
+      if (['ocean','sapphire','violet','plum','rose','sunset','amber','forest','olive','slate','mint','aqua','lavender','cherry','coral','cocoa','aurora','dusk','lagoon','ember','twilight','meadow','sunrise','cottoncandy','tropical','lemonade','peachfizz','candypop','skyline','watermelon','prism','electricbloom'].includes(color)) {
         document.documentElement.setAttribute('data-color-scheme', color);
       }
     } catch (e) {}
