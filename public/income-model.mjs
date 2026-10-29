@@ -7,7 +7,7 @@ import {transactionKey} from './bank-activity.mjs?v=plaid-restore1';
 import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=creditor-themes2';
 export {monthlyMinimum} from './debt-payments.mjs?v=creditor-themes2';
 import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-portal1';
-import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices} from './household-model.mjs?v=personal-forecast1';
+import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices,contributionReceipts} from './household-model.mjs?v=early-contributions1';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
 export {reviewBankActivity,transactionKey,billsAccountSpending} from './bank-activity.mjs?v=plaid-restore1';
 export {creditBills,creditCapacity} from './credit-model.mjs?v=paid-cycle1';
@@ -243,14 +243,20 @@ export function cashForecast(accounts,paydays,bills,start,length=30){
 // Each occurrence belongs to exactly one biweekly pay window. Keep paid bills
 // in their original window so checking a paycheck does not inflate debt money.
 // Forecasts still deduct unpaid bills separately on their actual due dates.
-export function paycheckBillItems({legacy,planner,linked},date,paycheck){
+export function paycheckBillItems({legacy,planner,linked,plan={},today,transactions=[]},date,paycheck){
  const start=paycheck===1?day(date,-14):date,end=day(date,13);
  const paid=new Set(planner.paid||[]);
  const bills=billEvents({...legacy,paid:[]},{...planner,paid:[]},linked,start,end)
   .filter(b=>!b.covered&&(b.date>=date||(paycheck===1&&!paid.has(b.key))))
   .filter((b,index,rows)=>rows.findIndex(other=>other.key===b.key)===index);
  const personal=bills.filter(b=>!b.shared),h=planner.household;
- if(householdEnabled(h))personal.unshift({id:'household-contribution',key:'household:'+date,name:'Fixed Bills',date,amount:h.personalAmount,transfer:true,sharedBills:bills.filter(b=>b.shared),spouseContributions:spouseEvents(h,date,end)});
+ if(householdEnabled(h)){
+  const matches=today?contributionReceipts(h,plan,transactions,today,date,end):new Map();
+  const received=id=>({received:!!(h.received?.[id]||matches.has(id)),...matches.get(id)});
+  // Receipt metadata is informational here: keep the original paycheck budget
+  // reserved so bank sync never redistributes that contribution to debt payments.
+  personal.unshift({id:'household-contribution',key:'household:'+date,name:'Fixed Bills',date,amount:h.personalAmount,transfer:true,...received('own-transfer:'+date),sharedBills:bills.filter(b=>b.shared),spouseContributions:spouseEvents(h,date,end).map(c=>({...c,...received(c.id)}))});
+ }
  return personal;
 }
 

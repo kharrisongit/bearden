@@ -13,7 +13,7 @@ const order=(a,b)=>a.date.localeCompare(b.date)||cashOrder(a)-cashOrder(b);
 
 function rowDetail(row){
  if(row.reportDetail)return String(row.reportDetail);
- if(row.received)return 'Already included in the bank balance; no new cash movement.';
+ if(row.received)return (row.receivedDate?'Received '+dateText(row.receivedDate)+'. ':'')+'Already included in the bank balance; no new cash movement.';
  if(row.type==='income')return row.fixedBillsTransfer
   ?'Take-home pay after Fixed Bills and other planned payments; the transfer is counted once.'
   :'Take-home pay after planned allocations.';
