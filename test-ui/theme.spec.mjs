@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './original-design.fixture.mjs';
 import { readFileSync } from 'node:fs';
 
 const publicUrl = new URL('../public/', import.meta.url);

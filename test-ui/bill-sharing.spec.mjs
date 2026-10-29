@@ -1,10 +1,11 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './original-design.fixture.mjs';
 import {readFileSync} from 'node:fs';
 import {blank} from '../public/engine.mjs';
 import {billSharingAction} from '../bill-sharing.mjs';
 const water={id:'water',name:'Water',amount:6400,date:'2026-11-15',repeat:'monthly',billKind:'utility',source:'manual'};
 async function profile(browser,db,id,manual=[]){
  const context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage();
+ await context.addInitScript(()=>localStorage.setItem('bearden:design','classic'));
  let authenticated=true;
  const tracker={state:{version:1,values:{'app-state':JSON.stringify({cards:[],budgetItems:[],budgetSetupVersion:2,startDate:'2026-11-06',takeHome:'1000',savingsGoals:[]}),'income-planner':JSON.stringify({manual,billFunding:{water:'shared'}}),onboarding:JSON.stringify({completed:true})}},revision:0};
  const services={accountId:id,read:async key=>db.get(id+':'+key)||null,write:async(key,value)=>db.set(id+':'+key,structuredClone(value)),rawRead:async key=>db.get(key)||null,rawWrite:async(key,value)=>db.set(key,structuredClone(value)),rawDelete:async key=>db.delete(key)};

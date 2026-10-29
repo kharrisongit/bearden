@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './original-design.fixture.mjs';
 import {readFileSync} from 'node:fs';
 import {runtime} from '../cloudflare/worker.mjs';
 import {blank} from '../public/engine.mjs';

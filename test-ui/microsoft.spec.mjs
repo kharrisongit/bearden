@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './original-design.fixture.mjs';
 import {readFileSync} from 'node:fs';
 import {blank} from '../public/engine.mjs';
 async function fixture(page,{signed=false,configured=true}={}){

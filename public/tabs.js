@@ -10,6 +10,7 @@
   window.scrollTo(0,positions[name]||0);
   if(['income','bills','debts','debt'].includes(name))renderIncome();
   if(name==='tools')window.dispatchEvent(new Event('resize'));
+  window.dispatchEvent(new CustomEvent('bearden-tab-changed',{detail:name}));
  };
  document.addEventListener('click',e=>{const tab=e.target.closest('[data-tab]');if(tab)window.selectBearTab(tab.dataset.tab);if(e.target.closest('[data-open-settings]'))window.selectBearTab('settings');});
  $('.bottom-tabs').addEventListener('keydown',e=>{const i=tabs.indexOf(e.target.closest('[data-tab]')?.dataset.tab);if(i<0)return;const n=e.key==='ArrowRight'?(i+1)%tabs.length:e.key==='ArrowLeft'?(i+tabs.length-1)%tabs.length:e.key==='Home'?0:e.key==='End'?tabs.length-1:-1;if(n<0)return;e.preventDefault();window.selectBearTab(tabs[n]);$('#nav-'+tabs[n]).focus();});
@@ -888,6 +889,8 @@
    billsSavingsContext={accounts,plan,billPlan,paymentsPlanner,linked:structuredClone(linked),today,end:future,length:forecastLength,household:structuredClone(planner.household),transactions:connections.transactions||[],account:billsAccount};
    resetBillsSavings();renderExtraDeposits();
    paymentDisplaySignature=mailDisplaySignature();
+   const contributionRows=billsForecast.rows.filter(row=>['transfer','contribution'].includes(row.type)&&!row.received&&row.incoming>0),nextContributionDate=contributionRows[0]?.date;
+   window.dispatchEvent(new CustomEvent('bearden-dashboard-updated',{detail:{upcoming,fixedBills:householdActive?(planner.household.personalAmount||0):0,nextContribution:nextContributionDate?{date:nextContributionDate,amount:contributionRows.filter(row=>row.date===nextContributionDate).reduce((sum,row)=>sum+row.incoming,0)}:null}}));
   }catch(e){error(e);}
  }
  function renderBillsSpending(spending,account){
