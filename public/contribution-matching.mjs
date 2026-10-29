@@ -1,5 +1,5 @@
 import {day} from './engine.mjs';
-import {transactionAccountId} from './transaction-links.mjs?v=plaid-restore1';
+import {transactionAccountId,merchantIdentity} from './transaction-links.mjs?v=plaid-restore1';
 
 // Bank posting dates can move around a payday without changing its recurrence.
 export const contributionWindow=3;
@@ -19,7 +19,7 @@ export function matchContributions(events,transactions,h,today){
   if(!t?.transaction_id||t.pending||t.currency!=='USD'||!Number.isFinite(t.amount)||!validDate(t.date)||t.date>today||excluded(t))return false;
   const id=transactionId(t);if(seen.has(id))return false;seen.add(id);return true;
  }).sort((a,b)=>a.date.localeCompare(b.date)||transactionId(a).localeCompare(transactionId(b)));
- const credits=posted.filter(t=>transactionAccountId(t)===h.billsAccountId&&t.amount<0&&deposit(t));
+ const credits=posted.filter(t=>transactionAccountId(t)===h.billsAccountId&&t.amount<0&&(deposit(t)||Object.values(h.contributionLinks||{}).some(link=>link.accountId===transactionAccountId(t)&&link.merchant===merchantIdentity(t.name))));
  const debits=posted.filter(t=>transactionAccountId(t)===h.personalAccountId&&t.amount>0&&transfer(t));
  const candidates=events.filter(e=>Number.isSafeInteger(e.amount)&&e.amount>0);
  const fits=(t,event)=>near(t,event)&&Math.round(-t.amount*100)===event.amount;
@@ -30,10 +30,18 @@ export function matchContributions(events,transactions,h,today){
   used.add(transactionId(credit));if(debit)used.add(transactionId(debit));
   matches.set(event.id,{bankMatched:true,receivedDate:credit.date,transactionId:credit.transaction_id,...(debit?{debitTransactionId:debit.transaction_id}:{})});
  };
+ // A user-confirmed source resolves overlapping dates and uncategorized bank deposits.
+ for(const credit of credits){
+  const people=Object.entries(h.contributionLinks||{}).filter(([,link])=>link.accountId===transactionAccountId(credit)&&link.merchant===merchantIdentity(credit.name));
+  if(people.length!==1)continue;
+  const type=people[0][0]==='mine'?'transfer':'contribution';
+  const options=candidates.filter(e=>e.type===type&&!matches.has(e.id)&&fits(credit,e)).sort((a,b)=>distance(credit.date,a.date)-distance(credit.date,b.date));
+  if(options[0]&&!extra(credit))record(options[0],credit);
+ }
  // A posted transfer pair identifies your contribution even when the amounts
  // and scheduled dates overlap. Both sides may post on different days.
  for(const credit of credits){
-  if(extra(credit)||!transfer(credit))continue;
+  if(used.has(transactionId(credit))||extra(credit)||!transfer(credit))continue;
   const own=candidates.filter(e=>e.type==='transfer'&&!matches.has(e.id)&&fits(credit,e)).sort((a,b)=>distance(credit.date,a.date)-distance(credit.date,b.date));
   const event=own[0];if(!event||own[1]&&distance(credit.date,event.date)===distance(credit.date,own[1].date))continue;
   const debit=debits.filter(t=>!used.has(transactionId(t))&&near(t,event)&&distance(t.date,credit.date)<=contributionWindow&&Math.round(t.amount*100)===event.amount).sort((a,b)=>distance(a.date,credit.date)-distance(b.date,credit.date))[0];

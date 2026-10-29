@@ -24,9 +24,10 @@ export function personalSpending(transactions,today=new Date().toISOString().sli
 
 
 export function reviewBankActivity(transactions,rules={},suggestions=[],today=new Date().toISOString().slice(0,10),links={},preferences={}){
- const start=day(today,-29),recent=(transactions||[]).filter(t=>!t.pending&&t.currency==='USD'&&Number.isFinite(t.amount)&&t.amount>0&&t.date>=start&&t.date<=today).sort((a,b)=>b.date.localeCompare(a.date));
+ const start=day(today,-29),recent=(transactions||[]).filter(t=>t.currency==='USD'&&Number.isFinite(t.amount)&&t.amount!==0&&t.date>=start&&t.date<=today).sort((a,b)=>b.date.localeCompare(a.date));
  const groups=new Map(),categories=new Map();
  const rows=recent.map(t=>{
+  if(t.amount<0||t.pending)return {...t,key:transactionKey(t),choice:t.amount<0?'deposit':'pending',categoryLabel:t.amount<0?'Deposit':'Pending payment',label:t.pending?'Pending':'Posted',incoming:t.amount<0};
   const key=transactionKey(t),savedRule=rules[key],rule=savedRule&&(!links['bill:'+savedRule.id]||matchesPayment(t,links['bill:'+savedRule.id],links,'bill:'+savedRule.id))?savedRule:null,kind=classifyBankTransaction(t,preferences),linkedTarget=paymentOwner(t,links),targets=paymentTargets(t,links),needsPaymentAssignment=!linkedTarget&&targets.length>0,choice=needsPaymentAssignment?'excluded':linkedTarget||rule?.choice==='bill'?'bill':(kind.source==='automatic'?rule?.choice:null)||(kind.kind==='spending'?'spending':kind.kind==='excluded'?'excluded':'suggested');
   if(!groups.has(key))groups.set(key,t);
   if(choice==='spending'){

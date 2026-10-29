@@ -126,3 +126,10 @@ test('paycheck shared balance and personal/shared/combined forecasts all use the
  assert.equal(items[0].spouseContributions[0].received,true);
  assert.equal(items[0].spouseContributions[0].receivedDate,today);
 });
+
+test('confirmed deposit source resolves equal amounts and overlapping dates on future syncs',()=>{
+ const h={...household,personalAmount:75000,contributionLinks:{spouse:{accountId:'plaid-bills',merchant:'ach payroll deposit'}}};
+ const p={state:{startDate:'2026-10-30'}};
+ const f=householdForecast(accounts,p,[],[],today,{household:h,scope:'shared',length:1,transactions:[credit()]});
+ assert.equal(receipt(f).received,true);assert.equal(receipt(f,'own-transfer:2026-10-30').received,undefined);assert.equal(f.income,75000);
+});
