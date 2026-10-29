@@ -1,8 +1,9 @@
 .income-card .forecast-export{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:42px;white-space:nowrap}
+.forecast-export-actions{display:flex;justify-content:flex-end;margin-top:16px}
 .forecast-export svg{width:17px;height:17px;flex-shrink:0}
 .forecast-export-status:empty{display:none}
 .forecast-export-status{color:var(--warn)}
-#personalForecastCard>.card-heading h3,#billsForecastCard>.card-heading h3{flex:1 1 180px}
+#personalForecastCard>.card-heading h3{flex:1 1 180px}
 .forecast-report-dialog{box-sizing:border-box;width:min(520px,calc(100vw - 28px));padding:26px;color:var(--ink);border:1px solid var(--line);background:var(--card);border-radius:22px;max-height:85dvh;margin:auto;overflow:auto;box-shadow:0 24px 90px #11182750}
 .forecast-report-dialog::backdrop{background:#11182788;backdrop-filter:blur(4px)}
 .report-dialog-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
@@ -26,4 +27,4 @@
 .report-progress span{display:block;width:35%;height:100%;background:var(--accent);animation:report-progress 1.2s ease-in-out infinite alternate}
 @keyframes report-progress{to{transform:translateX(185%)}}
 @media(prefers-reduced-motion:reduce){.report-progress span{animation:none;width:100%;opacity:.6}}
-@media(max-width:460px){#billsForecastCard>.card-heading h3{flex-basis:100%}.forecast-report-dialog{padding:20px}.forecast-report-dialog h2{font-size:1.4rem}}
+@media(max-width:460px){.forecast-report-dialog{padding:20px}.forecast-report-dialog h2{font-size:1.4rem}}
