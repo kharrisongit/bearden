@@ -53,10 +53,12 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
     +group('Connections',row('Plaid','target','data-bd-detail="plaid"','<span data-bd-status="classicBankStatus">Connect</span>')+row('Lunch Flow','stack','data-bd-detail="lunchflow"','<span data-bd-status="lunchflowStatus">Connect</span>')+row('Email accounts','mail','data-bd-detail="email"','<span data-bd-status="classicEmailStatus">Connect</span>')+row('Rent portal','overview','data-bd-detail="rent"','<span data-bd-status="rentStatus">Connect</span>'),'bdConnections','<button type="button" id="bdSyncAll">Sync all '+svg('refresh')+'</button>')
     +group('Options','<div id="bdSwitchRows"></div>'+row('Debt payment timing','bills','data-bd-detail="timing"','<span id="bdTimingValue"></span>')+row('More preferences','settings','data-bd-detail="preferences"','','aria-label="More preferences, setup and layout"')+row('Tools','tools','id="bdToolsButton" data-den-go="tools"','Notes &amp; games'),'bdOptions')
     +'<p id="bdSearchEmpty" class="subtle" hidden>No settings match your search.</p>';
-  const switchRows=[['savingsTrackerToggle','Savings tracker','savings'],['payoffControlsToggle','Slice & Squash','target'],['bonusControlsToggle','Bonus paychecks','gift']];
+  const switchRows=[['sharedBillsToggle','Use shared bills account','people'],['carPaymentsInDebtToggle','Include car in debt','car'],['savingsTrackerToggle','Savings tracker','savings'],['payoffControlsToggle','Slice & Squash','target'],['bonusControlsToggle','Bonus paychecks','gift']];
   for(const [id,label,glyph] of switchRows){
     const input=$('#'+id),oldLabel=input.closest('label');
-    const labelEl=make('label','bd-setting-row bd-switch-row','<span class="bd-setting-icon">'+svg(glyph)+'</span><span class="bd-setting-label">'+label+'</span>');labelEl.dataset.settingKeywords=label.toLowerCase();input.setAttribute('aria-label',label);labelEl.append(input);$('#bdSwitchRows').append(labelEl);oldLabel.remove();
+    const labelEl=make('label','bd-setting-row bd-switch-row','<span class="bd-setting-icon">'+svg(glyph)+'</span><span class="bd-setting-label">'+label+'</span>');labelEl.dataset.settingKeywords=label.toLowerCase();input.setAttribute('aria-label',label);labelEl.append(input);
+    if(id==='sharedBillsToggle'&&oldLabel.nextElementSibling?.matches('p.subtle')){const help=oldLabel.nextElementSibling;help.id='bdSharedBillsHelp';help.classList.add('bd-visually-hidden');input.setAttribute('aria-describedby',help.id);labelEl.append(help);}
+    $('#bdSwitchRows').append(labelEl);oldLabel.remove();
   }
   $('#bdOptions').append($('#featureSettingsStatus'));
   for(const [source,keys] of [['#featureSettingsStatus',['timing','preferences']],['#connectionMessage',['account','plaid','lunchflow','email','rent','balances']]])new MutationObserver(()=>{for(const key of keys){const dialog=dialogs.get(key);if(dialog?.open)$('.bd-detail-feedback',dialog).textContent=$(source).textContent;}}).observe($(source),{subtree:true,childList:true,characterData:true});
@@ -110,13 +112,16 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
     const initials=email?email.split('@')[0].split(/[._\-\s]+/).map(s=>s[0]).slice(0,2).join('').toUpperCase():'BD';
     $$('[data-bd-initials]').forEach(el=>el.textContent=initials);
     $('#bdAccountBadge').textContent=signed?'Signed in':'Local';$('#bdAccountBadge').classList.toggle('is-connected',signed);
+    $('#bdAccountBadge').setAttribute('role','img');$('#bdAccountBadge').setAttribute('aria-label',signed?'Signed in':'Not signed in');$('#bdAccountBadge').title=signed?'Signed in':'Not signed in';
     $('#bdBackupStatus span').textContent=!signed?'Saved on this device':bridge.lastSaved?'Saved '+new Date(bridge.lastSaved).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'Cloud sync enabled';
     $('#bdSyncAll').disabled=!signed||$('#classicSync').disabled;
     for(const status of $$('[data-bd-status]')){
       const source=$('#'+status.dataset.bdStatus);const connected=source?.dataset.connected==='true';
-      status.textContent=!signed?'Sign in':connected?'Connected':status.dataset.bdStatus==='rentStatus'&&!$('#rentEnabledToggle').checked?'Disabled':/sign in needed/i.test(source?.textContent||'')?'Sign in needed':'Connect';
+      status.textContent=!signed?'Disconnected · Sign in':connected?'Connected':status.dataset.bdStatus==='rentStatus'&&!$('#rentEnabledToggle').checked?'Disconnected · Disabled':/sign in needed/i.test(source?.textContent||'')?'Disconnected · Sign in needed':'Disconnected';
       status.className='bd-status'+(connected&&signed?' is-connected':'');
+      status.setAttribute('role','img');status.setAttribute('aria-label',status.textContent);status.title=status.textContent;
     }
+    for(const source of $$('.connection-state[data-connected]')){source.setAttribute('role','img');source.setAttribute('aria-label',source.textContent);source.title=source.textContent;}
     const text=$('#householdSummary').textContent;
     const amounts=[...text.matchAll(/\$[\d,.]+/g)].map(m=>m[0]);
     $('#bdHousehold [data-bd-household] .bd-setting-value').textContent=amounts.length===2?(amounts[0]===amounts[1]?amounts[0].replace(/\.00$/,'')+' each':amounts.map(n=>n.replace(/\.00$/,'')).join(' / ')):'Set up';
@@ -203,9 +208,8 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
       const original=[...card.children];
       const head=make('div','bd-account-head'),identity=make('div','bd-account-identity');
       identity.append(make('span','bd-account-icon',svg(accountGlyph(name))),h4);head.append(identity);
-      if(/capital\s*one/i.test(name)){identity.dataset.brand='capital-one';$('.bd-account-icon',identity).innerHTML='<svg viewBox="0 0 42 18" fill="none" aria-hidden="true"><path d="M2 13C19-1 48-2 36 10C40 1 19 4 2 13Z" fill="#ef3039"/></svg>';}
-      if(/elga/i.test(name)){identity.dataset.brand='elga';$('.bd-account-icon',identity).innerHTML=svg('stack');}
-      if(/indigo/i.test(name)){identity.dataset.brand='indigo';$('.bd-account-icon',identity).innerHTML='<svg viewBox="0 0 32 24" aria-hidden="true"><circle cx="10" cy="12" r="9" fill="#c8f446"/><circle cx="22" cy="12" r="9" fill="#2515db"/></svg>';}
+      const brand=window.BearDenBrands?.find(name);
+      if(brand){identity.dataset.brand=brand.key;const mark=$('.bd-account-icon',identity);mark.classList.add('bd-brand-logo');const image=document.createElement('img');image.src=brand.src;image.alt=brand.label+' logo';image.width=48;image.height=40;mark.replaceChildren(image);}
       if(date){date.removeAttribute('aria-hidden');const due=new Date(date.dateTime+'T12:00:00');date.classList.toggle('is-near',!date.classList.contains('is-paid')&&due-new Date()<14*86400000);head.append(date);}
       const edit=tools?.querySelector('.account-edit'),details=tools?.querySelector('[data-show-debt-details]');
       if(details){details.classList.add('bd-account-open');details.innerHTML=chevron;head.append(details);}
@@ -233,7 +237,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
         more.onclick=()=>detailDialog.showModal();footer.append(more);
       }
       if(tools)footer.append(...tools.children);
-      const connection=$('.account-connection',card);if(connection)footer.append(connection);
+      const connection=$('.account-connection',card);if(connection){connection.title=connection.textContent;connection.setAttribute('aria-label',connection.textContent);connection.setAttribute('role','img');footer.append(connection);}
       const statuses=$$('.debt-account-status,.account-status,.debt-paid-badge',info);statuses.forEach(n=>footer.append(n));
       const dueLabel=$('.debt-due-date',card);if(dueLabel&&/^Due [A-Z][a-z]{2} \d{1,2}$/.test(dueLabel.textContent))dueLabel.classList.add('bd-plain-due');
       const originalAmountLabel=amounts?.querySelector('div>span')?.textContent||'';if(/statement|last reported/i.test(originalAmountLabel))$('.bd-amount-caption',amount).textContent=originalAmountLabel;
@@ -300,7 +304,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
       if(scrubber){const explore=make('details','bd-chart-explore','<summary>Explore your balance '+chevron+'</summary>');explore.open=exploreOpen;explore.ontoggle=()=>{if(explore.isConnected)exploreOpen=explore.open;};explore.append(scrubber);if(output)explore.append(output);chart.append(explore);}
       $('svg',chart)?.setAttribute('preserveAspectRatio','none');
     }
-    $('.den-income-heading>span').textContent=$('#incomeSummary .income-account-name')?.textContent||'Account overview';
+    $('.den-income-heading>span').textContent='Bank balance';
     const mode=$('#incomeToggleBtn');if(mode.getAttribute('aria-expanded')!=='true')mode.textContent='Setup';
   }
   document.addEventListener('click',event=>{
@@ -331,6 +335,14 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
   groupFields('billEditorForm', [['Account','[name=name]','[name=billKind]'],['Payment schedule','#electricLinkOption','#billFundingNote'],['Connected sources','#billEmailLink','#billTransactionLink']]);
   groupFields('creditEditorForm', [['Account','[name=name]','#creditLimitNote'],['Payment plan','[name=tracking]','[name=replaces]'],['Connected sources','#creditEmailLink','#creditTransactionLink']]);
   groupFields('householdForm', [['Your accounts','[name=enabled]','#billsForecastAccount'],['Contributions','[name=personalAmount]','label:has([name=spouseRepeat]) + p'],['Shared bills','h4','#householdBillChoices']]);
+  // Keep loan fields with the account they describe, including when tabs.js
+  // inserted them before the Wallet composition mounted.
+  const loanFields=$('#billLoanField');if(loanFields)$('#billEditorForm > section').append(loanFields);
+  const debtForm=$('#debtEditorForm'),debtSections=$$(':scope > section',debtForm);
+  const debtSources=make('section','bd-popup-section','<h4>Connected sources</h4>');
+  const bankSources=$('#debtEditorConnections'),matching=$(':scope > details',debtForm);
+  bankSources.before(debtSources);debtSources.append($('#debtConnectionChoice'),bankSources);if(matching)debtSources.append(matching);
+  if(debtSections[1])debtSections[1].append($('#debtPlanNote'));
   const popupThemes={
     debtProgressDialog:['Debt','debts'],debtHistoryDialog:['Debt','debts'],debtEditor:['Debt','debts'],creditEditor:['Debt','debts'],addDebtPaymentDialog:['Paycheck','debts'],
     billEditor:['Bills','bills'],billShareDialog:['Bills','bills'],householdEditor:['Household','people'],
@@ -354,6 +366,33 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
     body.classList.add('bd-popup-body');
   }
   $$('dialog').forEach(stylePopup);
+  function addEditorTabs(formId,labels){
+    const form=$('#'+formId),dialog=form.closest('dialog'),body=form.closest('.bd-popup-body');
+    const panels=$$(':scope > .bd-popup-section, :scope > .debt-editor-section',form);
+    if(panels.length!==labels.length)return;
+    dialog.classList.add('bd-tabbed-popup');
+    const nav=make('div','bd-popup-tabs');nav.setAttribute('role','tablist');nav.setAttribute('aria-label','Editor sections');body.before(nav);
+    const buttons=panels.map((panel,index)=>{
+      panel.id=panel.id||formId+'-panel-'+index;panel.setAttribute('role','tabpanel');
+      const button=make('button','',labels[index]);button.type='button';button.id=formId+'-tab-'+index;button.setAttribute('role','tab');button.setAttribute('aria-controls',panel.id);panel.setAttribute('aria-labelledby',button.id);nav.append(button);
+      button.onclick=()=>select(index);return button;
+    });
+    function select(index,focus=false){
+      panels.forEach((panel,i)=>{panel.hidden=i!==index;buttons[i].setAttribute('aria-selected',String(i===index));buttons[i].tabIndex=i===index?0:-1;});
+      body.scrollTop=0;if(focus)buttons[index].focus();
+    }
+    nav.onkeydown=event=>{const i=buttons.indexOf(document.activeElement);if(i<0)return;let next;
+      if(event.key==='ArrowRight')next=(i+1)%buttons.length;else if(event.key==='ArrowLeft')next=(i+buttons.length-1)%buttons.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=buttons.length-1;else return;
+      event.preventDefault();select(next,true);
+    };
+    let revealingInvalid=false;
+    form.addEventListener('invalid',event=>{if(revealingInvalid)return;const index=panels.findIndex(panel=>panel.contains(event.target));if(index<0)return;revealingInvalid=true;select(index);requestAnimationFrame(()=>{revealingInvalid=false;});},true);
+    new MutationObserver(()=>{if(dialog.open)select(0);}).observe(dialog,{attributes:true,attributeFilter:['open']});select(0);
+  }
+  addEditorTabs('billEditorForm',['Account','Payments','Connections']);
+  addEditorTabs('creditEditorForm',['Account','Payments','Connections']);
+  addEditorTabs('debtEditorForm',['Account','Balance','Connections']);
+  addEditorTabs('householdForm',['Accounts','Contributions','Bills']);
   new MutationObserver(records=>{
     for(const record of records)for(const node of record.addedNodes){
       if(node.nodeType!==1)continue;

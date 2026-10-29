@@ -31,7 +31,7 @@ test('settings preferences retain save, reload and failure recovery behavior',as
  await page.locator('#bdDetail-timing .bd-detail-heading button').click();await expect(page.locator('#bdTimingValue')).toHaveText('By due date');
  await page.reload();await page.evaluate(()=>window.classicReady);await menuGo(page,'settings');await expect(page.locator('#payoffControlsToggle')).toBeChecked();await expect(page.locator('#bonusControlsToggle')).not.toBeChecked();
  f.failSavings=true;await page.locator('#savingsTrackerToggle').uncheck();await expect(page.locator('#featureSettingsStatus')).toContainText('Could not save');await expect(page.locator('#savingsTrackerToggle')).toBeChecked();
- await page.locator('[data-bd-detail=preferences]').click();await expect(page.locator('#carPaymentsInDebtToggle')).toBeVisible();await expect(page.locator('#sharedBillsToggle')).toBeVisible();await expect(page.locator('#openGuidedSetup')).toBeVisible();
+ await expect(page.locator('#bdOptions #carPaymentsInDebtToggle')).toBeVisible();await expect(page.locator('#bdOptions #sharedBillsToggle')).toBeVisible();await page.locator('[data-bd-detail=preferences]').click();await expect(page.locator('#openGuidedSetup')).toBeVisible();
 });
 
 test('appearance swatches and automatic mode are functional and persist without altering the plan',async({page})=>{

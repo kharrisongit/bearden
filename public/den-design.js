@@ -118,7 +118,7 @@
       const targets = {overview:'.den-intro',plan:'#schedulePlanSection',savings:'#savingsHeroContainer',forecast:'#billsForecastCard',budget:'#incomeBudgetSlot','income-edit':'#incomeDropdown',connections:'#bdConnections'};
       requestAnimationFrame(() => {
         if(destination==='savings' && $('#savingsHeroContainer').hidden){window.selectBearTab('settings');focusSection($('#savingsTrackerToggle'));}
-        else focusSection($(targets[destination] || '#tab-'+tab+' h2'));
+        else {focusSection($(targets[destination] || '#tab-'+tab+' h2'));if(['overview','income','bills','debts','settings','tools'].includes(destination))window.scrollTo({top:0,behavior:'instant'});}
       });
     }
     document.addEventListener('click', event => {

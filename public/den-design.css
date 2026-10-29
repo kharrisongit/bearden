@@ -700,3 +700,112 @@
   :root[data-layout=den] .bd-popup-body :is(.bill-editor-actions,.account-order-actions),
   :root[data-layout=den] .bd-popup #debtEditorForm .bill-editor-actions { bottom:-14px }
 }
+/* A complete wallet in the available viewport; the cards keep their depth. */
+:root[data-layout=den] #denMenu { padding:18px 18px max(14px,env(safe-area-inset-bottom)); overflow:auto }
+:root[data-layout=den] .den-menu-sheet { display:flex; flex-direction:column; width:min(100%,540px); height:100%; max-height:920px; margin:auto }
+:root[data-layout=den] .den-menu-sheet > header { flex-shrink:0; min-height:46px; margin:0 0 9px; padding-right:48px }
+:root[data-layout=den] .den-wallet-brand,:root[data-layout=den] .den-menu-sheet > header > p { display:none }
+:root[data-layout=den] .den-menu-sheet h2 { margin:3px 0 0; font-size:1.9rem; line-height:1.2 }
+:root[data-layout=den] .den-wallet-stack { flex:1; min-height:0; padding:4px 0 0 }
+:root[data-layout=den] .den-wallet-card { flex:1; min-height:0; align-items:center; padding:12px 15px 24px; border-radius:19px; gap:12px }
+:root[data-layout=den] .den-wallet-card + .den-wallet-card { margin-top:-10px }
+:root[data-layout=den] .den-wallet-card:last-child { flex:.7; padding-bottom:14px }
+:root[data-layout=den] .den-wallet-overview { flex:1.15 }
+:root[data-layout=den] .den-wallet-content { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 8px; align-items:center }
+:root[data-layout=den] .den-wallet-label { margin:0; font-size:.68rem; letter-spacing:.07em }
+:root[data-layout=den] .den-wallet-content > strong { font-size:clamp(1.25rem,3.2dvh,1.8rem); line-height:1.15; white-space:nowrap }
+:root[data-layout=den] .den-wallet-content small { grid-column:1/-1; font-size:.7rem; margin:3px 0 0; line-height:1.3 }
+:root[data-layout=den] .den-wallet-overview .den-wallet-content > small { display:none }
+:root[data-layout=den] .den-wallet-metrics { grid-column:1/-1; margin-top:7px; gap:16px }
+:root[data-layout=den] .den-wallet-metrics strong { font-size:clamp(1.05rem,2.6dvh,1.4rem) }
+:root[data-layout=den] .den-wallet-metrics small { font-size:.61rem }
+:root[data-layout=den] .den-wallet-card progress { grid-column:1/-1; height:4px; margin-top:6px }
+:root[data-layout=den] .den-wallet-glyph { width:35px; height:38px; border-radius:10px }
+:root[data-layout=den] .den-wallet-glyph svg { width:22px; height:22px }
+:root[data-layout=den] .den-wallet-card > svg { width:18px; height:18px }
+:root[data-layout=den] .den-menu-sheet > footer { flex-shrink:0 }
+:root[data-layout=den] .den-menu-sheet > footer button { margin-top:12px; padding:10px; min-height:44px; font-size:.8rem }
+@media(max-height:620px) {
+ :root[data-layout=den] #denMenu { padding:10px 14px max(10px,env(safe-area-inset-bottom)) }
+ :root[data-layout=den] .den-menu-sheet > header { margin-bottom:5px; min-height:36px }
+ :root[data-layout=den] .den-menu-sheet h2 { font-size:1.5rem }
+ :root[data-layout=den] #denClose { width:34px; height:34px }
+ :root[data-layout=den] .den-wallet-card { padding:8px 12px 18px; gap:9px; border-radius:16px }
+ :root[data-layout=den] .den-wallet-card:last-child { padding-bottom:10px }
+ :root[data-layout=den] .den-wallet-glyph { width:29px; height:31px }
+ :root[data-layout=den] .den-wallet-content > strong { font-size:1.2rem }
+ :root[data-layout=den] .den-wallet-content small { font-size:.61rem; margin-top:1px }
+ :root[data-layout=den] .den-wallet-label { font-size:.61rem }
+ :root[data-layout=den] .den-wallet-metrics { margin-top:3px; gap:10px }
+ :root[data-layout=den] .den-wallet-metrics > span+span { padding-left:10px }
+ :root[data-layout=den] .den-wallet-metrics strong { font-size:1rem }
+ :root[data-layout=den] .den-menu-sheet > footer button { margin-top:7px; min-height:38px; padding:7px }
+}
+/* Connection state is a dot; names remain available to assistive technology. */
+:root[data-layout=den] :is(.bd-status,.connection-state[data-connected]) {
+ display:inline-block; width:9px; min-width:9px; height:9px; padding:0!important; margin:0;
+ border:0; border-radius:50%; background:#d54b58; color:transparent; font-size:0!important; line-height:0; overflow:hidden;
+ box-shadow:0 0 0 3px #d54b5815; vertical-align:middle;
+}
+:root[data-layout=den] :is(.bd-status.is-connected,.connection-state[data-connected=true]) { background:#24a46c; box-shadow:0 0 0 3px #24a46c15 }
+:root[data-layout=den] .bd-account-actions .account-connection { display:inline-block; flex:0 0 8px; width:8px; height:8px; min-height:0; border:0; padding:0; margin:0 2px 0 auto; border-radius:50%; background:#24a46c; color:transparent; font-size:0; overflow:hidden; box-shadow:0 0 0 3px #24a46c15 }
+:root[data-layout=den] .bd-account-icon.bd-brand-logo { width:49px; height:39px; flex:0 0 49px; background:#fff; border:1px solid #d4dce8; border-radius:10px; padding:5px; box-sizing:border-box; box-shadow:0 2px 4px #1c36520a }
+:root[data-layout=den] .bd-brand-logo img { display:block; width:100%; height:100%; object-fit:contain }
+/* Spacious page summaries blend into a shared wash above the account lists. */
+:root[data-layout=den] body:has(#tab-income:not([hidden])) { background:linear-gradient(180deg,var(--den-income),var(--paper) 650px); background-attachment:fixed }
+:root[data-layout=den] body:has(:is(#tab-bills,#tab-debts):not([hidden])) { background:linear-gradient(180deg,var(--den-summary),var(--paper) 670px); background-attachment:fixed }
+:root[data-layout=den] :is(.den-page-summary,#tab-income .bank-card) { position:relative; padding:25px 13px 27px; margin:0 -7px 24px; border:0; border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent); border-radius:0 0 25px 25px; background:linear-gradient(180deg,transparent,color-mix(in srgb,var(--card) 24%,transparent)); box-shadow:none }
+:root[data-layout=den] :is(.den-summary-heading,.den-income-heading) { margin-bottom:14px }
+:root[data-layout=den] :is(.den-summary-heading h3,.den-income-heading > span) { font-size:.78rem; letter-spacing:.02em; text-transform:none; font-weight:650; color:var(--muted) }
+:root[data-layout=den] #incomeSummary .income-total,:root[data-layout=den] .den-summary-amount { font-size:clamp(3.1rem,13vw,4.5rem); line-height:1.05; letter-spacing:-.065em; margin:6px 0 20px; font-weight:850 }
+:root[data-layout=den] .den-bills-paid { margin:8px 0 24px }
+:root[data-layout=den] .den-bills-paid > strong { font-size:clamp(2.4rem,10vw,3.3rem); line-height:1.1 }
+:root[data-layout=den] .den-paid-ring { width:70px; height:70px; font-size:1rem }
+:root[data-layout=den] .den-summary-stats { padding-top:17px; gap:12px }
+:root[data-layout=den] .den-summary-stats strong { font-size:clamp(1.1rem,4.5vw,1.75rem) }
+:root[data-layout=den] .den-summary-stats span { font-size:.72rem }
+:root[data-layout=den] #denDebtSummary .den-summary-method { top:20px; right:13px }
+:root[data-layout=den] .den-summary-progress { margin-top:24px }
+:root[data-layout=den] #tab-income .den-income-payday { background:color-mix(in srgb,var(--card) 55%,transparent); border:1px solid color-mix(in srgb,var(--card) 80%,transparent); border-radius:16px; margin:17px 0 0; padding:15px }
+:root[data-layout=den] #tab-income .bank-card > .bank-refresh { top:64px; right:13px }
+/* Focused editor sheets, with a distinct navigation rail and action area. */
+:root[data-layout=den] dialog.bd-popup { border-radius:25px; border:1px solid color-mix(in srgb,var(--line) 70%,var(--card)); background:var(--card); box-shadow:0 28px 100px #06152c66 }
+:root[data-layout=den] .bd-popup .bd-popup-heading,:root[data-layout=den] #debtProgressDialog > .bd-popup-heading { background:linear-gradient(130deg,var(--popup-tint),var(--card)); padding:23px 22px; border-bottom:0 }
+:root[data-layout=den] .bd-popup-icon { background:transparent; border:0; width:32px; height:38px; border-radius:0 }
+:root[data-layout=den] .bd-popup-icon svg { width:27px; height:27px }
+:root[data-layout=den] .bd-popup .bd-popup-heading :is(h2,h3) { font-size:1.45rem; letter-spacing:-.045em }
+:root[data-layout=den] .bd-popup-eyebrow { font-size:.57rem; letter-spacing:.14em; margin-bottom:6px }
+:root[data-layout=den] .bd-popup .bd-popup-body { padding:22px; background:var(--card) }
+:root[data-layout=den] .bd-popup-tabs { display:flex; flex-shrink:0; gap:4px; padding:0 20px; background:var(--card); border-bottom:1px solid var(--line) }
+:root[data-layout=den] .bd-popup-tabs button { flex:1; min-width:0; min-height:47px; padding:12px 4px; border:0; border-bottom:3px solid transparent; border-radius:0; color:var(--muted); background:none; font-family:inherit; line-height:1.2; font-size:.79rem; font-weight:650; box-shadow:none }
+:root[data-layout=den] .bd-popup-tabs button[aria-selected=true] { border-bottom-color:var(--accent); color:var(--accent) }
+:root[data-layout=den] .bd-tabbed-popup .bd-popup-body { min-height:260px }
+:root[data-layout=den] .bd-popup-body .bd-popup-section,:root[data-layout=den] .bd-popup-body .debt-editor-section { border:0; border-radius:0; box-shadow:none; padding:0; margin:0 0 20px; background:none }
+:root[data-layout=den] .bd-tabbed-popup .bd-popup-body [role=tabpanel] > h4 { margin-bottom:18px; padding:0; border:0; font-size:1.02rem; letter-spacing:-.025em }
+:root[data-layout=den] .bd-popup-body label:not(.check-label):has(> :is(input:not([type=checkbox]),select,textarea)) { margin-top:18px; font-size:.76rem; font-weight:650; color:var(--muted) }
+:root[data-layout=den] .bd-popup-body :is(input:not([type=checkbox]):not([type=range]):not([type=radio]),select,textarea) { min-height:48px; border-radius:12px; border-color:color-mix(in srgb,var(--line) 85%,var(--card)); background:var(--surface-subtle); box-shadow:none }
+:root[data-layout=den] .bd-popup-body :is(.bill-editor-actions,.account-order-actions),:root[data-layout=den] .bd-popup #debtEditorForm .bill-editor-actions { bottom:-22px; background:var(--card); padding:17px 0 0; margin-top:24px }
+:root[data-layout=den] .bd-popup-body .bill-save { border-radius:13px; min-height:48px }
+:root[data-layout=den] .bd-popup-body .account-delete-row { border:0; margin-top:18px; padding:0; text-align:center }
+:root[data-layout=den] .bd-popup-body .account-delete-button { background:none; color:var(--warn); border:0; width:auto; min-height:36px; font-size:.73rem }
+:root[data-layout=den] .bd-popup-body .debt-connect-choice { padding:14px; border-radius:14px; background:var(--surface-subtle); box-shadow:none }
+:root[data-layout=den] .bd-popup-body .debt-detail-section { border:0; box-shadow:none; padding:0 0 20px; border-bottom:1px solid var(--line); border-radius:0; margin-bottom:20px }
+:root[data-layout=den] .bd-popup-body .debt-detail-section:first-child { background:var(--popup-tint); padding:20px; border:0; border-radius:18px }
+:root[data-layout=den] .bd-popup-body .debt-detail-section > h4 { border:0; padding-bottom:0 }
+:root[data-layout=den] .bd-popup-body details.debt-detail-section { padding:14px; background:var(--surface-subtle); border:1px solid var(--line); border-radius:13px }
+@media(max-width:420px) {
+ :root[data-layout=den] .bd-popup .bd-popup-heading,:root[data-layout=den] #debtProgressDialog > .bd-popup-heading { padding:19px 17px }
+ :root[data-layout=den] .bd-popup .bd-popup-heading :is(h2,h3) { font-size:1.25rem }
+ :root[data-layout=den] .bd-popup .bd-popup-body { padding:18px }
+ :root[data-layout=den] .bd-popup-tabs { padding:0 14px }
+ :root[data-layout=den] .bd-popup-body :is(.bill-editor-actions,.account-order-actions),:root[data-layout=den] .bd-popup #debtEditorForm .bill-editor-actions { bottom:-18px }
+}
+:root[data-layout=den] .bd-visually-hidden { position:absolute!important; width:1px!important; height:1px!important; padding:0!important; margin:-1px!important; clip-path:inset(50%); overflow:hidden; white-space:nowrap; border:0!important }
+:root[data-layout=den] .bd-popup-body form > .bill-save { width:100%; margin-top:14px }
+:root[data-layout=den] .den-paid-ring span { width:58px; height:58px }
+:root[data-layout=den] .bd-popup-body .form-pair > label { margin-top:18px!important }
+@media(max-height:440px) and (min-width:550px) {
+ :root[data-layout=den] .den-menu-sheet { width:min(100%,900px) }
+ :root[data-layout=den] .den-wallet-stack { display:grid; grid-template-columns:1fr 1fr; grid-template-rows:repeat(3,minmax(0,1fr)); gap:8px }
+ :root[data-layout=den] .den-wallet-card,:root[data-layout=den] .den-wallet-card + .den-wallet-card { margin:0; padding:10px 12px }
+}
