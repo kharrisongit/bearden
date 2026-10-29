@@ -1,38 +1,59 @@
-# Den design and rollback
+# Wallet design and rollback
 
-The design trial adds detailed tracker cards, a floating Overview / Den / Plan
-dock, and a modal fan of section shortcuts. Existing financial calculations,
-storage, accounts, integrations and editors continue to power both layouts.
+The default Wallet layout uses a full-screen stack of destination cards, navy
+Dashboard trackers, light Income / Bills / Debt summaries, and distinct white
+bill, debt and paycheck cards. All financial calculations, storage, integrations,
+account editors, forecasts, calendars, games and notes still use the original
+application. There is no financial-data migration.
 
-## Switch layouts immediately
+The complete editable paycheck schedule stays after the Income, Bills, Savings,
+and Debt trackers on Dashboard. Wallet's Savings destination scrolls to those
+goals; Your Den opens Tools, Settings and Connections. The original tab IDs and
+public navigation function remain available to existing in-app actions.
 
-Open **Den → Settings → Design → Original design**. Choose **Den** in the same
-control to try the new layout again. The selection is remembered on the device
-under `bearden:design`; it is independent of financial and color preferences.
+## Switch layouts on a device
 
-## Backup before this change
+Open **Wallet → Your Den → Settings → Design → Original design**. Select
+**Wallet — modern cards** in the same control to return. The device-only choice
+uses the existing `bearden:design` key, independently of financial preferences.
+Income's existing toolbar is moved back to its original location when switching.
+Color, light/dark and holiday preferences remain available in Settings.
+
+## Backup before the Wallet change
 
 - Repository: `kharrisongit/bearden`
-- Branch: `backup/pre-den-redesign-2026-10-28`
-- Commit: `e097e975ecf569d5990fc0c7447d8a1cb2210952`
+- Branch: `backup/pre-wallet-redesign-2026-10-29`
+- Commit: `4e2cd4a5042c40baa81a95a5055926c68639fdb2`
 
-This backup includes the compact forecast PDF export. It contains source code,
-not users' financial records. Do not move the backup branch forward.
+This immutable source backup contains the prior Den design, not users' financial
+records. For a deployment-wide rollback, revert the commit titled
+`Implement Wallet UI across BearDen while preserving existing workflows` and let
+the existing Cloudflare deployment run. Prefer a normal revert over resetting
+`main` so subsequent work remains intact.
 
-For a deployment-wide rollback, revert the commit titled
-`Add reversible Den dashboard and fan navigation` on `main`, then let the
-existing Cloudflare deployment run. Prefer a normal revert over resetting the
-branch so later work and history remain intact. No data migration is needed.
+The earlier original-design backup is also retained at
+`backup/pre-den-redesign-2026-10-28`, commit
+`e097e975ecf569d5990fc0c7447d8a1cb2210952`.
 
-## Implementation and checks
+## Presentation boundaries
 
-`public/den-design.css` is scoped to `data-layout="den"`. The original CSS and
-navigation remain available. `public/den-design.js` adds the presentation and
-device preference. The existing dashboard emits its computed upcoming-payday
-and contribution data; savings projections use the existing paycheck schedule.
-Graphs are labeled as projections, not bank transaction history.
+`public/den-design.css` scopes the layout to `data-layout="den"`.
+`public/den-design.js` manages the wallet, device preference, and read-only
+summaries from the existing dashboard/paycheck outputs. It does not persist a
+second copy of the financial plan. `public/tabs.js` adds presentation-only date
+stamps and bill recurrence/funding labels using existing bill records; its data
+and editor paths are unchanged. All added content is hidden in Original design.
 
-`test-ui/den-design.spec.mjs` checks the new default, all destinations, small and
-large screens, light/dark modes, savings editing, and persistent rollback without
-financial changes. Existing browser suites explicitly select the original
-layout through `test-ui/original-design.fixture.mjs` to preserve its coverage.
+Wallet figures are current computed summaries. Savings charts are labeled as
+projections, and no data or example amounts from concept images are hard-coded.
+The standalone total cards and unavailable-balance notices remain intact.
+
+## Verification
+
+`test-ui/den-design.spec.mjs` covers 320 / 390 / 1280 px, light/dark layouts,
+all destinations, keyboard focus, short screens, live summary values, bill
+paid/undo actions, bill/debt editors, savings editing, paycheck amount changes,
+creditor quickviews, completion persisted across reload, and layout rollback
+without altering financial data. Existing browser suites continue to use
+`test-ui/original-design.fixture.mjs`; the full unit suite checks the shared
+financial engines and integrations.

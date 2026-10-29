@@ -1,144 +1,316 @@
-/* Reversible presentation layer. The original styles remain intact. */
-.den-only{display:none}
-:root[data-layout=den]{--den-gradient:linear-gradient(125deg,#1264ee 0%,#4755ed 50%,#7537ed 100%);--bear-face:var(--card);scroll-padding-top:20px;scroll-padding-bottom:130px}
-:root[data-layout=den]:not([data-color-scheme]):not([data-holiday]){
- --ink:#141d41;--muted:#536184;--paper:#f5f6fc;--card:#fff;--line:#e1e5f3;
- --accent:#5940d5;--accent-fill:#5a36df;--on-accent:#fff;--accent-soft:#efecff;--accent-line:#c7bbf6;
- --surface-inset:#f0f1fb;--surface-subtle:#f8f8fe;--amount-line:#dbdef0;
- --header:#275be9;--hero-debt:#fff;--hero-savings:#fff;--on-dark:#fff;--on-dark-muted:#edf0ff;--on-dark-line:#ffffff50;
- --amount-bg:#eff1ff;--amount-ink:#26387d;--amount-label:#4d5d88;--amount-border:#d8dff9;
- --due-bg:#fff1e9;--due-ink:#9a4222;--due-border:#f3cfbb;
- --status:#196342;--status-soft:#d9f6e5;--status-line:#a6d9b9;--paid-fill:#237047;--paid-border:#237047;
- --warn:#b93342;--warn-soft:#fff0ef;--danger-fill:#b93342;--coral:#ae4b2a;--gold:#8e6123;
- --chart-bill:#6346db;--chart-debt:#bd435c;--chart-pay:#228252;--chart-spouse:#3976c0;
- --shadow:0 5px 24px #24348008;
+/* Wallet presentation. Financial widgets, IDs, editors and storage stay shared
+   with the original layout; every rule is scoped so rollback needs no migration. */
+.den-only { display:none }
+:root[data-layout=den] {
+  --den-navy:#05264b; --den-blue:#0868ff; --den-tracker:linear-gradient(125deg,#082f58,#041d3d);
+  --den-elevation:0 4px 7px #1c36581a,0 12px 26px #1c365812;
+  --den-summary:#e7e6fc; --den-income:#d9ebfd; --bear-face:var(--paper);
+  scroll-padding:20px 0 110px;
 }
-:root[data-layout=den][data-theme=dark]:not([data-color-scheme]):not([data-holiday]){
- --ink:#f1f3ff;--muted:#b6bfdc;--paper:#12172a;--card:#1e263e;--line:#36415f;
- --accent:#b8a9ff;--accent-fill:#c5b7ff;--on-accent:#20183b;--accent-soft:#303551;--accent-line:#625a96;
- --surface-inset:#29324d;--surface-subtle:#242c45;--amount-line:#465473;
- --amount-bg:#273452;--amount-ink:#dce4ff;--amount-label:#b5c4e5;--amount-border:#4d5f85;
- --due-bg:#423329;--due-ink:#ffd6b5;--due-border:#806048;
- --status:#183c2b;--status-soft:#b6eaca;--status-line:#84bc9d;
- --warn:#ffa9ad;--warn-soft:#4b2c3b;--coral:#ffc0a0;--gold:#e7c18d;
- --chart-bill:#b3a3ff;--chart-debt:#ffa9ad;--chart-pay:#8bdbaf;--chart-spouse:#96bdfb;
+:root[data-layout=den]:not([data-color-scheme]):not([data-holiday]) {
+  --ink:#101e38; --muted:#4a5b73; --paper:#d3dce9; --card:#fff; --line:#a3b2c8;
+  --accent:#0756cf; --accent-fill:#0961e8; --on-accent:#fff; --accent-soft:#e5eeff; --accent-line:#87b0f2;
+  --surface-inset:#eaf0f8; --surface-subtle:#f3f6fb; --amount-line:#c1ccdc;
+  --header:#05264b; --amount-bg:#eaf1fd; --amount-ink:#173c75; --amount-label:#465a79; --amount-border:#b5c9e8;
+  --due-bg:#fff0e1; --due-ink:#863800; --due-border:#dfb491;
+  --status:#185c3c; --status-soft:#dcf3e5; --status-line:#91bfa4; --paid-fill:#237047; --paid-border:#237047;
+  --warn:#ab2637; --warn-soft:#ffecef; --danger-fill:#ab2637; --coral:#ad4323; --gold:#7f590f;
+  --chart-bill:#6354c8; --chart-debt:#ba4561; --chart-pay:#247847; --chart-spouse:#3976c0;
+  --shadow:var(--den-elevation);
 }
-:root[data-layout=den][data-color-scheme]{--den-gradient:var(--theme-gradient,linear-gradient(125deg,var(--header),var(--accent-fill)))}
-:root[data-layout=den] body{background:var(--paper);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-:root[data-layout=den] .den-only{display:block}
-:root[data-layout=den] .wrap{max-width:760px;padding:20px 18px calc(140px + env(safe-area-inset-bottom));margin:0 auto}
-:root[data-layout=den] .app-title-box,:root[data-layout=den] .bottom-tabs,:root[data-layout=den] .hero-bear,:root[data-layout=den] .hero-peek-wrap::before,:root[data-layout=den] .hero-peek-wrap::after,:root[data-layout=den] #tab-debt>.tab-header-peek{display:none!important}
-:root[data-layout=den] .hero-peek-wrap,:root[data-layout=den] .income-peek-wrap:has(#debtIncomeCard),:root[data-layout=den] .tab-header-peek{margin:0 0 20px;padding:0}
-:root[data-layout=den] .den-brand{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 24px}
-.den-brand>div{display:flex;align-items:center;gap:10px}.den-brand>div:first-child{font-size:1.4rem;font-weight:800;letter-spacing:-.05em;color:var(--ink)}
-.den-brand svg{width:29px;height:29px;color:var(--accent)}.den-brand button{width:42px;height:42px;border:1px solid var(--line);background:var(--card);color:var(--muted);border-radius:50%;display:grid;place-items:center;cursor:pointer}.den-brand button svg{width:21px;height:21px;color:inherit}.den-brand button span{display:none}
-.den-intro{margin:0 0 20px}.den-intro h2{font-size:1.9rem;line-height:1.2;letter-spacing:-.045em;margin:0 0 6px;color:var(--ink);font-weight:800}.den-intro p{margin:0;color:var(--muted);font-size:.85rem}
-:root[data-layout=den] .tab-intro{background:none!important;border:0!important;box-shadow:none!important;border-radius:0!important;padding:0 0 4px!important;color:var(--ink)}
-:root[data-layout=den] .tab-intro h2,:root[data-layout=den] #tab-settings .connection-heading h2{font:800 1.8rem/1.2 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink)!important;letter-spacing:-.04em}
-:root[data-layout=den] .tab-intro p,:root[data-layout=den] #tab-settings .connection-heading p{color:var(--muted)!important;margin-top:6px}
-:root[data-layout=den] .income-card,:root[data-layout=den] .hero,:root[data-layout=den] .paycheck,:root[data-layout=den] #connectionDialog>section,:root[data-layout=den] #privateConnections>section{border-radius:22px!important;box-shadow:0 4px 20px #28387807!important}
-:root[data-layout=den] .card-heading h3,:root[data-layout=den] .card-heading h4,:root[data-layout=den] .hero-title,:root[data-layout=den] #connectionDialog h3,:root[data-layout=den] #connectionDialog h4{font-family:inherit;font-weight:750;letter-spacing:-.025em}
-:root[data-layout=den] .tracker-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 20px;padding:0!important;border:0!important;background:none!important;box-shadow:none!important}
-:root[data-layout=den] .tracker-header .hero-title{background:none!important;border:0!important;box-shadow:none!important;padding:0!important;margin:0;min-width:0;font-size:1.05rem;text-transform:none;letter-spacing:-.025em;display:flex;align-items:center;gap:9px;color:inherit}
-:root[data-layout=den] .tracker-header .hero-title::before{content:'';width:9px;height:24px;flex-shrink:0;border-radius:4px;background:var(--accent)}
-:root[data-layout=den] #debtIncomeCard,:root[data-layout=den] #tab-income .bank-card{background:var(--den-gradient)!important;color:var(--on-dark)!important;border:0!important;padding:22px}
-:root[data-layout=den]:not([data-color-scheme]) .bank-card{--on-dark:#fff;--on-dark-muted:#eef0ff;--on-dark-line:#ffffff50;--accent:#fff;--accent-soft:#ffffff1c;--on-dark-accent:#fff}
-:root[data-layout=den] .bank-card .hero-title::before{background:currentColor}
-:root[data-layout=den] .bank-card .income-total{font-size:clamp(2.2rem,8vw,3.2rem);line-height:1.13;margin:7px 0;letter-spacing:-.05em}
-:root[data-layout=den] .bank-card .income-eyebrow,:root[data-layout=den] .bank-card .income-account-name{font-size:.82rem;color:var(--on-dark-muted)}
-:root[data-layout=den] .bank-card .income-secondary-accounts{margin-top:18px;border-top:1px solid var(--on-dark-line)}
-:root[data-layout=den] .bank-card .income-next-payday{border:0;border-radius:12px;background:#ffffff1c;padding:12px 14px;margin-top:18px;display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:.78rem}
-:root[data-layout=den] .bank-card .income-next-payday strong{font-size:.92rem;line-height:1.4;color:var(--on-dark)}
-:root[data-layout=den] #debtBankUpdated{font-size:.65rem;margin:12px 0 0}
-:root[data-layout=den] #debtIncomeCard{display:flex;flex-direction:column}
-.den-income-detail{order:1}.den-income-actions{order:2}.den-payday-total{display:flex;justify-content:space-between;gap:12px;font-size:.78rem;margin:16px 0 10px}.den-payday-total strong{font-size:1.1rem;white-space:nowrap}
-.den-allocation-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;border:1px solid #ffffff40;border-radius:12px;overflow:hidden;background:#ffffff20}
-.den-allocation-grid>div{padding:10px 12px;background:#0000000b;min-width:0}.den-allocation-grid small{display:block;font-size:.68rem;line-height:1.5;margin-bottom:4px}.den-allocation-grid strong{font-size:.95rem;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.den-allocation-grid .den-remainder{background:#ffffff15}
-:root[data-layout=den] #billTracker,:root[data-layout=den] #debtHeroBox,:root[data-layout=den] .savings-hero{background:var(--card)!important;color:var(--ink)!important;border:1px solid var(--line)!important;padding:22px;--on-dark:var(--ink);--on-dark-muted:var(--muted);--on-dark-line:var(--line);--on-dark-accent:var(--accent);--hero-debt:var(--card);--hero-savings:var(--card);--on-dark-hover:var(--accent-soft)}
-:root[data-layout=den] #billTracker .hero-title::before{background:#f47b60}
-:root[data-layout=den] .savings-hero .hero-title::before{background:#2dbd82}
-:root[data-layout=den] .bill-tracker-balance>strong{color:var(--ink)!important;font-size:2.25rem;line-height:1.2;letter-spacing:-.05em}
-:root[data-layout=den] .bill-tracker-balance>span,:root[data-layout=den] .bill-tracker-balance>small{color:var(--muted)!important;font-size:.76rem}
-:root[data-layout=den] .bill-tracker-month{margin:18px 0;background:var(--surface-subtle);border:0;border-radius:12px;padding:12px;color:var(--ink)!important}
-:root[data-layout=den] .bill-tracker-totals{gap:12px;margin:16px 0}
-:root[data-layout=den] .bill-tracker-totals>div{background:var(--surface-subtle);border:0;border-radius:12px;padding:12px}
-:root[data-layout=den] .bill-tracker-totals span{color:var(--muted)!important}.bill-tracker-totals strong{overflow-wrap:anywhere}
-:root[data-layout=den] .bill-tracker-totals strong{font-size:1.25rem;color:var(--accent)!important}
-:root[data-layout=den] .bill-tracker-next h4{font-size:.8rem;color:var(--muted)!important;margin:20px 0 10px}
-:root[data-layout=den] #billTrackerUpcoming li{background:var(--surface-subtle);padding:12px;border:0;border-radius:12px;margin-top:7px;gap:12px;color:var(--ink)!important}
-:root[data-layout=den] #billTrackerUpcoming small{color:var(--muted)!important}:root[data-layout=den] #billTrackerUpcoming .is-overdue{color:var(--warn)!important}
-:root[data-layout=den] #billTrackerUpcoming b{color:var(--ink)!important;font-size:.9rem}
-:root[data-layout=den] .bill-tracker-link{background:var(--accent-soft)!important;color:var(--accent)!important;border:0!important;border-radius:10px;min-height:40px}
-:root[data-layout=den] #billTracker>.tracker-header>[data-open-dashboard-bills]{display:none}
-:root[data-layout=den] #billTracker{display:flex;flex-direction:column}.den-contribution{order:1}.den-bill-actions{order:2}
-:root[data-layout=den] #debtHeroBox,:root[data-layout=den] .savings-hero{display:flex;flex-direction:column}
-:root[data-layout=den] #debtHeroBox>.tracker-header,:root[data-layout=den] .savings-hero>.tracker-header{order:-5}
-:root[data-layout=den] #debtHeroBox>.row:has(#heroTotal),:root[data-layout=den] .savings-hero>.row:has([id^=savingsHeroCurrent]){order:-4;display:flex;flex-direction:column-reverse;align-items:flex-start;gap:4px;border:0!important;background:none!important;padding:0 0 14px;margin:0}
-:root[data-layout=den] #heroTotal,:root[data-layout=den] [id^=savingsHeroCurrent]{font-size:2.25rem!important;font-weight:800;line-height:1.2;letter-spacing:-.05em;color:var(--ink)!important;overflow-wrap:anywhere}
-:root[data-layout=den] #debtHeroBox>.row,:root[data-layout=den] .savings-hero>.row{color:var(--ink)!important;border-color:var(--line)!important;padding:12px 0;font-size:.84rem}
-:root[data-layout=den] .hero .row>span:first-child{color:var(--muted)!important}
-:root[data-layout=den] .hero .big{font-size:1.35rem!important;font-weight:750;color:var(--accent)!important;letter-spacing:-.03em;line-height:1.3}
-:root[data-layout=den] .hero .label,:root[data-layout=den] .hero .day-counter,:root[data-layout=den] .hero .paycheck-counter{color:var(--muted)!important;font-size:.75rem}
-:root[data-layout=den] .hero-date-banner{background:var(--surface-subtle);border:1px solid var(--line)!important;padding:14px;border-radius:14px;margin-bottom:12px;gap:12px}
-:root[data-layout=den] .hero-pie-hole-sm{background:var(--card)!important}.hero-pie-wrap-corner{flex-shrink:0}
-:root[data-layout=den] .payoff-method-toggle{display:flex;flex-wrap:wrap;gap:5px;flex-basis:100%}
-:root[data-layout=den] #debtHeroBox>.tracker-header{flex-wrap:wrap}
-:root[data-layout=den] .pm-btn{flex:1;min-width:60px;min-height:36px;padding:8px 6px;background:var(--surface-subtle)!important;border:1px solid var(--line)!important;color:var(--muted)!important;font-size:.69rem}
-:root[data-layout=den] .pm-btn.active{background:var(--accent-soft)!important;color:var(--accent)!important;border-color:var(--accent-line)!important}
-:root[data-layout=den] .hero-controls{gap:4px;display:flex;flex-wrap:wrap}
-:root[data-layout=den] .hero-controls .icon-btn{width:34px;height:36px;min-height:36px;background:var(--surface-subtle)!important;color:var(--accent)!important;border:1px solid var(--line)!important;border-radius:10px;display:grid;place-items:center}
-:root[data-layout=den] .savings-hero .tracker-header{flex-wrap:wrap;gap:12px}
-:root[data-layout=den] .savings-hero-edit{background:var(--surface-subtle)!important;border-color:var(--line)!important;color:var(--ink)!important}
-:root[data-layout=den] .savings-hero-edit input{background:var(--card)!important;color:var(--ink)!important;border-color:var(--line)!important}
-:root[data-layout=den] .savings-hero-edit .field-name-dark,:root[data-layout=den] .savings-hero-edit .field-name-dark small,:root[data-layout=den] .savings-withdraw-hint{color:var(--muted)!important}
-:root[data-layout=den] .savings-hero-edit .remove{color:var(--warn)!important}
-.den-debt-next,.den-debt-actions,.den-savings-detail{order:5}
-.den-next-row{display:flex;align-items:center;gap:10px;padding:12px;margin-top:10px;background:var(--surface-subtle);border:1px solid var(--line);border-radius:12px;font-size:.8rem;color:var(--ink)}
-.den-next-row svg{width:23px;height:23px;color:var(--accent);flex-shrink:0}.den-next-row>span{flex:1;min-width:0}.den-next-row small{display:block;color:var(--muted);margin-top:4px;font-size:.7rem}.den-next-row>strong{white-space:nowrap;font-size:.88rem}
-.den-card-actions{display:flex;gap:8px;margin-top:16px}
-:root[data-layout=den] .den-card-actions button{display:flex;justify-content:center;align-items:center;gap:7px;flex:1;min-width:0;min-height:44px;border:1px solid var(--line);border-radius:11px;background:var(--accent-soft);color:var(--accent);padding:10px 8px;font:650 .77rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer}
-.den-card-actions svg{width:19px;height:19px;flex-shrink:0}
-:root[data-layout=den] .bank-card .den-card-actions button{background:#ffffff1c;color:var(--on-dark);border-color:var(--on-dark-line)}
-.den-progress-copy{display:flex;justify-content:space-between;gap:10px;font-size:.73rem;margin:16px 0 8px;color:var(--muted)}.den-progress-copy strong{color:var(--accent)}
-.den-savings-detail progress{width:100%;height:9px;border:0;border-radius:6px;overflow:hidden;accent-color:#249b69}.den-savings-detail progress::-webkit-progress-bar{background:var(--line)}.den-savings-detail progress::-webkit-progress-value{background:#249b69;border-radius:6px}
-.den-savings-chart{padding-top:16px;color:var(--accent)}.den-savings-chart>svg{width:100%;height:90px;display:block}.den-chart-grid{fill:none;stroke:var(--line);stroke-width:1}.den-savings-chart>div{display:flex;justify-content:space-between;font-size:.64rem;gap:12px;color:var(--muted)}
-:root[data-layout=den] .section-title{font-family:inherit;font-weight:750;font-size:1.15rem;color:var(--ink)}
-:root[data-layout=den] #schedulePlanSection{scroll-margin-top:20px}
-:root[data-layout=den] #denDesignSettings{padding:22px;margin-bottom:20px;border:1px solid var(--line);background:var(--card)}
-#denDesignSettings label{display:block;font-size:.8rem;font-weight:650;margin-bottom:8px}#denDesignChoice{font:inherit;font-size:.85rem;width:100%;max-width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink)}
-:root[data-layout=den] .den-dock{position:fixed;z-index:1000;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(440px,calc(100% - 32px));display:grid;grid-template-columns:1fr 76px 1fr;align-items:end;gap:8px;pointer-events:none}
-.den-dock button{pointer-events:auto;cursor:pointer;font-family:inherit;box-shadow:0 5px 24px #383f8c1c}
-.den-wing{min-height:54px;display:flex;align-items:center;justify-content:center;gap:9px;border:1px solid var(--line);background:var(--card);color:var(--muted);font-size:.8rem;font-weight:700;border-radius:24px 24px 20px 20px;padding:10px 8px}
-.den-wing svg{width:22px;height:22px}.den-wing[aria-current=page]{color:var(--accent);background:var(--accent-soft);border-color:var(--accent-line)}
-.den-hub{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;width:76px;height:76px;border:3px solid #cbd8ff;border-radius:50%;background:var(--den-gradient);color:#fff;--bear-face:#5154ec;box-shadow:0 0 0 5px #6779fa1c,0 8px 25px #5643dd35;cursor:pointer;font:700 .75rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.den-hub svg{width:30px;height:30px}.den-hub span{font:700 .7rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-:root[data-layout=den][data-color-scheme] .den-hub{color:var(--on-dark);--bear-face:var(--header)}
-.den-menu-open #denDock{visibility:hidden}
-#denMenu{max-width:none;max-height:none;width:100%;height:100%;height:100dvh;inset:0;padding:20px 16px calc(14px + env(safe-area-inset-bottom));margin:0;border:0;background:transparent;color:var(--ink);overflow:auto;box-sizing:border-box}
-#denMenu::backdrop{background:#121b46a6;backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px)}
-.den-menu-sheet{width:min(100%,420px);min-height:100%;margin:0 auto;display:flex;flex-direction:column;justify-content:flex-end;align-items:center}
-.den-menu-sheet>header{text-align:center;color:#fff;margin:12px 0 24px}.den-menu-sheet h2{margin:0 0 8px;font:800 2rem/1.1 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:-.04em;color:#fff}.den-menu-sheet header p{margin:0;color:#f0f2ff;font-size:.85rem}
-.den-recent{width:100%;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:16px;margin-bottom:34px;box-sizing:border-box}.den-recent h3{font:750 .95rem/1.4 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0 0 8px;color:var(--ink)}
-.den-recent button{display:flex;align-items:center;gap:10px;width:100%;background:var(--surface-subtle);border:0;border-radius:10px;color:var(--ink);padding:12px;margin-top:6px;font:600 .8rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer;min-height:45px}.den-recent svg{width:22px;height:22px;color:var(--accent)}.den-recent button::after{content:'›';margin-left:auto;font-size:1.3rem}
-.den-fan{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:23px 14px;margin:0 0 24px;padding:0 6px;box-sizing:border-box}
-.den-petal{position:relative;min-width:0;min-height:88px;padding:12px 3px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:9px;background:var(--card);border:2px solid var(--line);color:var(--ink);box-shadow:0 6px 18px #101c4d24;border-radius:40% 40% 24% 24%;font:750 .8rem/1.2 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer;transition:transform .16s ease,background .16s ease}
-.den-petal svg{width:29px;height:29px;color:var(--accent)}.den-petal-bills svg{color:var(--coral)}.den-petal-savings svg{color:var(--chart-pay)}.den-petal-tools svg{color:var(--gold)}
-.den-petal:nth-child(3n+1){transform:translateY(18px) rotate(-9deg)}.den-petal:nth-child(3n){transform:translateY(18px) rotate(9deg)}.den-petal:nth-child(3n+1)>*{transform:rotate(9deg)}.den-petal:nth-child(3n)>*{transform:rotate(-9deg)}.den-petal:nth-child(n+4){min-height:78px}
-.den-petal:hover{background:var(--accent-soft)}.den-close{flex-shrink:0;margin:8px 0 0}
-:root[data-layout=den] :is(.den-dock,.den-brand,.den-card-actions,#denMenu) button:focus-visible{outline:3px solid var(--accent);outline-offset:4px}
-#denMenu button:focus-visible{outline:3px solid #adbdff;outline-offset:5px}
-:root[data-layout=den] .setup-loading~.den-dock,:root[data-layout=den] body.setup-loading .den-dock,:root[data-layout=den] body.setup-active .den-dock{visibility:hidden}
-:root:not([data-layout=den]) #denMenu{display:none}
-@media(min-width:700px){:root[data-layout=den] .wrap{padding-top:30px}:root[data-layout=den] .hero,:root[data-layout=den] #debtIncomeCard{padding:28px}.den-allocation-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:370px){:root[data-layout=den] .wrap{padding-inline:12px}:root[data-layout=den] #billTracker,:root[data-layout=den] #debtHeroBox,:root[data-layout=den] .savings-hero,:root[data-layout=den] #debtIncomeCard{padding:18px}.den-wing{font-size:.72rem;gap:6px}.den-dock{gap:5px!important}.den-card-actions button{font-size:.72rem!important}.den-next-row{flex-wrap:wrap}.den-next-row>strong{margin-left:auto}.den-petal{font-size:.73rem;min-height:78px}.den-fan{gap:23px 10px}.den-recent{margin-bottom:24px}}
-@media(prefers-reduced-motion:no-preference){#denMenu[open] .den-menu-sheet{animation:den-arrive .2s ease-out}@keyframes den-arrive{from{transform:translateY(24px);opacity:0}to{transform:translateY(0);opacity:1}}}
-@media(prefers-reduced-motion:reduce){.den-petal{transition:none}}
-@media print{.den-dock,.den-brand,#denMenu{display:none!important}}
+:root[data-layout=den][data-theme=dark]:not([data-color-scheme]):not([data-holiday]) {
+  --ink:#f1f5ff; --muted:#b6c5dc; --paper:#101a2a; --card:#202e43; --line:#566a87;
+  --accent:#a8c9ff; --accent-fill:#b7d0ff; --on-accent:#11284d; --accent-soft:#2a4166; --accent-line:#6c90c5;
+  --surface-inset:#152337; --surface-subtle:#27384f; --amount-line:#536780;
+  --amount-bg:#2c405e; --amount-ink:#eff5ff; --amount-label:#c3d1e8; --amount-border:#7088aa;
+  --due-bg:#493524; --due-ink:#ffdab3; --due-border:#947556;
+  --status:#ccf4dc; --status-soft:#214335; --status-line:#608d76;
+  --warn:#ffb2bd; --warn-soft:#4b2834; --coral:#ffc2a6; --gold:#edce8f;
+  --chart-bill:#b8aeff; --chart-debt:#ffb2bd; --chart-pay:#98dfb7; --chart-spouse:#a2c9ff;
+}
+:root[data-layout=den][data-theme=dark] { --den-summary:#2a3154; --den-income:#213c5b; --den-elevation:0 8px 24px #0004 }
+:root[data-layout=den][data-color-scheme] { --den-tracker:var(--theme-gradient,linear-gradient(125deg,var(--header),var(--hero-debt))); --den-summary:var(--accent-soft); --den-income:var(--accent-soft) }
+:root[data-layout=den][data-holiday] { --den-tracker:linear-gradient(125deg,var(--header),var(--hero-debt)); --den-summary:var(--accent-soft); --den-income:var(--accent-soft) }
+:root[data-layout=den] body { background:var(--paper); font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif }
+:root[data-layout=den] .den-only { display:block }
+:root[data-layout=den] [hidden] { display:none!important }
+:root[data-layout=den] .wrap { max-width:840px; margin:0 auto; padding:24px 20px calc(110px + env(safe-area-inset-bottom)) }
+:root[data-layout=den] :is(.app-title-box,.bottom-tabs,.hero-bear,.hero-peek-wrap::before,.hero-peek-wrap::after,#tab-debt>.tab-header-peek,.den-original-title) { display:none!important }
+:root[data-layout=den] :is(.hero-peek-wrap,.income-peek-wrap:has(#debtIncomeCard),#tab-debt .debt-peek-wrap,#savingsHeroContainer .savings-peek-wrap,.tab-header-peek) { margin:0 0 24px; padding:0 }
+:root[data-layout=den] .den-brand { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:12px }
+.den-brand>div { display:flex; align-items:center; gap:10px }
+.den-brand>div:first-child { font-size:1.23rem; font-weight:800; letter-spacing:-.05em; color:var(--ink) }
+.den-brand svg { width:26px; height:26px; color:var(--ink) }
+.den-brand button { display:grid; place-items:center; width:40px; height:40px; border:1px solid var(--line); border-radius:50%; background:var(--card); color:var(--ink); cursor:pointer }
+.den-brand button svg { width:19px; height:19px; color:inherit }.den-brand button span { display:none }
+.den-intro { margin:0 0 22px }.den-intro h2 { margin:0 0 4px; font-size:2.5rem; font-weight:850; letter-spacing:-.055em; line-height:1.08; color:var(--ink) }.den-intro p { margin:0; color:var(--muted); font-size:.85rem }
+:root[data-layout=den] .tab-intro { border:0!important; border-radius:0!important; background:none!important; box-shadow:none!important; padding:0!important; color:var(--ink) }
+:root[data-layout=den] .tab-intro h2,:root[data-layout=den] #tab-settings .connection-heading h2 { font:850 2.5rem/1.08 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; letter-spacing:-.055em; color:var(--ink)!important }
+:root[data-layout=den] .tab-intro p { color:var(--muted)!important; margin:6px 0 0; font-size:.85rem }
+:root[data-layout=den] .tab-heading-icon { display:none }
+:root[data-layout=den] :is(.income-card,.hero,.paycheck,#connectionDialog>section,#privateConnections>section) { border:1px solid var(--line); border-radius:20px!important; box-shadow:var(--den-elevation)!important; margin-bottom:24px }
+:root[data-layout=den] :is(.card-heading h3,.card-heading h4,.hero-title,#connectionDialog h3,#connectionDialog h4) { font-family:inherit; font-weight:750; letter-spacing:-.025em }
+:root[data-layout=den] .income-card { padding:20px; background:var(--card) }
+:root[data-layout=den] :is(button,input,select,textarea) { font-family:inherit }
+:root[data-layout=den] :is(button,a,input,select,textarea):focus-visible { outline:3px solid var(--accent); outline-offset:3px }
+:root[data-layout=den] button { cursor:pointer }:root[data-layout=den] button:disabled { cursor:not-allowed }
+/* One navy family for trackers, with content-specific arrangements. */
+:root[data-layout=den] :is(#debtIncomeCard,#billTracker,#debtHeroBox,.savings-hero) {
+  --ink:#fff; --muted:#c3d4ed; --line:#587596; --accent:#8dcaff; --accent-soft:#214b78; --accent-line:#6ba3db;
+  --surface-subtle:#12395f; --card:#08294d; --on-dark:#fff; --on-dark-muted:#c3d4ed; --on-dark-line:#587596; --on-dark-accent:#9ed7ff; --on-dark-hover:#214b78;
+  --hero-debt:#05264b; --hero-savings:#05264b;
+  background:var(--den-tracker)!important; border:1px solid #5793cb!important; color:#fff!important; padding:22px; margin:0; overflow:visible; box-shadow:0 3px 0 #fff5,0 8px 20px #17385c30!important;
+}
+:root[data-layout=den] .tracker-header { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:0 0 17px; padding:0!important; border:0!important; background:none!important; box-shadow:none!important }
+:root[data-layout=den] .tracker-header .hero-title { background:none!important; border:0!important; box-shadow:none!important; color:inherit; margin:0; padding:0!important; min-width:0; font:750 .85rem/1.35 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; letter-spacing:.06em; text-transform:uppercase }
+:root[data-layout=den] #debtIncomeCard { display:flex; flex-direction:column }
+:root[data-layout=den] #debtIncomeCard .income-total { color:#fff; font-size:clamp(2.5rem,9vw,3.3rem); line-height:1.1; letter-spacing:-.055em; margin:5px 0; font-weight:850 }
+:root[data-layout=den] #debtIncomeCard :is(.income-eyebrow,.income-account-name) { color:#c3d4ed; font-size:.8rem }
+:root[data-layout=den] .income-secondary-accounts { margin-top:16px; border-top:1px solid var(--line); padding-top:10px }
+:root[data-layout=den] #debtIncomeCard .income-next-payday { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px; background:#0f4a87; border:1px solid #528fc7; border-radius:12px; margin-top:17px; font-size:.8rem }
+:root[data-layout=den] #debtIncomeCard .income-next-payday strong { color:#fff; font-size:1.05rem }
+:root[data-layout=den] #debtBankUpdated { font-size:.65rem; margin:9px 0 0; color:#c3d4ed }
+:root[data-layout=den] :is(#debtIncomeCard,#billTracker,#debtHeroBox,.savings-hero) .subtle { color:#c3d4ed }
+:root[data-layout=den] #debtIncomeCard :is(#accountSaveStatus,.bank-refresh-status):empty { display:none }
+.den-income-detail { order:1 }.den-income-actions { order:2 }.den-payday-total { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:.78rem; margin:16px 0 12px }.den-payday-total strong { font-size:1.25rem }
+.den-allocation-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px 0 }
+.den-allocation-grid>div { padding:0 12px; min-width:0; border-left:1px solid #587596 }.den-allocation-grid>div:nth-child(3n+1) { padding-left:0; border:0 }
+.den-allocation-grid small { display:block; font-size:.67rem; line-height:1.4; margin-bottom:4px; color:#c3d4ed }.den-allocation-grid strong { font-size:1.05rem; font-variant-numeric:tabular-nums; overflow-wrap:anywhere }
+.den-allocation-grid .den-remainder { border:1px solid #5399e3; border-radius:9px; background:#0c4d99; padding:8px 10px; margin-top:-5px }.den-remainder small { color:#fff }
+:root[data-layout=den] #billTracker { display:flex; flex-direction:column }
+:root[data-layout=den] #billTracker>.tracker-header>[data-open-dashboard-bills] { display:none }
+:root[data-layout=den] .bill-tracker-balance>strong { color:#fff!important; font-size:2.6rem; letter-spacing:-.05em; line-height:1.2 }
+:root[data-layout=den] .bill-tracker-balance>span,:root[data-layout=den] .bill-tracker-balance>small { color:#c3d4ed!important; font-size:.78rem }
+:root[data-layout=den] .bill-tracker-month { background:transparent; border:0; padding:0; margin:16px 0; color:#fff }
+:root[data-layout=den] .bill-tracker-month strong { color:#fff }:root[data-layout=den] .bill-tracker-month span { color:#c3d4ed }
+:root[data-layout=den] .bill-tracker-totals { margin:0; padding:14px 0; border-block:1px solid #587596; gap:14px }
+:root[data-layout=den] .bill-tracker-totals>div { border:0; border-radius:0; background:none; padding:0 }
+:root[data-layout=den] .bill-tracker-totals>div+div { padding-left:14px; border-left:1px solid #587596 }
+:root[data-layout=den] .bill-tracker-totals span { color:#c3d4ed!important; font-size:.72rem }
+:root[data-layout=den] .bill-tracker-totals strong { color:#fff!important; font-size:1.35rem; overflow-wrap:anywhere }
+:root[data-layout=den] .bill-tracker-next h4 { margin:16px 0 10px; font-size:.82rem; color:#fff }
+:root[data-layout=den] #billTrackerUpcoming li { background:#123d68; border:1px solid #507398; border-radius:10px; padding:10px 12px; margin-top:8px; gap:12px; color:#fff }
+:root[data-layout=den] #billTrackerUpcoming small { color:#c3d4ed }:root[data-layout=den] #billTrackerUpcoming .is-overdue { color:#ffd0a3 }
+:root[data-layout=den] #billTrackerUpcoming b { color:#fff; font-size:1rem }
+:root[data-layout=den] .bill-tracker-link { color:#fff!important; border:1px solid #6c96c6!important; background:#174777!important; border-radius:9px; min-height:40px }
+.den-contribution { order:1 }.den-bill-actions { order:2 }
+:root[data-layout=den] :is(#debtHeroBox,.savings-hero) { display:flex; flex-direction:column }
+:root[data-layout=den] #debtHeroBox>.tracker-header { flex-wrap:wrap }
+:root[data-layout=den] .payoff-method-toggle { display:flex; gap:3px; width:100%; padding:3px; background:#123b64; border:1px solid #6a88ab; border-radius:12px; flex-wrap:wrap; flex:1 0 100%!important }
+:root[data-layout=den] .pm-btn { flex:1; min-width:60px; min-height:36px; padding:8px 3px; color:#dbeaff!important; background:transparent!important; border:0!important; border-radius:8px; font-size:.7rem }
+:root[data-layout=den] .pm-btn.active { background:#076afa!important; color:#fff!important; box-shadow:0 2px 5px #0002 }
+:root[data-layout=den] .hero-date-banner { background:none; border:0; border-bottom:1px solid #587596; padding:0 0 17px; margin:2px 0 0!important; gap:12px }
+:root[data-layout=den] .hero .big { font-size:1.7rem!important; line-height:1.18; font-weight:800; letter-spacing:-.035em; color:#fff!important; margin:5px 0 }
+:root[data-layout=den] .hero :is(.label,.day-counter,.paycheck-counter) { color:#c3d4ed; font-size:.76rem }
+:root[data-layout=den] :is(#debtHeroBox,.savings-hero)>.row { color:#fff; border-color:#587596; font-size:.82rem; padding:12px 0 }
+:root[data-layout=den] .hero .row>span:first-child { color:#c3d4ed }
+:root[data-layout=den] .hero .row>span:last-child { color:#fff; font-size:1.05rem; font-weight:750 }
+:root[data-layout=den] .hero-pie-corner { background:conic-gradient(#3db6ff calc(var(--den-progress,0)*1%),#284d73 0)!important; width:76px; height:76px; box-shadow:none }
+:root[data-layout=den] .hero-pie-hole-sm { background:#07264a!important; color:#fff!important; width:58px; height:58px }
+:root[data-layout=den] .hero-pie-hole-sm .pct { color:#fff!important; font-size:1.15rem }.hero-pie-wrap-corner { flex-shrink:0 }
+:root[data-layout=den] .savings-hero>.tracker-header { display:grid; grid-template-columns:1fr auto }
+:root[data-layout=den] .hero-controls { display:grid; grid-template-columns:repeat(4,34px); gap:4px }
+:root[data-layout=den] .hero-controls .icon-btn { width:34px; height:36px; min-height:36px; display:grid; place-items:center; color:#fff!important; border:1px solid #6a89ad!important; background:#153e69!important; border-radius:8px }
+:root[data-layout=den] .savings-hero-edit { background:#153c64!important; color:#fff; border-color:#6a89ad!important }
+:root[data-layout=den] .savings-hero-edit :is(.field-name-dark,.savings-withdraw-hint) { color:#d6e5f9!important }
+:root[data-layout=den] .savings-hero-edit input { color:#fff!important; background:#05264b!important; border-color:#7595bb!important }
+.den-next-row { display:flex; align-items:center; gap:10px; padding:12px; margin-top:12px; background:#0f467e; border:1px solid #6299ce; border-radius:11px; font-size:.78rem; color:#fff }
+.den-next-row svg { width:22px; height:22px; flex-shrink:0 }.den-next-row>span { flex:1; min-width:0 }.den-next-row small { display:block; color:#cfdef2; font-size:.7rem; margin-top:3px }.den-next-row>strong { white-space:nowrap; font-size:1rem }
+.den-debt-next { order:4 }.den-debt-actions,.den-savings-detail { order:5 }
+.den-card-actions { display:flex; gap:10px; margin-top:16px }
+:root[data-layout=den] .den-card-actions button { display:flex; justify-content:center; align-items:center; flex:1; gap:8px; min-width:0; min-height:44px; padding:10px 8px; border:1px solid #9ac5ed; border-radius:10px; background:transparent; color:#fff; font:650 .8rem/1.25 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif }
+:root[data-layout=den] .den-card-actions button:last-child { background:#0762ce; border-color:#70b8ff }.den-card-actions svg { width:19px; height:19px; flex-shrink:0 }
+.den-progress-copy { display:flex; justify-content:space-between; gap:10px; font-size:.76rem; color:#c3d4ed; margin:16px 0 10px }.den-progress-copy strong { color:#fff }
+.den-savings-detail progress { width:100%; height:8px; border:0; border-radius:8px; accent-color:#3ebaff; overflow:hidden }.den-savings-detail progress::-webkit-progress-bar { background:#284d73 }.den-savings-detail progress::-webkit-progress-value { background:#3ebaff; border-radius:8px }
+.den-savings-chart { padding-top:14px; color:#50c5ff }.den-savings-chart>svg { width:100%; height:95px; display:block }.den-chart-grid { fill:none; stroke:#587596; stroke-width:.7; stroke-dasharray:3 3 }.den-savings-chart>div { display:flex; justify-content:space-between; gap:12px; color:#c3d4ed; font-size:.66rem }
+/* Page summaries are raised, light surfaces, distinct from the dashboard. */
+:root[data-layout=den] .den-page-summary { background:var(--den-summary); color:var(--ink); border:1px solid var(--line); border-radius:20px; padding:20px; margin-bottom:22px; box-shadow:inset 0 1px 0 #fff9,var(--den-elevation) }
+.den-summary-heading { display:flex; justify-content:space-between; align-items:center; gap:12px }.den-summary-heading h3 { margin:0; font-size:.72rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase }
+.den-summary-heading button { display:flex; align-items:center; gap:7px; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 12px; min-height:38px; font-size:.75rem; font-weight:650 }.den-summary-heading svg { width:17px; height:17px }
+.den-bills-paid { display:flex; justify-content:space-between; align-items:center; gap:15px; margin:15px 0 }.den-bills-paid>strong { font-size:clamp(1.6rem,7vw,2.2rem); letter-spacing:-.04em }
+.den-paid-ring { display:grid; place-items:center; width:66px; height:66px; flex-shrink:0; border-radius:50%; background:conic-gradient(#0966f5 var(--paid,0%),#a9bce7 0) }.den-paid-ring span { display:grid; place-items:center; background:var(--den-summary); border-radius:50%; width:51px; height:51px; font-size:1rem; font-weight:800 }
+.den-summary-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; border-top:1px solid var(--line); padding-top:14px; margin-top:12px }.den-summary-stats>div+div { border-left:1px solid var(--line); padding-left:12px }.den-summary-stats strong { display:block; font-size:1.25rem; font-weight:800; letter-spacing:-.03em; overflow-wrap:anywhere }.den-summary-stats span { display:block; color:var(--muted); font-size:.68rem; line-height:1.4; margin-top:3px }
+.den-summary-amount { display:block; font-size:clamp(2.4rem,9vw,3.5rem); font-weight:850; letter-spacing:-.055em; margin:10px 0; overflow-wrap:anywhere }
+#denDebtSummary .den-summary-stats { grid-template-columns:1fr 1fr }.den-summary-progress { display:flex; align-items:center; gap:6px; margin-top:17px; font-size:.72rem; color:var(--muted) }.den-summary-progress progress { flex:1; margin-left:10px; height:7px; accent-color:#1563db }
+.den-summary-method { display:flex; align-items:center; justify-content:space-between; gap:10px; border-top:1px solid var(--line); margin-top:14px; padding-top:12px; font-size:.74rem }.den-summary-method select { background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font:inherit }
+:root[data-layout=den] #tab-income .bank-card { background:var(--den-income)!important; color:var(--ink)!important; --on-dark:var(--ink); --on-dark-muted:var(--muted); --on-dark-line:var(--line); --on-dark-accent:var(--accent); --on-dark-hover:var(--accent-soft); display:flex; flex-direction:column; box-shadow:inset 0 1px 0 #fff9,var(--den-elevation)!important }
+:root[data-layout=den] #incomeSummary { order:-4 }:root[data-layout=den] #incomeBalances { order:-3 }:root[data-layout=den] #incomeBankUpdated { order:-2 }
+:root[data-layout=den] #incomeSummary .income-total { font-size:clamp(2.6rem,10vw,3.6rem); color:var(--ink); font-weight:850; line-height:1.1; letter-spacing:-.05em; margin:7px 0 }
+:root[data-layout=den] #incomeSummary :is(.income-account-name,.income-eyebrow) { color:var(--muted); font-size:.8rem }
+:root[data-layout=den] #incomeSummary .income-next-payday { display:none }
+:root[data-layout=den] .den-income-payday { display:flex; order:-1; justify-content:space-between; gap:12px; border:1px solid var(--line); background:var(--card); border-radius:12px; padding:14px; margin-top:8px }
+.den-income-payday:empty { display:none!important }.den-income-payday>span { display:flex; align-items:center; gap:10px; font-size:.72rem }.den-income-payday>span:last-child { display:block; border-left:1px solid var(--line); padding-left:14px }.den-income-payday svg { width:24px; height:24px; flex-shrink:0 }.den-income-payday strong { display:block; font-size:1.12rem; margin:3px 0; color:var(--ink) }.den-income-payday small { font-size:.68rem; color:var(--muted) }
+:root[data-layout=den] #tab-income .income-controls-header { margin:16px 0 0; display:block }
+:root[data-layout=den] .income-controls-header .hero-title { display:none }
+:root[data-layout=den] .income-widget-actions { display:flex; gap:7px; flex-wrap:wrap }
+:root[data-layout=den] .income-widget-actions button { color:var(--ink)!important; background:var(--card)!important; border:1px solid var(--line)!important; padding:10px 14px; border-radius:10px; font-size:.75rem; min-height:40px }
+:root[data-layout=den] .income-widget-actions button[aria-expanded=true] { color:var(--on-accent)!important; background:var(--accent-fill)!important }
+/* Bills and debts share one account-card language. All existing actions stay. */
+:root[data-layout=den] :is(#billListCard,#debtListCard) { background:transparent!important; border:0!important; box-shadow:none!important; padding:0; border-radius:0!important }
+:root[data-layout=den] :is(#billListCard,#debtListCard)>.card-heading { padding:0 2px; margin:22px 0 12px }
+:root[data-layout=den] .account-sort-controls { padding:12px; background:var(--surface-inset); border:1px solid var(--line); border-radius:12px; margin:14px 0 18px }
+:root[data-layout=den] :is(.bill-tile,.debt-account) { position:relative; display:flex; flex-direction:column; background:var(--card)!important; border:1px solid var(--line)!important; border-radius:18px; padding:18px; margin:0 0 20px; box-shadow:var(--den-elevation); overflow:hidden }
+:root[data-layout=den] :is(.bill-card-header,.debt-card-header) { display:contents }
+:root[data-layout=den] :is(.debt-compact-main,.bill-tile-main) { order:0; padding:0 76px 0 0; min-height:46px; display:block; margin:0 0 10px }
+:root[data-layout=den] :is(.debt-compact-info,.bill-tile-info) h4 { font-size:1.1rem; font-weight:800; margin:0 0 5px; letter-spacing:-.035em; color:var(--ink); overflow-wrap:anywhere; line-height:1.3 }
+:root[data-layout=den] :is(.debt-compact-info,.bill-tile-info) h4::before { content:attr(data-den-mark); display:inline-grid; place-items:center; vertical-align:middle; width:32px; height:32px; margin-right:8px; border-radius:9px; font-size:.8rem; letter-spacing:0; background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent-line) }
+:root[data-layout=den] .bill-tile-info h4::before { background:var(--due-bg); color:var(--due-ink); border-color:var(--due-border) }
+:root[data-layout=den] :is(.debt-compact-info,.bill-tile-info)>small { color:var(--muted); font-size:.72rem }
+:root[data-layout=den] .den-date-stamp { position:absolute; top:18px; right:18px; width:52px; padding:6px 3px; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#ff8b31; color:#291300; border:1px solid #df6d19; border-radius:10px; font-size:.65rem; font-weight:750; line-height:1.1 }.den-date-stamp strong { font-size:1.65rem; font-weight:850; letter-spacing:-.04em }.den-date-stamp.is-paid { background:#dae3f0; border-color:#a8bad2; color:#304461 }
+:root[data-layout=den] :is(.bill-amount,.debt-key-amounts) { order:1; padding:0 0 14px; margin:0; border:0; background:none; color:var(--ink) }
+:root[data-layout=den] .bill-amount { display:flex; flex-direction:column-reverse; align-items:flex-start; gap:3px }
+:root[data-layout=den] .bill-amount>strong,:root[data-layout=den] .debt-key-amounts>div:first-child>strong { font-size:2rem; font-weight:850; letter-spacing:-.045em; color:var(--ink) }
+:root[data-layout=den] .debt-key-amounts { grid-template-columns:minmax(0,1.6fr) minmax(0,1fr); gap:12px; align-items:end }
+:root[data-layout=den] .debt-key-amounts>div { background:none; border:0; padding:0; text-align:left }
+:root[data-layout=den] .debt-key-amounts>div:first-child { display:flex; flex-direction:column-reverse }
+:root[data-layout=den] .debt-key-amounts .minimum-due { text-align:right }
+:root[data-layout=den] .debt-key-amounts .minimum-due strong { color:var(--ink); font-size:1.15rem }
+:root[data-layout=den] .bill-amount>span,:root[data-layout=den] .debt-key-amounts span { font-size:.68rem; color:var(--muted) }
+:root[data-layout=den] :is(.bill-due-date,.debt-account-footer) { order:2; margin:0; padding:0 0 12px; border:0; background:none; text-align:left; font-size:.75rem; color:var(--muted) }
+:root[data-layout=den] .debt-account-footer>.debt-due-date { background:none; border:0; padding:0; font-size:.75rem; font-weight:600; color:var(--muted) }
+:root[data-layout=den] :is(.debt-card-estimates,.den-bill-meta) { order:3; border-top:1px solid var(--line); padding-top:12px; margin:0 0 12px; background:none }
+:root[data-layout=den] .debt-card-estimates .debt-detail-metrics { gap:12px; margin:0 }:root[data-layout=den] .debt-card-estimates .debt-detail-metrics>div { padding:0; background:none; border:0 }:root[data-layout=den] .debt-card-estimates dt { font-size:.65rem; color:var(--muted) }:root[data-layout=den] .debt-card-estimates dd { font-size:1rem; font-weight:750; color:var(--ink); margin-top:3px }
+:root[data-layout=den] .den-bill-meta { display:grid; grid-template-columns:1fr 1fr; gap:12px }.den-bill-meta>div+div { padding-left:12px; border-left:1px solid var(--line) }.den-bill-meta span { font-size:.65rem; color:var(--muted) }.den-bill-meta strong { display:block; color:var(--ink); font-size:.8rem; margin-top:3px }
+:root[data-layout=den] :is(.bill-tile,.debt-account) .debt-account-tools { order:5; display:flex; flex-wrap:wrap; gap:8px; position:static; margin:8px 0 0; width:100% }
+:root[data-layout=den] .income-card .debt-account-tools>button { border:1px solid var(--line); background:var(--surface-subtle); color:var(--ink); border-radius:9px; min-height:40px; padding:8px 12px; font-size:.73rem }
+:root[data-layout=den] .income-card .debt-account-tools>.bill-icon-button { width:40px; padding:10px }
+:root[data-layout=den] .income-card .debt-account-tools>.bill-paid-button { background:var(--accent-fill); color:var(--on-accent); border-color:var(--accent-fill) }
+:root[data-layout=den] .account-card-footer { order:4; display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:10px; border-top:1px solid var(--line); margin:0; padding:10px 0 0; background:none }
+:root[data-layout=den] .account-connection { margin:0 0 0 auto; padding:5px 8px; border:1px solid var(--line); border-radius:7px; font-size:.62rem; color:var(--muted); background:var(--surface-subtle) }
+:root[data-layout=den] .account-available-credit { margin:0 }:root[data-layout=den] .account-available-credit strong { color:var(--ink); font-size:1rem }
+:root[data-layout=den] :is(.bill-loan-summary,.email-payment-status,.debt-account>.subtle) { order:4 }
+:root[data-layout=den] .account-view-tabs { background:var(--surface-inset); border:1px solid var(--line); border-radius:13px; padding:4px; gap:4px; margin-bottom:22px }
+:root[data-layout=den] .account-view-tabs button { border:0; min-height:40px; border-radius:9px; color:var(--ink); background:transparent; font-size:.8rem }
+:root[data-layout=den] .account-view-tabs button[aria-selected=true] { background:var(--den-navy); color:#fff; box-shadow:0 2px 5px #102c4f26 }
+/* Paychecks remain real, fully editable cards after every dashboard tracker. */
+:root[data-layout=den] #schedulePlanSection { margin-top:34px; scroll-margin-top:20px }
+:root[data-layout=den] #schedulePlanSection>.section-divider { display:none }
+:root[data-layout=den] #schedulePlanSection>.section-divider+div { justify-content:flex-start!important; padding-right:48px; margin-bottom:8px!important }
+:root[data-layout=den] .section-title { font:800 1.55rem/1.2 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; letter-spacing:-.035em; color:var(--ink) }
+.den-schedule-intro { color:var(--muted); font-size:.8rem; line-height:1.5; margin:0 0 20px }
+:root[data-layout=den] .paycheck { padding:20px; background:var(--card); border:1px solid var(--line)!important; overflow:hidden }
+:root[data-layout=den] .paycheck-head { background:var(--den-income); margin:-20px -20px 18px; padding:18px 20px; border:0; border-bottom:1px solid var(--line); color:var(--ink) }
+:root[data-layout=den] .paycheck .date { color:var(--ink); font-size:1rem; font-weight:800; letter-spacing:-.025em }
+:root[data-layout=den] .paycheck input[type=checkbox] { accent-color:var(--accent-fill); width:22px; height:22px; flex-shrink:0 }
+:root[data-layout=den] .check-summary { border:0; background:transparent; padding:0; margin:0 0 18px }
+:root[data-layout=den] .check-summary-row { padding:10px 0; border-bottom:1px solid var(--amount-line); gap:14px; color:var(--ink); font-size:.8rem; line-height:1.4 }
+:root[data-layout=den] .paycheck .amount-input-wrap { border:1px solid var(--line); background:var(--surface-subtle); border-radius:8px; color:var(--ink); padding:4px 7px; flex-shrink:0 }
+:root[data-layout=den] .paycheck .amount-input { background:transparent; color:var(--ink); border:0; font-size:.9rem; width:90px; max-width:100%; min-height:30px; appearance:textfield; -moz-appearance:textfield }
+:root[data-layout=den] .paycheck .prominent-row { padding:12px; background:var(--accent-soft); border:1px solid var(--accent-line); border-radius:10px; margin:12px 0; font-weight:700 }
+:root[data-layout=den] .paycheck .paycheck-debt-row { background:var(--surface-subtle); border:1px solid var(--line); border-radius:12px; padding:13px; margin:15px 0 }
+:root[data-layout=den] .paycheck-creditor { font:750 .9rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--ink) }
+:root[data-layout=den] .paycheck-debt-amounts { border-top:1px solid var(--line); margin-top:12px; padding-top:12px; gap:7px }
+:root[data-layout=den] .paycheck-cash-left { border:1px solid var(--accent-line); border-radius:11px; background:var(--accent-soft); padding:14px; margin:18px 0; font-size:.83rem }:root[data-layout=den] .paycheck-cash-left strong { font-size:1.2rem }
+:root[data-layout=den] .paycheck :is(.bonus-inline-btn,.add-debt-payment) { padding:10px 12px; min-height:40px; border-radius:9px; font-size:.72rem }
+:root[data-layout=den] .paycheck.completed { opacity:.85 }:root[data-layout=den] .paycheck.completed .paycheck-head { background:var(--status-soft) }
+:root[data-layout=den] .paycheck-bear-scene { display:none }
+:root[data-layout=den] .paycheck :is(.milestone-banner,.milestone-banner-account) { border-radius:10px; margin:0 0 14px; font-size:.8rem }
+/* Settings, connections, tools, and all existing editors share the new surfaces. */
+:root[data-layout=den] #connectionDialog { background:none; border:0; padding:0; box-shadow:none }
+:root[data-layout=den] #connectionDialog>section,:root[data-layout=den] #privateConnections>section { padding:22px; border:1px solid var(--line); background:var(--card) }
+:root[data-layout=den] #connectionDialog>section:first-of-type { background:var(--den-income) }
+:root[data-layout=den] :is(#plaidSection,#lunchflowSection,.bank-display-options,.debt-timing-settings) { padding:16px; border:1px solid var(--line); border-radius:14px; background:var(--surface-subtle); margin-top:18px }
+:root[data-layout=den] #trackerOptions>.check-label { padding:14px 0; margin:0; border-top:1px solid var(--line); font-size:.85rem; gap:12px }
+:root[data-layout=den] #trackerOptions .subtle { line-height:1.55; font-size:.74rem }
+:root[data-layout=den] .den-settings-links { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:24px }
+.den-settings-links a,.den-settings-links button { display:flex; align-items:center; gap:6px; padding:10px 12px; text-decoration:none; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:10px; font:650 .75rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif }.den-settings-links svg { width:16px; height:16px }
+:root[data-layout=den] #denDesignSettings { padding:22px; margin-bottom:24px; border:1px solid var(--line); border-radius:20px; background:var(--card) }
+#denDesignSettings label { display:block; font-size:.8rem; font-weight:650; margin-bottom:8px }#denDesignChoice { font:inherit; font-size:.85rem; width:100%; padding:12px; border:1px solid var(--line); border-radius:10px; background:var(--paper); color:var(--ink) }
+:root[data-layout=den] #tab-tools .hero { border:1px solid var(--line)!important }
+:root[data-layout=den] dialog.income-card { border:1px solid var(--line); box-shadow:0 20px 80px #071a3a55!important; padding:24px; max-height:90dvh }
+/* Wallet: layered destination cards. No bottom tab bar or radial menu. */
+:root[data-layout=den] .den-dock { position:fixed; z-index:1000; right:max(18px,calc((100vw - 840px)/2)); bottom:calc(18px + env(safe-area-inset-bottom)); display:block }
+.den-dock button { display:flex; align-items:center; justify-content:center; gap:10px; padding:12px 18px; min-height:52px; border:1px solid #7498c2; border-radius:18px; background:#05264b; color:#fff; box-shadow:0 3px 0 #fff8,0 5px 18px #0c264850; font:750 .9rem/1.2 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; cursor:pointer }
+.den-wallet-icon { position:relative; display:inline-block; width:29px; height:23px; flex-shrink:0 }.den-wallet-icon i { position:absolute; width:23px; height:15px; border:1.5px solid #fff; border-radius:4px; background:#0868ff; top:0; right:0 }.den-wallet-icon i:nth-child(2) { background:#ff8a23; top:4px; right:3px }.den-wallet-icon i:nth-child(3) { background:#21b967; top:8px; right:6px }
+.den-menu-open #denDock { visibility:hidden }
+#denMenu { max-width:none; max-height:none; width:100%; height:100dvh; inset:0; padding:24px 20px calc(20px + env(safe-area-inset-bottom)); margin:0; border:0; background:var(--paper); color:var(--ink); overflow:auto; box-sizing:border-box; border-radius:0 }
+#denMenu::backdrop { background:#15273e9c; backdrop-filter:blur(8px) }
+.den-menu-sheet { width:min(100%,510px); margin:0 auto }
+.den-menu-sheet>header { position:relative; margin-bottom:24px; padding-right:48px }
+.den-wallet-brand { display:flex; align-items:center; gap:8px; font-size:1.15rem; letter-spacing:-.045em }.den-wallet-brand svg { width:25px; height:25px }
+.den-menu-sheet h2 { font-size:2.5rem; font-weight:850; letter-spacing:-.055em; line-height:1.1; margin:18px 0 5px; color:var(--ink) }.den-menu-sheet header p { margin:0; color:var(--muted); font-size:.85rem }
+#denClose { position:absolute; top:0; right:0; display:grid; place-items:center; width:42px; height:42px; border:1px solid var(--line); border-radius:50%; background:var(--card); color:var(--ink); cursor:pointer }#denClose svg { width:22px; height:22px }
+.den-wallet-stack { display:flex; flex-direction:column; padding:10px 8px 0; isolation:isolate }
+.den-wallet-card { position:relative; width:100%; display:flex; align-items:flex-start; gap:13px; padding:20px 18px 38px; border:1px solid #ffffffaa; border-radius:21px; background:#05264b; color:#fff; text-align:left; font:inherit; box-shadow:0 -2px 0 #fff4,0 6px 16px #0a1f3c38; cursor:pointer; transition:translate .18s ease }
+.den-wallet-card+.den-wallet-card { margin-top:-17px }.den-wallet-card:last-child { padding-bottom:22px }
+.den-wallet-card:nth-child(odd) { transform:rotate(-1.7deg) }.den-wallet-card:nth-child(even) { transform:rotate(1.7deg) }
+.den-wallet-card:hover,.den-wallet-card:focus-visible { translate:0 -5px; z-index:2 }
+.den-wallet-card>svg { width:24px; height:24px; margin-left:auto; align-self:center; flex-shrink:0 }.den-wallet-glyph { display:grid; place-items:center; width:40px; height:40px; border:1px solid currentColor; border-radius:11px; background:#ffffff15; flex-shrink:0 }.den-wallet-glyph svg { width:25px; height:25px }
+.den-wallet-content { flex:1; min-width:0; display:block }.den-wallet-label { display:block; font-size:.78rem; font-weight:800; letter-spacing:.09em; text-transform:uppercase; margin:0 0 5px }.den-wallet-content>strong { display:block; font-size:1.8rem; font-weight:850; line-height:1.15; letter-spacing:-.05em; overflow-wrap:anywhere }.den-wallet-content small { display:block; font-size:.76rem; line-height:1.4; margin-top:4px }
+.den-wallet-metrics { display:flex; gap:18px; margin-top:15px }.den-wallet-metrics>span+span { border-left:1px solid #93b1d0; padding-left:18px }.den-wallet-metrics strong { font-size:1.35rem; letter-spacing:-.04em }.den-wallet-metrics small { font-size:.65rem }
+.den-wallet-income { background:#0862f2 }.den-wallet-bills { background:#fff9ed; color:#171e30; border-color:#d6c5aa }.den-wallet-debts { background:#e0d7fc; color:#181732; border-color:#aea0d1 }.den-wallet-savings { background:#e4fc94; color:#163014; border-color:#abc564 }.den-wallet-den { background:#29333f }
+.den-wallet-bills .den-wallet-glyph { color:#fff; background:#fa751a; border-color:#df6519 }.den-wallet-debts .den-wallet-glyph { color:#fff; background:#4b3587; border-color:#3a296e }.den-wallet-savings .den-wallet-glyph { color:#fff; background:#2e6b25; border-color:#24561d }
+.den-wallet-card progress { display:block; width:100%; height:6px; margin-top:10px; accent-color:#ed7018 }
+.den-menu-sheet>footer button { display:flex; align-items:center; justify-content:center; gap:10px; margin:22px 0 0; width:100%; padding:14px; min-height:48px; border:1px solid var(--line); border-radius:14px; background:var(--card); color:var(--ink); font:750 .85rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; cursor:pointer }.den-menu-sheet>footer svg { width:20px; height:20px }
+#denDestinations { padding:18px; border:1px solid var(--line); border-radius:16px; background:var(--card); margin:18px 0 0 }#denDestinations h3 { margin:0 0 12px; font-size:1rem }#denDestinations button { display:flex; align-items:center; gap:10px; width:100%; padding:12px; border:1px solid var(--line); border-radius:10px; margin-top:8px; background:var(--surface-subtle); color:var(--ink); cursor:pointer; font:650 .85rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif }#denDestinations svg { width:20px; height:20px }
+#denMenu button:focus-visible { outline:3px solid #4d8cf5; outline-offset:4px }
+:root:not([data-layout=den]) #denMenu { display:none }
+:root[data-layout=den] :is(body.setup-loading,body.setup-active) .den-dock { visibility:hidden }
+@media(min-width:900px) {
+  :root[data-layout=den] .wrap { max-width:1060px; padding-inline:30px }
+  :root[data-layout=den] #tab-debt:not([hidden]) { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:24px; align-items:start }
+  :root[data-layout=den] #tab-debt>.den-intro,:root[data-layout=den] #schedulePlanSection { grid-column:1/-1 }
+  :root[data-layout=den] #scheduleOut { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; align-items:start }
+  :root[data-layout=den] #scheduleOut .paycheck { margin-bottom:0 }
+  :root[data-layout=den] :is(#billAgenda,#debtAccounts) { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; align-items:start }
+  :root[data-layout=den] :is(#billAgenda,#debtAccounts)>article { margin:0 }
+  :root[data-layout=den] #paidBillsList { grid-column:1/-1 }
+  :root[data-layout=den] .den-dock { right:max(24px,calc((100vw - 1000px)/2)) }
+}
+@media(max-width:420px) {
+  :root[data-layout=den] .wrap { padding:18px 14px calc(110px + env(safe-area-inset-bottom)) }
+  :root[data-layout=den] :is(#debtIncomeCard,#billTracker,#debtHeroBox,.savings-hero) { padding:18px }
+  :root[data-layout=den] .hero-controls { grid-template-columns:repeat(2,32px) }
+  .den-summary-stats { gap:8px }.den-summary-stats>div+div { padding-left:8px }.den-summary-stats strong { font-size:1.06rem }
+  :root[data-layout=den] .den-page-summary { padding:17px }.den-income-payday { padding:11px!important; gap:8px!important }.den-income-payday svg { display:none }.den-income-payday>span:last-child { padding-left:10px }.den-income-payday strong { font-size:1rem }
+  .den-allocation-grid { grid-template-columns:repeat(2,minmax(0,1fr)) }.den-allocation-grid>div:nth-child(3n+1) { padding-left:12px; border-left:1px solid #587596 }.den-allocation-grid>div:nth-child(2n+1) { padding-left:0; border:0 }
+  :root[data-layout=den] .paycheck { padding:16px }:root[data-layout=den] .paycheck-head { margin:-16px -16px 15px; padding:16px }
+  :root[data-layout=den] .paycheck-debt-amounts { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px }
+  #denMenu { padding:20px 14px }.den-wallet-stack { padding-inline:5px }.den-wallet-card { padding:17px 13px 32px; gap:10px }.den-wallet-card:last-child { padding-bottom:20px }.den-wallet-content>strong { font-size:1.55rem }.den-wallet-glyph { width:34px; height:34px }.den-wallet-metrics { gap:12px }.den-wallet-metrics>span+span { padding-left:12px }.den-wallet-metrics strong { font-size:1.12rem }
+}
+@media(prefers-reduced-motion:reduce) { .den-wallet-card { transition:none } }
 
-:root[data-layout=den] .hero-pie-corner{background:conic-gradient(var(--accent) calc(var(--den-progress,0)*1%),var(--line) 0)!important}
-:root[data-layout=den] .den-debt-next{order:4}:root[data-layout=den] .den-debt-actions{order:6}
-@media(max-width:370px){:root[data-layout=den] .bill-tracker-totals{grid-template-columns:1fr}:root[data-layout=den] .bill-tracker-totals>div{display:flex;justify-content:space-between;gap:10px;align-items:center}:root[data-layout=den] .bill-tracker-totals strong{font-size:1.1rem;white-space:nowrap}:root[data-layout=den] .pm-btn{flex-basis:calc(50% - 5px);font-size:.72rem}:root[data-layout=den] .savings-hero .hero-controls{flex-basis:100%;justify-content:flex-end}}
+:root[data-layout=den] #debtHeroBox .payoff-method-toggle { flex:1 0 100%; min-width:0; justify-content:stretch }
+:root[data-layout=den] .paycheck input[type=number]::-webkit-inner-spin-button,:root[data-layout=den] .paycheck input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0 }
+:root[data-layout=den] .paycheck-debt-amounts .account-payment-input { width:100%; min-height:32px; padding:6px; border:1px solid var(--line); border-radius:7px; background:var(--card); color:var(--ink); font-size:.85rem }
+:root[data-layout=den] .den-income-heading { order:-5; display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:15px; font-size:.68rem; font-weight:750; text-transform:uppercase; letter-spacing:.06em }
+.den-income-heading button { display:flex; gap:5px; align-items:center; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:9px; font:650 .75rem/1.2 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; padding:9px 12px; text-transform:none; letter-spacing:0 }.den-income-heading svg { width:17px; height:17px }
+:root[data-layout=den] .section-title::before { display:none }
+:root[data-layout=den] #denBillsSummary .den-summary-stats strong { font-variant-numeric:tabular-nums }
+:root[data-layout=den] .bill-tracker-month progress { accent-color:#51beff }
+:root[data-layout=den] :is(.bill-tracker-month progress,.den-wallet-card progress)::-webkit-progress-bar { background:#9bb2cf; border-radius:8px }
+:root[data-layout=den] .bill-tracker-month progress::-webkit-progress-value { background:#51beff; border-radius:8px }
+:root[data-layout=den] .den-wallet-card progress::-webkit-progress-value { background:#ef751c; border-radius:8px }
+@media(min-width:370px) { .den-allocation-grid { grid-template-columns:repeat(3,minmax(0,1fr)) }.den-allocation-grid>div:nth-child(2n+1) { padding-left:12px; border-left:1px solid #587596 }.den-allocation-grid>div:nth-child(3n+1) { padding-left:0; border:0 } }
 
-:root[data-layout=den] .savings-hero>.tracker-header{display:grid;grid-template-columns:1fr auto;align-items:start}
-:root[data-layout=den] .savings-hero>.tracker-header .hero-controls{display:grid;grid-template-columns:repeat(2,34px);gap:4px}
-:root[data-layout=den] .savings-hero>.tracker-header .hero-title{align-self:center}
+/* Keep the uniform dark trackers legible when a bright existing palette is chosen. */
+:root[data-layout=den][data-color-scheme] { --den-tracker:linear-gradient(125deg,color-mix(in srgb,var(--gradient-start,var(--header)) 30%,#031e3f),color-mix(in srgb,var(--gradient-end,var(--hero-debt)) 30%,#031e3f)) }
+:root[data-layout=den] :is(#debtHeroBox,.savings-hero) { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); column-gap:12px }
+:root[data-layout=den] :is(#debtHeroBox,.savings-hero)>* { grid-column:1/-1; min-width:0 }
+:root[data-layout=den] #debtHeroBox>.row,:root[data-layout=den] .savings-hero>.den-savings-stat { grid-column:auto; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; gap:6px; font-size:.68rem; line-height:1.35 }
+:root[data-layout=den] :is(#debtHeroBox>.row,.savings-hero>.den-savings-stat)>span:last-child { font-size:1.12rem; overflow-wrap:anywhere; text-align:left }
+:root[data-layout=den] #billTracker { position:relative }
+:root[data-layout=den] #billTracker>.bill-tracker-balance { padding-right:80px }
+:root[data-layout=den] #billTracker>.den-bill-ring { position:absolute; top:67px; right:19px }
+.den-tracker-ring { display:grid; place-items:center; width:70px; height:70px; border-radius:50%; background:conic-gradient(#42baff var(--paid),#31567a 0) }.den-tracker-ring span { display:grid; place-items:center; width:53px; height:53px; border-radius:50%; background:#07264a; color:#fff; font-size:1.15rem; font-weight:800 }
+:root[data-layout=den] .bill-tracker-balance>strong { overflow-wrap:anywhere }
+@media(max-width:360px) { :root[data-layout=den] #billTracker>.bill-tracker-balance { padding-right:64px }:root[data-layout=den] .bill-tracker-balance>strong { font-size:2.1rem }.den-tracker-ring { width:58px; height:58px }.den-tracker-ring span { width:44px; height:44px; font-size:1rem }:root[data-layout=den] :is(#debtHeroBox>.row,.savings-hero>.den-savings-stat)>span:last-child { font-size:.96rem } }
+/* Preferences use the same real checkboxes, presented as accessible switches. */
+:root[data-layout=den] #trackerOptions>.check-label { display:flex; flex-direction:row-reverse; justify-content:space-between; align-items:center }
+:root[data-layout=den] #trackerOptions>.check-label>input[type=checkbox] { appearance:none; -webkit-appearance:none; width:42px; height:25px; flex:0 0 42px; position:relative; border:1px solid var(--line); border-radius:20px; background:var(--surface-inset); margin:0; cursor:pointer }
+:root[data-layout=den] #trackerOptions>.check-label>input[type=checkbox]::before { content:''; position:absolute; top:3px; left:3px; width:17px; height:17px; border-radius:50%; background:var(--muted); transition:transform .15s }
+:root[data-layout=den] #trackerOptions>.check-label>input[type=checkbox]:checked { background:var(--accent-fill); border-color:var(--accent-fill) }
+:root[data-layout=den] #trackerOptions>.check-label>input[type=checkbox]:checked::before { background:var(--on-accent); transform:translateX(17px) }
+:root[data-layout=den] #connectionDialog>section:has(>#accountMode) { background:var(--den-income)!important; border-color:var(--line) }
+:root[data-layout=den] #connectionDialog>section:has(>#accountMode)>h3 { display:flex; align-items:center; gap:10px; font-size:1.15rem }
+:root[data-layout=den] #connectionDialog>section:has(>#accountMode)>h3::before { content:'B'; display:grid; place-items:center; width:38px; height:38px; border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--ink); font-size:1.2rem; font-weight:850 }
+@media(forced-colors:active) { :root[data-layout=den] #trackerOptions>.check-label>input[type=checkbox] { appearance:auto; -webkit-appearance:auto }:root[data-layout=den] #trackerOptions>.check-label>input[type=checkbox]::before { display:none } }
+@media(prefers-reduced-motion:reduce) { :root[data-layout=den] #trackerOptions>.check-label>input[type=checkbox]::before { transition:none } }
+/* Keep tracker facts together even when a missing-balance notice is inserted. */
+:root[data-layout=den] #savingsHeroContainer .savings-hero>.den-savings-stat { grid-column:auto }
+:root[data-layout=den] #debtHeroBox>.row { order:1 }
+:root[data-layout=den] #debtHeroBox>p { order:2 }
+:root[data-layout=den] :is(#debtHeroBox,.savings-hero) .hero-date-banner { border-radius:0 }
+:root[data-layout=den] .hero :is(.day-counter,.paycheck-counter) { display:inline-block; padding:0; margin:5px 9px 0 0; border:0; border-radius:0; background:none; font-size:.73rem; font-weight:500 }
+@media(max-width:420px) { :root[data-layout=den] #debtHeroBox>.row>span:last-child,:root[data-layout=den] #savingsHeroContainer .savings-hero>.den-savings-stat>span:last-child { font-size:.97rem; letter-spacing:-.035em } }
+:root[data-layout=den] .schedule-reset-btn { left:auto; right:0; width:38px; height:38px }

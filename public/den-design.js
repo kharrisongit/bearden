@@ -40,30 +40,40 @@
     $('#denTheme').onclick = () => window.toggleTheme?.();
     const intro = document.createElement('header');
     intro.className = 'den-only den-intro';
-    intro.innerHTML = '<h2>Your overview</h2><p>'+new Date().toLocaleDateString('en-US', {weekday:'long',month:'long',day:'numeric'})+'</p>';
+    intro.innerHTML = '<h2>Dashboard</h2><p>'+new Date().toLocaleDateString('en-US', {weekday:'long',month:'long',day:'numeric'})+'</p>';
     $('#tab-debt').prepend(intro);
     const preference = document.createElement('section');
     preference.id = 'denDesignSettings';
-    preference.innerHTML = '<h3>Design</h3><label for="denDesignChoice">Layout</label><select id="denDesignChoice"><option value="den">Den — detailed cards &amp; fan menu</option><option value="classic">Original design</option></select><p class="subtle">Switch back anytime. This changes the layout on this device.</p><p id="denDesignStatus" class="subtle" role="status"></p>';
+    preference.innerHTML = '<h3>Design</h3><label for="denDesignChoice">Layout</label><select id="denDesignChoice"><option value="den">Wallet — modern cards</option><option value="classic">Original design</option></select><p class="subtle">Switch back anytime. This changes the layout on this device.</p><p id="denDesignStatus" class="subtle" role="status"></p>';
     $('#trackerOptions').before(preference);
     $('#denDesignChoice').value = root.dataset.layout;
 
+    const walletIcon = '<span class="den-wallet-icon" aria-hidden="true"><i></i><i></i><i></i></span>';
     const dock = document.createElement('nav');
-    dock.id = 'denDock'; dock.className = 'den-only den-dock'; dock.setAttribute('aria-label','Main navigation');
-    dock.innerHTML = button('overview','Overview','overview','class="den-wing" id="denOverview"')+'<button type="button" class="den-hub" id="denOpen" aria-haspopup="dialog" aria-expanded="false" aria-controls="denMenu">'+bear+'<span>Den</span></button>'+button('plan','Plan','plan','class="den-wing" id="denPlan"');
+    dock.id = 'denDock'; dock.className = 'den-only den-dock'; dock.setAttribute('aria-label','Wallet navigation');
+    dock.innerHTML = '<button type="button" id="denOpen" aria-haspopup="dialog" aria-expanded="false" aria-controls="denMenu">'+walletIcon+'<span>Wallet</span></button>';
     document.body.append(dock);
     const menu = document.createElement('dialog');
     menu.id = 'denMenu'; menu.setAttribute('aria-labelledby','denMenuTitle');
-    menu.innerHTML = '<div class="den-menu-sheet"><header><h2 id="denMenuTitle">Where to?</h2><p>Everything in your Den.</p></header><section class="den-recent" aria-labelledby="denRecentTitle"><h3 id="denRecentTitle">Jump back in</h3>'+button('forecast','Bills forecast','bills')+button('plan','Your paycheck plan','plan')+'</section><nav class="den-fan" aria-label="All sections">'+[['income','Income'],['bills','Bills'],['debts','Debt'],['savings','Savings'],['tools','Tools'],['settings','Settings']].map(([name,label])=>button(name,label,name,'class="den-petal den-petal-'+name+'"')).join('')+'</nav><button type="button" class="den-hub den-close" id="denClose" aria-label="Close Den menu">'+icon('close')+'<span>Den</span></button></div>';
+    const walletCard = (destination, label, glyph, content) => '<button type="button" class="den-wallet-card den-wallet-'+destination+'" data-den-go="'+destination+'"><span class="den-wallet-glyph">'+icon(glyph)+'</span><span class="den-wallet-content"><span class="den-wallet-label">'+label+'</span>'+content+'</span>'+icon('arrow')+'</button>';
+    menu.innerHTML = '<div class="den-menu-sheet"><header><div class="den-wallet-brand">'+bear+'<strong>BearDen</strong></div><button type="button" id="denClose" aria-label="Close wallet">'+icon('close')+'</button><h2 id="denMenuTitle">Your wallet</h2><p>Choose a section</p></header><nav class="den-wallet-stack" aria-label="All sections">'
+      +walletCard('overview','Dashboard','overview','<small>Your trackers, together</small><span class="den-wallet-metrics"><span><strong data-wallet-value="bank">—</strong><small>bank balance</small></span><span><strong data-wallet-value="bills">—</strong><small>left to pay</small></span></span>')
+      +walletCard('income','Income','income','<strong data-wallet-value="paycheck">—</strong><small data-wallet-value="payday">Your next paycheck</small>')
+      +walletCard('bills','Bills','bills','<strong data-wallet-value="bills">—</strong><small data-wallet-value="paid">Your recurring bills</small><progress id="denWalletBillsProgress" max="1" value="0" aria-label="Bills paid this month"></progress>')
+      +walletCard('debts','Debt','debts','<strong data-wallet-value="debt">—</strong><small data-wallet-value="payoff">Your payoff plan</small>')
+      +walletCard('savings','Savings','savings','<strong data-wallet-value="savings">—</strong><small data-wallet-value="goals">Your savings goals</small>')
+      +walletCard('den','Your Den','settings','<small>Tools · Settings · Connections</small>')
+      +'</nav><div id="denDestinations" hidden><h3>Your Den</h3>'+button('tools','Tools & games','tools')+button('settings','Settings','settings')+button('connections','Connections','income')+'</div><footer>'+button('overview','Back to dashboard','overview')+'</footer></div>';
     document.body.append(menu);
     let scrollBeforeMenu = 0, previousOverflow = '';
-    function closeMenu() { if(menu.open) menu.close(); }
+    function closeMenu() { if(menu.open){ $('#denDestinations').hidden=true; menu.close(); } }
     $('#denOpen').onclick = () => {
       if(menu.open)return;
+      menu.scrollTop=0;
       scrollBeforeMenu = scrollY; previousOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden'; root.classList.add('den-menu-open');
       $('#denOpen').setAttribute('aria-expanded','true'); menu.showModal();
-      menu.querySelector('[data-den-go="income"]').focus({preventScroll:true});
+      menu.querySelector('[data-den-go="overview"]').focus({preventScroll:true});
     };
     $('#denClose').onclick = closeMenu;
     menu.addEventListener('keydown', event => {
@@ -91,34 +101,57 @@
       element.focus({preventScroll:true}); element.scrollIntoView({block:'start',behavior:'instant'});
     }
     function go(destination) {
+      if(destination === 'den'){const panel=$('#denDestinations');panel.hidden=!panel.hidden;if(!panel.hidden){panel.querySelector('button').focus();panel.scrollIntoView({block:'nearest'});}return;}
       navigating = menu.open; closeMenu();
-      const tab = {overview:'debt',plan:'debt',savings:'debt',forecast:'bills',budget:'income','income-edit':'income'}[destination] || destination;
+      const tab = {overview:'debt',plan:'debt',savings:'debt',forecast:'bills',budget:'income','income-edit':'income',connections:'settings'}[destination] || destination;
       window.selectBearTab(tab);
       if(destination === 'forecast')$('#accounts-nav-calendar').click();
       if(destination === 'income-edit' && $('#incomeToggleBtn').getAttribute('aria-expanded')!=='true')$('#incomeToggleBtn').click();
       if(destination === 'budget' && $('#incomeBudgetToggleBtn').getAttribute('aria-expanded')!=='true')$('#incomeBudgetToggleBtn').click();
-      const targets = {overview:'.den-intro',plan:'#schedulePlanSection',savings:'#savingsHeroContainer',forecast:'#billsForecastCard',budget:'#incomeBudgetSlot','income-edit':'#incomeDropdown'};
+      const targets = {overview:'.den-intro',plan:'#schedulePlanSection',savings:'#savingsHeroContainer',forecast:'#billsForecastCard',budget:'#incomeBudgetSlot','income-edit':'#incomeDropdown',connections:'#bankConnections'};
       requestAnimationFrame(() => {
         if(destination==='savings' && $('#savingsHeroContainer').hidden){window.selectBearTab('settings');focusSection($('#savingsTrackerToggle'));}
         else focusSection($(targets[destination] || '#tab-'+tab+' h2'));
       });
-      $('#denOverview').setAttribute('aria-current',destination==='overview'?'page':'false');
-      $('#denPlan').setAttribute('aria-current',destination==='plan'?'page':'false');
     }
     document.addEventListener('click', event => {
       const action = event.target.closest('[data-den-go]'); if(action)go(action.dataset.denGo);
     });
-    window.addEventListener('bearden-tab-changed', event => {
-      $('#denOverview').setAttribute('aria-current',event.detail==='debt'?'page':'false');
-      $('#denPlan').setAttribute('aria-current','false');
-    });
-    $('#denOverview').setAttribute('aria-current','page');
+    function markDestination(tab) {
+      for(const card of menu.querySelectorAll('.den-wallet-card'))card.setAttribute('aria-current',({debt:'overview',tools:'den',settings:'den'}[tab]||tab)===card.dataset.denGo?'page':'false');
+    }
+    window.addEventListener('bearden-tab-changed', event => markDestination(event.detail));
+    markDestination('debt');
     $('#denDesignChoice').onchange = event => {
       closeMenu(); root.dataset.layout = event.target.value;
       try { localStorage.setItem('bearden:design',event.target.value); $('#denDesignStatus').textContent = event.target.value==='classic'?'Original design restored.':'Den design enabled.'; }
       catch { $('#denDesignStatus').textContent='Layout changed. This browser could not remember your choice.'; }
-      refresh();
+      applyLayout(); refresh();
     };
+
+    const pageSummary = (id, tab, html) => {
+      const section=document.createElement('section');section.id=id;section.className='den-only den-page-summary';
+      section.innerHTML=html;$('#tab-'+tab+' > .account-view-tabs').before(section);
+    };
+    const stat = (label, key) => '<div><strong data-den-copy="'+key+'">—</strong><span>'+label+'</span></div>';
+    pageSummary('denBillsSummary','bills','<div class="den-summary-heading"><h3 data-den-copy="billTrackerMonth">This month</h3><button type="button" data-forecast-accounts>Account '+icon('arrow')+'</button></div><div class="den-bills-paid"><strong data-den-copy="billTrackerPaidCount">—</strong><div class="den-paid-ring" role="img" aria-label="Bills paid this month"><span id="denBillsPercent">0%</span></div></div><div class="den-summary-stats">'+stat('Bills balance','billTrackerBalance')+stat('Estimated total','billTrackerTotal')+stat('Left to pay','billTrackerRemaining')+'</div>');
+    pageSummary('denDebtSummary','debts','<div class="den-summary-heading"><h3>Total remaining</h3>'+button('plan','Payoff plan','plan')+'</div><strong class="den-summary-amount" id="denDebtTotal">—</strong><p id="denDebtCoverage" class="subtle" hidden></p><div class="den-summary-stats">'+stat('Estimated payoff','heroDate')+stat('Projected interest','heroInterest')+'</div><div class="den-summary-progress"><span data-den-copy="heroPiePct">0%</span> paid off<progress id="denDebtProgress" max="100" value="0" aria-label="Debt paid off"></progress></div><div class="den-summary-method"><label for="denPayoffMethod">Payoff method</label><select id="denPayoffMethod"><option value="avalanche">Avalanche</option><option value="snowball">Snowball</option><option value="minimum">Minimums</option><option value="burn">Burn</option></select></div>');
+    $('#denPayoffMethod').onchange=event=>window.setPayoffMethod?.(event.target.value);
+    insert($('#tab-income .bank-card'),'den-income-heading','<span>Account overview</span><button type="button" data-choose-accounts>Accounts '+icon('arrow')+'</button>');
+    const incomeHeader=$('#tab-income .income-controls-header'),incomeHeaderHome=document.createComment('Income controls original position');
+    incomeHeader.before(incomeHeaderHome);
+    function applyLayout(){
+      if(root.dataset.layout==='den')$('#tab-income .tab-intro').append(incomeHeader);
+      else incomeHeaderHome.after(incomeHeader);
+    }
+    applyLayout();
+    const shortcuts=document.createElement('nav');shortcuts.className='den-only den-settings-links';shortcuts.setAttribute('aria-label','Settings sections');
+    shortcuts.innerHTML='<a href="#bankConnections">Connections</a><a href="#denDesignSettings">Appearance</a><a href="#trackerOptions">Preferences</a>'+button('tools','Tools','tools');
+    $('#connectionDialog > .tab-header-peek').after(shortcuts);
+    const planTitle=$('#schedulePlanSection .section-title');
+    planTitle.innerHTML='<span class="den-original-title">📋 Your Schedule:</span><span class="den-only">Your paychecks</span>';
+    const planIntro=document.createElement('p');planIntro.className='den-only den-schedule-intro';planIntro.textContent='Your full plan, paycheck by paycheck. Edit amounts or mark a paycheck complete.';
+    $('#scheduleOut').before(planIntro);
 
     const actions = (a,b) => '<div class="den-card-actions">'+a+b+'</div>';
     insert($('#debtIncomeCard'),'den-income-actions',actions(button('income-edit','Income','income'),button('budget','Budget','settings')));
@@ -147,10 +180,12 @@
       const debtAmount = (next?.payments || []).reduce((a,b)=>a+b,0);
       $('#heroPie')?.style.setProperty('--den-progress',parseFloat($('#heroPiePct')?.textContent)||0);
       insert($('#debtHeroBox'),'den-debt-next',next&&debtAmount>0?'<div class="den-next-row">'+icon('bills')+'<span>Next planned debt payments<small>'+dateLabel(next.date)+'</small></span><strong>'+money(Math.round(debtAmount*100))+'</strong></div>':'');
+      refreshSummaries(plan, upcoming, allocations);
       const checked = Object.keys(plan.state.checkedPaychecks||{}).filter(k=>plan.state.checkedPaychecks[k]).map(Number);
       const lastChecked = plan.schedule.find(row=>row.paycheck===Math.max(...checked));
       for(const g of plan.state.savingsGoals || []){
         const card = document.getElementById('savingsHero-'+g.id); if(!card)continue;
+        for(const [index,row] of [...card.querySelectorAll(':scope > .row')].entries())row.classList.toggle('den-savings-stat',index<3);
         const saved = lastChecked?.savingsByGoal?.find(x=>x.id===g.id)?.balance ?? Number(g.start||0);
         const percent = g.goal>0?Math.min(100,Math.max(0,saved/g.goal*100)):0;
         card.querySelector('.hero-pie-corner')?.style.setProperty('--den-progress',percent);
@@ -160,6 +195,30 @@
         const graph=balances.length>1?'<div class="den-savings-chart"><svg viewBox="0 0 300 76" role="img" aria-label="Projected savings from '+esc(money(Math.round(saved*100)))+' to '+esc(money(Math.round(balances.at(-1)*100)))+'"><path d="M8 68H292M8 38H292M8 8H292" class="den-chart-grid"/><polyline points="'+points+'" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><div><span>Projected savings</span><span>Through '+dateLabel(goalRows.at(-1).date)+'</span></div></div>':'';
         insert(card,'den-savings-detail','<div class="den-progress-copy"><span>'+Math.round(percent)+'% of goal</span><strong>'+money(Math.round(Math.max(0,g.goal-saved)*100))+' to go</strong></div><progress max="100" value="'+percent+'" aria-label="Savings goal progress"></progress>'+graph+actions('<button type="button" data-bd-click="toggleSavingsGoalEdit('+Number(g.id)+')">'+icon('settings')+'<span>Manage goal</span></button>','<button type="button" data-bd-click="toggleSavingsWithdrawPanel('+Number(g.id)+')">'+icon('savings')+'<span>Log withdrawal</span></button>'));
       }
+    }
+    function refreshSummaries(plan, upcoming, allocations) {
+      for(const heading of document.querySelectorAll('#billAgenda h4,#debtAccounts h4'))heading.dataset.denMark=(heading.textContent.trim().match(/\b[\p{L}\p{N}]/gu)||['•']).slice(0,2).join('').toUpperCase();
+      const content = id => document.getElementById(id)?.textContent.trim() || '—';
+      for(const el of document.querySelectorAll('[data-den-copy]'))el.textContent=content(el.dataset.denCopy);
+      const p=$('#billTrackerProgress'),percent=p.max?Math.round(p.value/p.max*100):0;
+      $('#denBillsPercent').textContent=percent+'%';
+      insert($('#billTracker'),'den-bill-ring','<div class="den-tracker-ring" role="img" aria-label="'+esc(content('billTrackerPaidCount'))+'" style="--paid:'+percent+'%"><span>'+percent+'%</span></div>');
+      $('#denBillsSummary .den-paid-ring').style.setProperty('--paid',percent+'%');
+      $('#denBillsSummary .den-paid-ring').setAttribute('aria-label',content('billTrackerPaidCount'));
+      $('#denWalletBillsProgress').max=p.max;$('#denWalletBillsProgress').value=p.value;
+      $('#denDebtTotal').textContent=[...$('#debtTotalAmount').querySelectorAll('strong')].map(el=>el.textContent).join(' · ')||content('heroTotal');
+      $('#denDebtCoverage').textContent=$('#debtTotalAmount .subtle')?.textContent||'';$('#denDebtCoverage').hidden=!$('#denDebtCoverage').textContent;
+      const progress=parseFloat(content('heroPiePct'))||0;
+      $('#denDebtProgress').value=progress;
+      $('#denDebtSummary .den-summary-progress').hidden=$('#heroPieWrap').style.display==='none';
+      $('#denPayoffMethod').value=plan.state.payoffMethod||'avalanche';
+      const income=$('#tab-income .bank-card');
+      insert(income,'den-income-payday',upcoming?'<span>'+icon('bills')+'<span>Next payday<strong>'+esc(new Date(upcoming.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}))+'</strong></span></span><span><strong>'+money(upcoming.amount)+'</strong><small>Estimated take-home</small></span>':'');
+      const checked=Object.keys(plan.state.checkedPaychecks||{}).filter(k=>plan.state.checkedPaychecks[k]).map(Number);
+      const last=plan.schedule.find(row=>row.paycheck===Math.max(...checked));
+      const goals=plan.state.savingsGoals||[],saved=goals.reduce((total,g)=>total+(last?.savingsByGoal?.find(x=>x.id===g.id)?.balance??Number(g.start||0)),0);
+      const values={bank:$('#debtIncomeSummary .income-total')?.textContent||'—',bills:content('billTrackerRemaining'),paid:content('billTrackerPaidCount')+' · '+content('billTrackerMonth'),debt:$('#denDebtTotal').textContent,payoff:'Est. payoff '+content('heroDate'),paycheck:upcoming?money(upcoming.amount):'Set up income',payday:upcoming?dateLabel(upcoming.date)+' · '+money(upcoming.amount-allocations)+' after plan':'Choose your first payday',savings:money(Math.round(saved*100)),goals:goals.length?goals.length+' goal'+(goals.length===1?'':'s')+' · '+money(Math.round(goals.reduce((n,g)=>n+Number(g.goal||0),0)*100))+' target':'Create your first goal'};
+      for(const el of menu.querySelectorAll('[data-wallet-value]'))el.textContent=values[el.dataset.walletValue];
     }
     window.classicReady?.then(queueRefresh);
     queueRefresh();
