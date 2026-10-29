@@ -1,37 +1,7 @@
 import {test,expect} from '@playwright/test';
-import {readFileSync} from 'node:fs';
-import {blank} from '../public/engine.mjs';
 
-async function fixture(page,{goals=true,empty=false,unavailable=false}={}){
- await page.clock.setFixedTime(new Date('2026-10-28T12:00:00Z'));
- const accounts=empty?[]:[{id:'plaid-personal',name:'Personal checking',type:'depository',subtype:'checking',source:'plaid',balance:128462,currency:'USD'},{id:'lunchflow-bills',name:'Household bills checking',type:'depository',subtype:'checking',source:'lunchflow',balance:214000,currency:'USD',balanceUnavailable:unavailable}];
- const manual=empty?[]:[{id:'rent',name:'Rent',date:'2026-10-01',amount:80000,billKind:'rent'},{id:'car',name:'Car payment',date:'2026-10-28',amount:30000,billKind:'car-payment'},{id:'electric',name:'Electric',date:'2026-10-29',amount:12500,billKind:'electric'},{id:'internet',name:'Internet',date:'2026-10-20',amount:6000,billKind:'phone-internet'},{id:'credit',name:'Card minimum',date:'2026-10-30',amount:5000,billKind:'credit-card'}].map(b=>({...b,repeat:'monthly',source:'manual'}));
- const planner={accountVisibility:{'plaid-personal':true,'lunchflow-bills':true},billFunding:{rent:'shared',car:'shared',electric:'shared',internet:'shared'},manual,paid:['rent:2026-10-01'],household:empty?{}:{enabled:true,personalAmount:75500,spouseAmount:75500,spouseStartDate:'2026-10-30',spouseRepeat:'biweekly',personalAccountId:'plaid-personal',billsAccountId:'lunchflow-bills'}};
- let tracker={state:{version:1,values:{'app-state':JSON.stringify({cards:[{id:1,name:'Capital One',balance:3420,apr:25,minPayment:35,dueDate:'2026-11-04'}],budgetItems:[{id:1,label:'Groceries',amount:100},{id:2,label:'Fuel',amount:100}],budgetSetupVersion:2,startDate:'2026-10-30',takeHome:'1845',savingsGoals:goals?[{id:1,name:'Emergency fund',goal:2000,start:850,contribution:75}]:[],savingsGoalIdCounter:goals?1:0}),'income-planner':JSON.stringify(planner),onboarding:JSON.stringify({completed:true})}},revision:0};
- let failSavings=false;
- await page.route('https://bearden.test/**',async route=>{
-  const req=route.request(),path=new URL(req.url()).pathname;
-  if(path==='/api/config')return route.fulfill({json:{authenticated:true,accountId:'test'}});
-  if(path==='/api/classic'){
-   if(req.method()==='GET')return route.fulfill({json:tracker});
-   if(failSavings&&JSON.parse(req.postDataJSON().state.values['app-state']).showSavingsTracker===false)return route.fulfill({status:500,json:{error:'Could not save preference.'}});
-   tracker={state:req.postDataJSON().state,revision:tracker.revision+1};return route.fulfill({json:{revision:tracker.revision}});
-  }
-  if(path==='/api/state')return route.fulfill({json:{state:{...blank(),accounts},connections:{items:[],transactions:[],creditCards:[],gmailMessages:[],recurringBills:[]},revision:0}});
-  if(path.startsWith('/api/'))return route.fulfill({status:404,json:{}});
-  const name=path==='/'?'index.html':path.slice(1);try{return route.fulfill({body:readFileSync(new URL('../public/'+name,import.meta.url)),contentType:name.endsWith('.css')?'text/css':/\.(js|mjs)$/.test(name)?'text/javascript':'text/html'});}catch{return route.fulfill({status:404,body:''});}
- });
- await page.goto('https://bearden.test/');await page.evaluate(()=>window.classicReady);await expect(page.locator('#configureHousehold')).toBeEnabled();await expect(page.locator('#billTrackerMonth')).toHaveText('October bills');
- return {accounts,set failSavings(value){failSavings=value;},get tracker(){return tracker;}};
-}
+import {fixture,menuGo} from './wallet.fixture.mjs';
 
-
-async function menuGo(page, target) {
- await page.locator('#denOpen').click();
- if(['tools','settings','connections'].includes(target))await page.locator('#denMenu [data-den-go="den"]').click();
- await page.locator('#denMenu [data-den-go="'+target+'"]').first().click();
- await expect(page.locator('#denMenu')).not.toBeVisible();
-}
 for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`Den ${width}px ${theme}: rich cards, menu and all destinations`,async({page})=>{
  await page.setViewportSize({width,height:844});const errors=[];page.on('pageerror',e=>errors.push(e.message));await fixture(page);
  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
@@ -70,7 +40,7 @@ for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`Den 
 
 test('switching to Original persists across reload and leaves financial data intact',async({page})=>{
  const f=await fixture(page);const before=await page.evaluate(()=>window.getDebtPlan().state);
- await menuGo(page,'settings');await page.locator('#denDesignChoice').selectOption('classic');
+ await menuGo(page,'settings');await page.locator('[data-bd-detail=preferences]').click();await page.locator('#denDesignChoice').selectOption('classic');
  await expect(page.locator('.bottom-tabs')).toBeVisible();await expect(page.locator('#denDock')).toBeHidden();
  await page.reload();await page.evaluate(()=>window.classicReady);await expect(page.locator('html')).toHaveAttribute('data-layout','classic');
  await page.locator('#nav-settings').click();await page.locator('#denDesignChoice').selectOption('den');
@@ -108,7 +78,7 @@ test('new header cards use live totals and retain the bill, debt, and income edi
  await menuGo(page,'bills');
  await expect(page.locator('#denBillsSummary [data-den-copy="billTrackerPaidCount"]')).toHaveText(await page.locator('#billTrackerPaidCount').textContent());
  await expect(page.locator('#billAgenda .den-date-stamp').first()).toBeVisible();
- await expect(page.locator('#billAgenda .den-bill-meta').first()).toContainText('Shared bills account');
+ await expect(page.locator('#billAgenda .bd-account-metrics').first()).toContainText('Shared bills account');
  await page.locator('#denBillsSummary [data-forecast-accounts]').click();await expect(page.locator('#householdEditor')).toBeVisible();await page.locator('#closeHouseholdEditor').click();
  const bill=page.locator('#billAgenda [data-account-id="electric"]');
  await bill.locator('[data-edit-bill]').click();await expect(page.locator('#billEditor')).toBeVisible();await page.locator('#closeBillEditor').click();
@@ -116,7 +86,7 @@ test('new header cards use live totals and retain the bill, debt, and income edi
  await page.locator('#paidBillsList summary').click();await page.locator('[aria-label="Undo paid for Electric on 2026-10-29"]').click();
  await expect(page.locator('#denBillsSummary [data-den-copy="billTrackerPaidCount"]')).toHaveText(await page.locator('#billTrackerPaidCount').textContent());
  await menuGo(page,'debts');
- await expect(page.locator('#denDebtTotal')).toHaveText('$3,420.00');
+ await expect(page.locator('#denDebtTotal')).toHaveText('$3,420');
  await page.locator('#denPayoffMethod').selectOption('snowball');await expect(page.locator('#pmBtnSnowball')).toHaveClass(/active/);
  await page.locator('#debtAccounts [data-show-debt-details]').first().click();await expect(page.locator('#debtProgressDialog')).toBeVisible();await page.locator('#closeDebtProgress').click();
  await page.locator('#debtAccounts [data-edit-debt]').first().click();await expect(page.locator('#debtEditor')).toBeVisible();await page.locator('#closeDebtEditor').click();
@@ -145,12 +115,12 @@ test('existing color and holiday choices work with Wallet and preserve the finan
  await page.setViewportSize({width:390,height:844});await fixture(page);
  const before=await page.evaluate(()=>window.getDebtPlan().state);
  await menuGo(page,'settings');
- await page.locator('#holidayToggleBtn').click();await page.locator('#openColorPicker').click();
+ await page.locator('#openColorPicker').click();
  await page.locator('[data-color-scheme-choice="sunrise"]').click();
  await page.locator('#closeColorPicker').click();await menuGo(page,'overview');
  await expect(page.locator('html')).toHaveAttribute('data-color-scheme','sunrise');
  await page.screenshot({path:'test-results/wallet-bright-theme.png'});
- await page.locator('#denTheme').click();await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+ await menuGo(page,'settings');await page.locator('[data-bd-mode=dark]').click();await expect(page.locator('html')).toHaveAttribute('data-theme','dark');await menuGo(page,'overview');
  await page.screenshot({path:'test-results/wallet-bright-dark-theme.png'});
  await page.evaluate(()=>window.setHolidayTheme('christmas'));
  await expect(page.locator('html')).toHaveAttribute('data-holiday','christmas');

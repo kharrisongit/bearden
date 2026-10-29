@@ -24,7 +24,7 @@
       sun:'M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M5.6 18.4 7 17m10-10 1.4-1.4M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
     };
     const icon = name => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+paths[name]+'"/></svg>';
-    const bear = '<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="10" cy="9" r="7" fill="currentColor"/><circle cx="30" cy="9" r="7" fill="currentColor"/><rect x="5" y="9" width="30" height="28" rx="13" fill="currentColor"/><circle cx="14" cy="21" r="2" fill="var(--bear-face)"/><circle cx="26" cy="21" r="2" fill="var(--bear-face)"/><ellipse cx="20" cy="28" rx="5" ry="4" fill="var(--bear-face)"/></svg>';
+    const bear = '<svg viewBox="0 0 48 30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 19 1-8 5-6 8-1 4 2 7-1 4 2 5-2 3 3 5 2-1 5-6 1-1 7 3 3h-7l-3-7-4 1-2 6h-6l2-7-7-2-3 9H3l3-8-3 1Z"/><path d="m32 7 2-4 4 2M38 10h.1M12 9l-3 5m12 0 2 5"/></svg>';
     const button = (action, label, glyph, extra='') => '<button type="button" data-den-go="'+action+'" '+extra+'>'+icon(glyph)+'<span>'+label+'</span></button>';
     const insert = (parent, name, html) => {
       let box = parent.querySelector(':scope > .'+name);
@@ -33,20 +33,27 @@
       return box;
     };
 
-    const brand = document.createElement('header');
-    brand.className = 'den-only den-brand';
-    brand.innerHTML = '<div>'+bear+'<span>BearDen</span></div><div><button type="button" id="denTheme" aria-label="Switch color mode">'+icon('sun')+'</button>'+button('settings','Settings','settings','aria-label="Settings"')+'</div>';
-    $('.app-title-box').before(brand);
-    $('#denTheme').onclick = () => window.toggleTheme?.();
-    const intro = document.createElement('header');
-    intro.className = 'den-only den-intro';
-    intro.innerHTML = '<h2>Dashboard</h2><p>'+new Date().toLocaleDateString('en-US', {weekday:'long',month:'long',day:'numeric'})+'</p>';
-    $('#tab-debt').prepend(intro);
     const preference = document.createElement('section');
     preference.id = 'denDesignSettings';
     preference.innerHTML = '<h3>Design</h3><label for="denDesignChoice">Layout</label><select id="denDesignChoice"><option value="den">Wallet — modern cards</option><option value="classic">Original design</option></select><p class="subtle">Switch back anytime. This changes the layout on this device.</p><p id="denDesignStatus" class="subtle" role="status"></p>';
     $('#trackerOptions').before(preference);
     $('#denDesignChoice').value = root.dataset.layout;
+    $('#denDesignChoice').onchange = async event => {
+      const choice=event.target.value;event.target.disabled=true;
+      try { await window.flushBearDenState?.();localStorage.setItem('bearden:design',choice);location.reload(); }
+      catch { event.target.value=root.dataset.layout;event.target.disabled=false;$('#denDesignStatus').textContent='Could not save your latest changes or layout choice. Please try again.'; }
+    };
+    if(root.dataset.layout==='classic')return;
+
+    const brand = document.createElement('header');
+    brand.className = 'den-only den-brand';
+    brand.innerHTML = '<div>'+bear+'<span>BearDen</span></div><div><button type="button" data-den-go="settings" class="bd-avatar" aria-label="Settings"><span data-bd-initials>BD</span></button></div>';
+    $('.app-title-box').before(brand);
+    const intro = document.createElement('header');
+    intro.className = 'den-only den-intro';
+    intro.innerHTML = '<h2>Dashboard</h2><p>'+new Date().toLocaleDateString('en-US', {weekday:'long',month:'long',day:'numeric'})+'</p>';
+    $('#tab-debt').prepend(intro);
+
 
     const walletIcon = '<span class="den-wallet-icon" aria-hidden="true"><i></i><i></i><i></i></span>';
     const dock = document.createElement('nav');
@@ -105,10 +112,11 @@
       navigating = menu.open; closeMenu();
       const tab = {overview:'debt',plan:'debt',savings:'debt',forecast:'bills',budget:'income','income-edit':'income',connections:'settings'}[destination] || destination;
       window.selectBearTab(tab);
+      if(destination==='connections'){const search=$('#bdSettingsSearch');search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));}
       if(destination === 'forecast')$('#accounts-nav-calendar').click();
       if(destination === 'income-edit' && $('#incomeToggleBtn').getAttribute('aria-expanded')!=='true')$('#incomeToggleBtn').click();
       if(destination === 'budget' && $('#incomeBudgetToggleBtn').getAttribute('aria-expanded')!=='true')$('#incomeBudgetToggleBtn').click();
-      const targets = {overview:'.den-intro',plan:'#schedulePlanSection',savings:'#savingsHeroContainer',forecast:'#billsForecastCard',budget:'#incomeBudgetSlot','income-edit':'#incomeDropdown',connections:'#bankConnections'};
+      const targets = {overview:'.den-intro',plan:'#schedulePlanSection',savings:'#savingsHeroContainer',forecast:'#billsForecastCard',budget:'#incomeBudgetSlot','income-edit':'#incomeDropdown',connections:'#bdConnections'};
       requestAnimationFrame(() => {
         if(destination==='savings' && $('#savingsHeroContainer').hidden){window.selectBearTab('settings');focusSection($('#savingsTrackerToggle'));}
         else focusSection($(targets[destination] || '#tab-'+tab+' h2'));
@@ -122,12 +130,7 @@
     }
     window.addEventListener('bearden-tab-changed', event => markDestination(event.detail));
     markDestination('debt');
-    $('#denDesignChoice').onchange = event => {
-      closeMenu(); root.dataset.layout = event.target.value;
-      try { localStorage.setItem('bearden:design',event.target.value); $('#denDesignStatus').textContent = event.target.value==='classic'?'Original design restored.':'Den design enabled.'; }
-      catch { $('#denDesignStatus').textContent='Layout changed. This browser could not remember your choice.'; }
-      applyLayout(); refresh();
-    };
+
 
     const pageSummary = (id, tab, html) => {
       const section=document.createElement('section');section.id=id;section.className='den-only den-page-summary';
@@ -138,25 +141,16 @@
     pageSummary('denDebtSummary','debts','<div class="den-summary-heading"><h3>Total remaining</h3>'+button('plan','Payoff plan','plan')+'</div><strong class="den-summary-amount" id="denDebtTotal">—</strong><p id="denDebtCoverage" class="subtle" hidden></p><div class="den-summary-stats">'+stat('Estimated payoff','heroDate')+stat('Projected interest','heroInterest')+'</div><div class="den-summary-progress"><span data-den-copy="heroPiePct">0%</span> paid off<progress id="denDebtProgress" max="100" value="0" aria-label="Debt paid off"></progress></div><div class="den-summary-method"><label for="denPayoffMethod">Payoff method</label><select id="denPayoffMethod"><option value="avalanche">Avalanche</option><option value="snowball">Snowball</option><option value="minimum">Minimums</option><option value="burn">Burn</option></select></div>');
     $('#denPayoffMethod').onchange=event=>window.setPayoffMethod?.(event.target.value);
     insert($('#tab-income .bank-card'),'den-income-heading','<span>Account overview</span><button type="button" data-choose-accounts>Accounts '+icon('arrow')+'</button>');
-    const incomeHeader=$('#tab-income .income-controls-header'),incomeHeaderHome=document.createComment('Income controls original position');
-    incomeHeader.before(incomeHeaderHome);
-    function applyLayout(){
-      if(root.dataset.layout==='den')$('#tab-income .tab-intro').append(incomeHeader);
-      else incomeHeaderHome.after(incomeHeader);
-    }
-    applyLayout();
-    const shortcuts=document.createElement('nav');shortcuts.className='den-only den-settings-links';shortcuts.setAttribute('aria-label','Settings sections');
-    shortcuts.innerHTML='<a href="#bankConnections">Connections</a><a href="#denDesignSettings">Appearance</a><a href="#trackerOptions">Preferences</a>'+button('tools','Tools','tools');
-    $('#connectionDialog > .tab-header-peek').after(shortcuts);
+    $('#tab-income .tab-intro').append($('#tab-income .income-controls-header'));
     const planTitle=$('#schedulePlanSection .section-title');
     planTitle.innerHTML='<span class="den-original-title">📋 Your Schedule:</span><span class="den-only">Your paychecks</span>';
-    const planIntro=document.createElement('p');planIntro.className='den-only den-schedule-intro';planIntro.textContent='Your full plan, paycheck by paycheck. Edit amounts or mark a paycheck complete.';
-    $('#scheduleOut').before(planIntro);
+
 
     const actions = (a,b) => '<div class="den-card-actions">'+a+b+'</div>';
     insert($('#debtIncomeCard'),'den-income-actions',actions(button('income-edit','Income','income'),button('budget','Budget','settings')));
     insert($('#billTracker'),'den-bill-actions',actions(button('bills','View bills','bills'),button('forecast','Forecast','plan')));
     insert($('#debtHeroBox'),'den-debt-actions',actions(button('debts','View debts','debts'),button('plan','Payoff plan','plan')));
+    const views=window.mountWalletViews({icon,bear,esc,money,go,queueRefresh});
     // Existing widgets continue to own all their numbers, edits and calculations.
     let dashboard = null, frame = null;
     function queueRefresh() { if(frame)return; frame=requestAnimationFrame(()=>{frame=null;refresh();}); }
@@ -185,7 +179,6 @@
       const lastChecked = plan.schedule.find(row=>row.paycheck===Math.max(...checked));
       for(const g of plan.state.savingsGoals || []){
         const card = document.getElementById('savingsHero-'+g.id); if(!card)continue;
-        for(const [index,row] of [...card.querySelectorAll(':scope > .row')].entries())row.classList.toggle('den-savings-stat',index<3);
         const saved = lastChecked?.savingsByGoal?.find(x=>x.id===g.id)?.balance ?? Number(g.start||0);
         const percent = g.goal>0?Math.min(100,Math.max(0,saved/g.goal*100)):0;
         card.querySelector('.hero-pie-corner')?.style.setProperty('--den-progress',percent);
@@ -195,11 +188,12 @@
         const graph=balances.length>1?'<div class="den-savings-chart"><svg viewBox="0 0 300 76" role="img" aria-label="Projected savings from '+esc(money(Math.round(saved*100)))+' to '+esc(money(Math.round(balances.at(-1)*100)))+'"><path d="M8 68H292M8 38H292M8 8H292" class="den-chart-grid"/><polyline points="'+points+'" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><div><span>Projected savings</span><span>Through '+dateLabel(goalRows.at(-1).date)+'</span></div></div>':'';
         insert(card,'den-savings-detail','<div class="den-progress-copy"><span>'+Math.round(percent)+'% of goal</span><strong>'+money(Math.round(Math.max(0,g.goal-saved)*100))+' to go</strong></div><progress max="100" value="'+percent+'" aria-label="Savings goal progress"></progress>'+graph+actions('<button type="button" data-bd-click="toggleSavingsGoalEdit('+Number(g.id)+')">'+icon('settings')+'<span>Manage goal</span></button>','<button type="button" data-bd-click="toggleSavingsWithdrawPanel('+Number(g.id)+')">'+icon('savings')+'<span>Log withdrawal</span></button>'));
       }
+      views.refresh(plan,next,upcoming,allocationRows,allocations);
     }
     function refreshSummaries(plan, upcoming, allocations) {
       for(const heading of document.querySelectorAll('#billAgenda h4,#debtAccounts h4'))heading.dataset.denMark=(heading.textContent.trim().match(/\b[\p{L}\p{N}]/gu)||['•']).slice(0,2).join('').toUpperCase();
       const content = id => document.getElementById(id)?.textContent.trim() || '—';
-      for(const el of document.querySelectorAll('[data-den-copy]'))el.textContent=content(el.dataset.denCopy);
+      for(const el of document.querySelectorAll('[data-den-copy]'))el.textContent=content(el.dataset.denCopy).replace(/\.00\b/g,'');
       const p=$('#billTrackerProgress'),percent=p.max?Math.round(p.value/p.max*100):0;
       $('#denBillsPercent').textContent=percent+'%';
       insert($('#billTracker'),'den-bill-ring','<div class="den-tracker-ring" role="img" aria-label="'+esc(content('billTrackerPaidCount'))+'" style="--paid:'+percent+'%"><span>'+percent+'%</span></div>');
@@ -207,6 +201,7 @@
       $('#denBillsSummary .den-paid-ring').setAttribute('aria-label',content('billTrackerPaidCount'));
       $('#denWalletBillsProgress').max=p.max;$('#denWalletBillsProgress').value=p.value;
       $('#denDebtTotal').textContent=[...$('#debtTotalAmount').querySelectorAll('strong')].map(el=>el.textContent).join(' · ')||content('heroTotal');
+      $('#denDebtTotal').textContent=$('#denDebtTotal').textContent.replace(/\.00\b/g,'');
       $('#denDebtCoverage').textContent=$('#debtTotalAmount .subtle')?.textContent||'';$('#denDebtCoverage').hidden=!$('#denDebtCoverage').textContent;
       const progress=parseFloat(content('heroPiePct'))||0;
       $('#denDebtProgress').value=progress;

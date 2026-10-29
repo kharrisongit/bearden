@@ -1,14 +1,14 @@
-/* Wallet presentation. Financial widgets, IDs, editors and storage stay shared
-   with the original layout; every rule is scoped so rollback needs no migration. */
+
+/* Wallet v3: purpose-built page compositions with shared financial controls. */
 .den-only { display:none }
 :root[data-layout=den] {
   --den-navy:#05264b; --den-blue:#0868ff; --den-tracker:linear-gradient(125deg,#082f58,#041d3d);
-  --den-elevation:0 4px 7px #1c36581a,0 12px 26px #1c365812;
+  --den-elevation:0 2px 3px #294c7c22,0 6px 14px #294c7c19;
   --den-summary:#e7e6fc; --den-income:#d9ebfd; --bear-face:var(--paper);
   scroll-padding:20px 0 110px;
 }
 :root[data-layout=den]:not([data-color-scheme]):not([data-holiday]) {
-  --ink:#101e38; --muted:#4a5b73; --paper:#d3dce9; --card:#fff; --line:#a3b2c8;
+  --ink:#101e38; --muted:#4a5b73; --paper:#d3deee; --card:#fff; --line:#bdcce2;
   --accent:#0756cf; --accent-fill:#0961e8; --on-accent:#fff; --accent-soft:#e5eeff; --accent-line:#87b0f2;
   --surface-inset:#eaf0f8; --surface-subtle:#f3f6fb; --amount-line:#c1ccdc;
   --header:#05264b; --amount-bg:#eaf1fd; --amount-ink:#173c75; --amount-label:#465a79; --amount-border:#b5c9e8;
@@ -31,286 +31,571 @@
 :root[data-layout=den][data-theme=dark] { --den-summary:#2a3154; --den-income:#213c5b; --den-elevation:0 8px 24px #0004 }
 :root[data-layout=den][data-color-scheme] { --den-tracker:var(--theme-gradient,linear-gradient(125deg,var(--header),var(--hero-debt))); --den-summary:var(--accent-soft); --den-income:var(--accent-soft) }
 :root[data-layout=den][data-holiday] { --den-tracker:linear-gradient(125deg,var(--header),var(--hero-debt)); --den-summary:var(--accent-soft); --den-income:var(--accent-soft) }
-:root[data-layout=den] body { background:var(--paper); font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif }
-:root[data-layout=den] .den-only { display:block }
-:root[data-layout=den] [hidden] { display:none!important }
-:root[data-layout=den] .wrap { max-width:840px; margin:0 auto; padding:24px 20px calc(110px + env(safe-area-inset-bottom)) }
-:root[data-layout=den] :is(.app-title-box,.bottom-tabs,.hero-bear,.hero-peek-wrap::before,.hero-peek-wrap::after,#tab-debt>.tab-header-peek,.den-original-title) { display:none!important }
-:root[data-layout=den] :is(.hero-peek-wrap,.income-peek-wrap:has(#debtIncomeCard),#tab-debt .debt-peek-wrap,#savingsHeroContainer .savings-peek-wrap,.tab-header-peek) { margin:0 0 24px; padding:0 }
-:root[data-layout=den] .den-brand { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:12px }
-.den-brand>div { display:flex; align-items:center; gap:10px }
-.den-brand>div:first-child { font-size:1.23rem; font-weight:800; letter-spacing:-.05em; color:var(--ink) }
-.den-brand svg { width:26px; height:26px; color:var(--ink) }
-.den-brand button { display:grid; place-items:center; width:40px; height:40px; border:1px solid var(--line); border-radius:50%; background:var(--card); color:var(--ink); cursor:pointer }
-.den-brand button svg { width:19px; height:19px; color:inherit }.den-brand button span { display:none }
-.den-intro { margin:0 0 22px }.den-intro h2 { margin:0 0 4px; font-size:2.5rem; font-weight:850; letter-spacing:-.055em; line-height:1.08; color:var(--ink) }.den-intro p { margin:0; color:var(--muted); font-size:.85rem }
-:root[data-layout=den] .tab-intro { border:0!important; border-radius:0!important; background:none!important; box-shadow:none!important; padding:0!important; color:var(--ink) }
-:root[data-layout=den] .tab-intro h2,:root[data-layout=den] #tab-settings .connection-heading h2 { font:850 2.5rem/1.08 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; letter-spacing:-.055em; color:var(--ink)!important }
-:root[data-layout=den] .tab-intro p { color:var(--muted)!important; margin:6px 0 0; font-size:.85rem }
-:root[data-layout=den] .tab-heading-icon { display:none }
-:root[data-layout=den] :is(.income-card,.hero,.paycheck,#connectionDialog>section,#privateConnections>section) { border:1px solid var(--line); border-radius:20px!important; box-shadow:var(--den-elevation)!important; margin-bottom:24px }
-:root[data-layout=den] :is(.card-heading h3,.card-heading h4,.hero-title,#connectionDialog h3,#connectionDialog h4) { font-family:inherit; font-weight:750; letter-spacing:-.025em }
-:root[data-layout=den] .income-card { padding:20px; background:var(--card) }
-:root[data-layout=den] :is(button,input,select,textarea) { font-family:inherit }
-:root[data-layout=den] :is(button,a,input,select,textarea):focus-visible { outline:3px solid var(--accent); outline-offset:3px }
-:root[data-layout=den] button { cursor:pointer }:root[data-layout=den] button:disabled { cursor:not-allowed }
-/* One navy family for trackers, with content-specific arrangements. */
-:root[data-layout=den] :is(#debtIncomeCard,#billTracker,#debtHeroBox,.savings-hero) {
-  --ink:#fff; --muted:#c3d4ed; --line:#587596; --accent:#8dcaff; --accent-soft:#214b78; --accent-line:#6ba3db;
-  --surface-subtle:#12395f; --card:#08294d; --on-dark:#fff; --on-dark-muted:#c3d4ed; --on-dark-line:#587596; --on-dark-accent:#9ed7ff; --on-dark-hover:#214b78;
-  --hero-debt:#05264b; --hero-savings:#05264b;
-  background:var(--den-tracker)!important; border:1px solid #5793cb!important; color:#fff!important; padding:22px; margin:0; overflow:visible; box-shadow:0 3px 0 #fff5,0 8px 20px #17385c30!important;
-}
-:root[data-layout=den] .tracker-header { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:0 0 17px; padding:0!important; border:0!important; background:none!important; box-shadow:none!important }
-:root[data-layout=den] .tracker-header .hero-title { background:none!important; border:0!important; box-shadow:none!important; color:inherit; margin:0; padding:0!important; min-width:0; font:750 .85rem/1.35 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; letter-spacing:.06em; text-transform:uppercase }
-:root[data-layout=den] #debtIncomeCard { display:flex; flex-direction:column }
-:root[data-layout=den] #debtIncomeCard .income-total { color:#fff; font-size:clamp(2.5rem,9vw,3.3rem); line-height:1.1; letter-spacing:-.055em; margin:5px 0; font-weight:850 }
-:root[data-layout=den] #debtIncomeCard :is(.income-eyebrow,.income-account-name) { color:#c3d4ed; font-size:.8rem }
-:root[data-layout=den] .income-secondary-accounts { margin-top:16px; border-top:1px solid var(--line); padding-top:10px }
-:root[data-layout=den] #debtIncomeCard .income-next-payday { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px; background:#0f4a87; border:1px solid #528fc7; border-radius:12px; margin-top:17px; font-size:.8rem }
-:root[data-layout=den] #debtIncomeCard .income-next-payday strong { color:#fff; font-size:1.05rem }
-:root[data-layout=den] #debtBankUpdated { font-size:.65rem; margin:9px 0 0; color:#c3d4ed }
-:root[data-layout=den] :is(#debtIncomeCard,#billTracker,#debtHeroBox,.savings-hero) .subtle { color:#c3d4ed }
-:root[data-layout=den] #debtIncomeCard :is(#accountSaveStatus,.bank-refresh-status):empty { display:none }
-.den-income-detail { order:1 }.den-income-actions { order:2 }.den-payday-total { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:.78rem; margin:16px 0 12px }.den-payday-total strong { font-size:1.25rem }
-.den-allocation-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px 0 }
-.den-allocation-grid>div { padding:0 12px; min-width:0; border-left:1px solid #587596 }.den-allocation-grid>div:nth-child(3n+1) { padding-left:0; border:0 }
-.den-allocation-grid small { display:block; font-size:.67rem; line-height:1.4; margin-bottom:4px; color:#c3d4ed }.den-allocation-grid strong { font-size:1.05rem; font-variant-numeric:tabular-nums; overflow-wrap:anywhere }
-.den-allocation-grid .den-remainder { border:1px solid #5399e3; border-radius:9px; background:#0c4d99; padding:8px 10px; margin-top:-5px }.den-remainder small { color:#fff }
-:root[data-layout=den] #billTracker { display:flex; flex-direction:column }
-:root[data-layout=den] #billTracker>.tracker-header>[data-open-dashboard-bills] { display:none }
-:root[data-layout=den] .bill-tracker-balance>strong { color:#fff!important; font-size:2.6rem; letter-spacing:-.05em; line-height:1.2 }
-:root[data-layout=den] .bill-tracker-balance>span,:root[data-layout=den] .bill-tracker-balance>small { color:#c3d4ed!important; font-size:.78rem }
-:root[data-layout=den] .bill-tracker-month { background:transparent; border:0; padding:0; margin:16px 0; color:#fff }
-:root[data-layout=den] .bill-tracker-month strong { color:#fff }:root[data-layout=den] .bill-tracker-month span { color:#c3d4ed }
-:root[data-layout=den] .bill-tracker-totals { margin:0; padding:14px 0; border-block:1px solid #587596; gap:14px }
-:root[data-layout=den] .bill-tracker-totals>div { border:0; border-radius:0; background:none; padding:0 }
-:root[data-layout=den] .bill-tracker-totals>div+div { padding-left:14px; border-left:1px solid #587596 }
-:root[data-layout=den] .bill-tracker-totals span { color:#c3d4ed!important; font-size:.72rem }
-:root[data-layout=den] .bill-tracker-totals strong { color:#fff!important; font-size:1.35rem; overflow-wrap:anywhere }
-:root[data-layout=den] .bill-tracker-next h4 { margin:16px 0 10px; font-size:.82rem; color:#fff }
-:root[data-layout=den] #billTrackerUpcoming li { background:#123d68; border:1px solid #507398; border-radius:10px; padding:10px 12px; margin-top:8px; gap:12px; color:#fff }
-:root[data-layout=den] #billTrackerUpcoming small { color:#c3d4ed }:root[data-layout=den] #billTrackerUpcoming .is-overdue { color:#ffd0a3 }
-:root[data-layout=den] #billTrackerUpcoming b { color:#fff; font-size:1rem }
-:root[data-layout=den] .bill-tracker-link { color:#fff!important; border:1px solid #6c96c6!important; background:#174777!important; border-radius:9px; min-height:40px }
-.den-contribution { order:1 }.den-bill-actions { order:2 }
-:root[data-layout=den] :is(#debtHeroBox,.savings-hero) { display:flex; flex-direction:column }
-:root[data-layout=den] #debtHeroBox>.tracker-header { flex-wrap:wrap }
-:root[data-layout=den] .payoff-method-toggle { display:flex; gap:3px; width:100%; padding:3px; background:#123b64; border:1px solid #6a88ab; border-radius:12px; flex-wrap:wrap; flex:1 0 100%!important }
-:root[data-layout=den] .pm-btn { flex:1; min-width:60px; min-height:36px; padding:8px 3px; color:#dbeaff!important; background:transparent!important; border:0!important; border-radius:8px; font-size:.7rem }
-:root[data-layout=den] .pm-btn.active { background:#076afa!important; color:#fff!important; box-shadow:0 2px 5px #0002 }
-:root[data-layout=den] .hero-date-banner { background:none; border:0; border-bottom:1px solid #587596; padding:0 0 17px; margin:2px 0 0!important; gap:12px }
-:root[data-layout=den] .hero .big { font-size:1.7rem!important; line-height:1.18; font-weight:800; letter-spacing:-.035em; color:#fff!important; margin:5px 0 }
-:root[data-layout=den] .hero :is(.label,.day-counter,.paycheck-counter) { color:#c3d4ed; font-size:.76rem }
-:root[data-layout=den] :is(#debtHeroBox,.savings-hero)>.row { color:#fff; border-color:#587596; font-size:.82rem; padding:12px 0 }
-:root[data-layout=den] .hero .row>span:first-child { color:#c3d4ed }
-:root[data-layout=den] .hero .row>span:last-child { color:#fff; font-size:1.05rem; font-weight:750 }
-:root[data-layout=den] .hero-pie-corner { background:conic-gradient(#3db6ff calc(var(--den-progress,0)*1%),#284d73 0)!important; width:76px; height:76px; box-shadow:none }
-:root[data-layout=den] .hero-pie-hole-sm { background:#07264a!important; color:#fff!important; width:58px; height:58px }
-:root[data-layout=den] .hero-pie-hole-sm .pct { color:#fff!important; font-size:1.15rem }.hero-pie-wrap-corner { flex-shrink:0 }
-:root[data-layout=den] .savings-hero>.tracker-header { display:grid; grid-template-columns:1fr auto }
-:root[data-layout=den] .hero-controls { display:grid; grid-template-columns:repeat(4,34px); gap:4px }
-:root[data-layout=den] .hero-controls .icon-btn { width:34px; height:36px; min-height:36px; display:grid; place-items:center; color:#fff!important; border:1px solid #6a89ad!important; background:#153e69!important; border-radius:8px }
-:root[data-layout=den] .savings-hero-edit { background:#153c64!important; color:#fff; border-color:#6a89ad!important }
-:root[data-layout=den] .savings-hero-edit :is(.field-name-dark,.savings-withdraw-hint) { color:#d6e5f9!important }
-:root[data-layout=den] .savings-hero-edit input { color:#fff!important; background:#05264b!important; border-color:#7595bb!important }
-.den-next-row { display:flex; align-items:center; gap:10px; padding:12px; margin-top:12px; background:#0f467e; border:1px solid #6299ce; border-radius:11px; font-size:.78rem; color:#fff }
-.den-next-row svg { width:22px; height:22px; flex-shrink:0 }.den-next-row>span { flex:1; min-width:0 }.den-next-row small { display:block; color:#cfdef2; font-size:.7rem; margin-top:3px }.den-next-row>strong { white-space:nowrap; font-size:1rem }
-.den-debt-next { order:4 }.den-debt-actions,.den-savings-detail { order:5 }
-.den-card-actions { display:flex; gap:10px; margin-top:16px }
-:root[data-layout=den] .den-card-actions button { display:flex; justify-content:center; align-items:center; flex:1; gap:8px; min-width:0; min-height:44px; padding:10px 8px; border:1px solid #9ac5ed; border-radius:10px; background:transparent; color:#fff; font:650 .8rem/1.25 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif }
-:root[data-layout=den] .den-card-actions button:last-child { background:#0762ce; border-color:#70b8ff }.den-card-actions svg { width:19px; height:19px; flex-shrink:0 }
-.den-progress-copy { display:flex; justify-content:space-between; gap:10px; font-size:.76rem; color:#c3d4ed; margin:16px 0 10px }.den-progress-copy strong { color:#fff }
-.den-savings-detail progress { width:100%; height:8px; border:0; border-radius:8px; accent-color:#3ebaff; overflow:hidden }.den-savings-detail progress::-webkit-progress-bar { background:#284d73 }.den-savings-detail progress::-webkit-progress-value { background:#3ebaff; border-radius:8px }
-.den-savings-chart { padding-top:14px; color:#50c5ff }.den-savings-chart>svg { width:100%; height:95px; display:block }.den-chart-grid { fill:none; stroke:#587596; stroke-width:.7; stroke-dasharray:3 3 }.den-savings-chart>div { display:flex; justify-content:space-between; gap:12px; color:#c3d4ed; font-size:.66rem }
-/* Page summaries are raised, light surfaces, distinct from the dashboard. */
-:root[data-layout=den] .den-page-summary { background:var(--den-summary); color:var(--ink); border:1px solid var(--line); border-radius:20px; padding:20px; margin-bottom:22px; box-shadow:inset 0 1px 0 #fff9,var(--den-elevation) }
-.den-summary-heading { display:flex; justify-content:space-between; align-items:center; gap:12px }.den-summary-heading h3 { margin:0; font-size:.72rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase }
-.den-summary-heading button { display:flex; align-items:center; gap:7px; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 12px; min-height:38px; font-size:.75rem; font-weight:650 }.den-summary-heading svg { width:17px; height:17px }
-.den-bills-paid { display:flex; justify-content:space-between; align-items:center; gap:15px; margin:15px 0 }.den-bills-paid>strong { font-size:clamp(1.6rem,7vw,2.2rem); letter-spacing:-.04em }
-.den-paid-ring { display:grid; place-items:center; width:66px; height:66px; flex-shrink:0; border-radius:50%; background:conic-gradient(#0966f5 var(--paid,0%),#a9bce7 0) }.den-paid-ring span { display:grid; place-items:center; background:var(--den-summary); border-radius:50%; width:51px; height:51px; font-size:1rem; font-weight:800 }
-.den-summary-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; border-top:1px solid var(--line); padding-top:14px; margin-top:12px }.den-summary-stats>div+div { border-left:1px solid var(--line); padding-left:12px }.den-summary-stats strong { display:block; font-size:1.25rem; font-weight:800; letter-spacing:-.03em; overflow-wrap:anywhere }.den-summary-stats span { display:block; color:var(--muted); font-size:.68rem; line-height:1.4; margin-top:3px }
-.den-summary-amount { display:block; font-size:clamp(2.4rem,9vw,3.5rem); font-weight:850; letter-spacing:-.055em; margin:10px 0; overflow-wrap:anywhere }
-#denDebtSummary .den-summary-stats { grid-template-columns:1fr 1fr }.den-summary-progress { display:flex; align-items:center; gap:6px; margin-top:17px; font-size:.72rem; color:var(--muted) }.den-summary-progress progress { flex:1; margin-left:10px; height:7px; accent-color:#1563db }
-.den-summary-method { display:flex; align-items:center; justify-content:space-between; gap:10px; border-top:1px solid var(--line); margin-top:14px; padding-top:12px; font-size:.74rem }.den-summary-method select { background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font:inherit }
-:root[data-layout=den] #tab-income .bank-card { background:var(--den-income)!important; color:var(--ink)!important; --on-dark:var(--ink); --on-dark-muted:var(--muted); --on-dark-line:var(--line); --on-dark-accent:var(--accent); --on-dark-hover:var(--accent-soft); display:flex; flex-direction:column; box-shadow:inset 0 1px 0 #fff9,var(--den-elevation)!important }
-:root[data-layout=den] #incomeSummary { order:-4 }:root[data-layout=den] #incomeBalances { order:-3 }:root[data-layout=den] #incomeBankUpdated { order:-2 }
-:root[data-layout=den] #incomeSummary .income-total { font-size:clamp(2.6rem,10vw,3.6rem); color:var(--ink); font-weight:850; line-height:1.1; letter-spacing:-.05em; margin:7px 0 }
-:root[data-layout=den] #incomeSummary :is(.income-account-name,.income-eyebrow) { color:var(--muted); font-size:.8rem }
-:root[data-layout=den] #incomeSummary .income-next-payday { display:none }
-:root[data-layout=den] .den-income-payday { display:flex; order:-1; justify-content:space-between; gap:12px; border:1px solid var(--line); background:var(--card); border-radius:12px; padding:14px; margin-top:8px }
-.den-income-payday:empty { display:none!important }.den-income-payday>span { display:flex; align-items:center; gap:10px; font-size:.72rem }.den-income-payday>span:last-child { display:block; border-left:1px solid var(--line); padding-left:14px }.den-income-payday svg { width:24px; height:24px; flex-shrink:0 }.den-income-payday strong { display:block; font-size:1.12rem; margin:3px 0; color:var(--ink) }.den-income-payday small { font-size:.68rem; color:var(--muted) }
-:root[data-layout=den] #tab-income .income-controls-header { margin:16px 0 0; display:block }
-:root[data-layout=den] .income-controls-header .hero-title { display:none }
-:root[data-layout=den] .income-widget-actions { display:flex; gap:7px; flex-wrap:wrap }
-:root[data-layout=den] .income-widget-actions button { color:var(--ink)!important; background:var(--card)!important; border:1px solid var(--line)!important; padding:10px 14px; border-radius:10px; font-size:.75rem; min-height:40px }
-:root[data-layout=den] .income-widget-actions button[aria-expanded=true] { color:var(--on-accent)!important; background:var(--accent-fill)!important }
-/* Bills and debts share one account-card language. All existing actions stay. */
-:root[data-layout=den] :is(#billListCard,#debtListCard) { background:transparent!important; border:0!important; box-shadow:none!important; padding:0; border-radius:0!important }
-:root[data-layout=den] :is(#billListCard,#debtListCard)>.card-heading { padding:0 2px; margin:22px 0 12px }
-:root[data-layout=den] .account-sort-controls { padding:12px; background:var(--surface-inset); border:1px solid var(--line); border-radius:12px; margin:14px 0 18px }
-:root[data-layout=den] :is(.bill-tile,.debt-account) { position:relative; display:flex; flex-direction:column; background:var(--card)!important; border:1px solid var(--line)!important; border-radius:18px; padding:18px; margin:0 0 20px; box-shadow:var(--den-elevation); overflow:hidden }
-:root[data-layout=den] :is(.bill-card-header,.debt-card-header) { display:contents }
-:root[data-layout=den] :is(.debt-compact-main,.bill-tile-main) { order:0; padding:0 76px 0 0; min-height:46px; display:block; margin:0 0 10px }
-:root[data-layout=den] :is(.debt-compact-info,.bill-tile-info) h4 { font-size:1.1rem; font-weight:800; margin:0 0 5px; letter-spacing:-.035em; color:var(--ink); overflow-wrap:anywhere; line-height:1.3 }
-:root[data-layout=den] :is(.debt-compact-info,.bill-tile-info) h4::before { content:attr(data-den-mark); display:inline-grid; place-items:center; vertical-align:middle; width:32px; height:32px; margin-right:8px; border-radius:9px; font-size:.8rem; letter-spacing:0; background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent-line) }
-:root[data-layout=den] .bill-tile-info h4::before { background:var(--due-bg); color:var(--due-ink); border-color:var(--due-border) }
-:root[data-layout=den] :is(.debt-compact-info,.bill-tile-info)>small { color:var(--muted); font-size:.72rem }
-:root[data-layout=den] .den-date-stamp { position:absolute; top:18px; right:18px; width:52px; padding:6px 3px; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#ff8b31; color:#291300; border:1px solid #df6d19; border-radius:10px; font-size:.65rem; font-weight:750; line-height:1.1 }.den-date-stamp strong { font-size:1.65rem; font-weight:850; letter-spacing:-.04em }.den-date-stamp.is-paid { background:#dae3f0; border-color:#a8bad2; color:#304461 }
-:root[data-layout=den] :is(.bill-amount,.debt-key-amounts) { order:1; padding:0 0 14px; margin:0; border:0; background:none; color:var(--ink) }
-:root[data-layout=den] .bill-amount { display:flex; flex-direction:column-reverse; align-items:flex-start; gap:3px }
-:root[data-layout=den] .bill-amount>strong,:root[data-layout=den] .debt-key-amounts>div:first-child>strong { font-size:2rem; font-weight:850; letter-spacing:-.045em; color:var(--ink) }
-:root[data-layout=den] .debt-key-amounts { grid-template-columns:minmax(0,1.6fr) minmax(0,1fr); gap:12px; align-items:end }
-:root[data-layout=den] .debt-key-amounts>div { background:none; border:0; padding:0; text-align:left }
-:root[data-layout=den] .debt-key-amounts>div:first-child { display:flex; flex-direction:column-reverse }
-:root[data-layout=den] .debt-key-amounts .minimum-due { text-align:right }
-:root[data-layout=den] .debt-key-amounts .minimum-due strong { color:var(--ink); font-size:1.15rem }
-:root[data-layout=den] .bill-amount>span,:root[data-layout=den] .debt-key-amounts span { font-size:.68rem; color:var(--muted) }
-:root[data-layout=den] :is(.bill-due-date,.debt-account-footer) { order:2; margin:0; padding:0 0 12px; border:0; background:none; text-align:left; font-size:.75rem; color:var(--muted) }
-:root[data-layout=den] .debt-account-footer>.debt-due-date { background:none; border:0; padding:0; font-size:.75rem; font-weight:600; color:var(--muted) }
-:root[data-layout=den] :is(.debt-card-estimates,.den-bill-meta) { order:3; border-top:1px solid var(--line); padding-top:12px; margin:0 0 12px; background:none }
-:root[data-layout=den] .debt-card-estimates .debt-detail-metrics { gap:12px; margin:0 }:root[data-layout=den] .debt-card-estimates .debt-detail-metrics>div { padding:0; background:none; border:0 }:root[data-layout=den] .debt-card-estimates dt { font-size:.65rem; color:var(--muted) }:root[data-layout=den] .debt-card-estimates dd { font-size:1rem; font-weight:750; color:var(--ink); margin-top:3px }
-:root[data-layout=den] .den-bill-meta { display:grid; grid-template-columns:1fr 1fr; gap:12px }.den-bill-meta>div+div { padding-left:12px; border-left:1px solid var(--line) }.den-bill-meta span { font-size:.65rem; color:var(--muted) }.den-bill-meta strong { display:block; color:var(--ink); font-size:.8rem; margin-top:3px }
-:root[data-layout=den] :is(.bill-tile,.debt-account) .debt-account-tools { order:5; display:flex; flex-wrap:wrap; gap:8px; position:static; margin:8px 0 0; width:100% }
-:root[data-layout=den] .income-card .debt-account-tools>button { border:1px solid var(--line); background:var(--surface-subtle); color:var(--ink); border-radius:9px; min-height:40px; padding:8px 12px; font-size:.73rem }
-:root[data-layout=den] .income-card .debt-account-tools>.bill-icon-button { width:40px; padding:10px }
-:root[data-layout=den] .income-card .debt-account-tools>.bill-paid-button { background:var(--accent-fill); color:var(--on-accent); border-color:var(--accent-fill) }
-:root[data-layout=den] .account-card-footer { order:4; display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:10px; border-top:1px solid var(--line); margin:0; padding:10px 0 0; background:none }
-:root[data-layout=den] .account-connection { margin:0 0 0 auto; padding:5px 8px; border:1px solid var(--line); border-radius:7px; font-size:.62rem; color:var(--muted); background:var(--surface-subtle) }
-:root[data-layout=den] .account-available-credit { margin:0 }:root[data-layout=den] .account-available-credit strong { color:var(--ink); font-size:1rem }
-:root[data-layout=den] :is(.bill-loan-summary,.email-payment-status,.debt-account>.subtle) { order:4 }
-:root[data-layout=den] .account-view-tabs { background:var(--surface-inset); border:1px solid var(--line); border-radius:13px; padding:4px; gap:4px; margin-bottom:22px }
-:root[data-layout=den] .account-view-tabs button { border:0; min-height:40px; border-radius:9px; color:var(--ink); background:transparent; font-size:.8rem }
-:root[data-layout=den] .account-view-tabs button[aria-selected=true] { background:var(--den-navy); color:#fff; box-shadow:0 2px 5px #102c4f26 }
-/* Paychecks remain real, fully editable cards after every dashboard tracker. */
-:root[data-layout=den] #schedulePlanSection { margin-top:34px; scroll-margin-top:20px }
-:root[data-layout=den] #schedulePlanSection>.section-divider { display:none }
-:root[data-layout=den] #schedulePlanSection>.section-divider+div { justify-content:flex-start!important; padding-right:48px; margin-bottom:8px!important }
-:root[data-layout=den] .section-title { font:800 1.55rem/1.2 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; letter-spacing:-.035em; color:var(--ink) }
-.den-schedule-intro { color:var(--muted); font-size:.8rem; line-height:1.5; margin:0 0 20px }
-:root[data-layout=den] .paycheck { padding:20px; background:var(--card); border:1px solid var(--line)!important; overflow:hidden }
-:root[data-layout=den] .paycheck-head { background:var(--den-income); margin:-20px -20px 18px; padding:18px 20px; border:0; border-bottom:1px solid var(--line); color:var(--ink) }
-:root[data-layout=den] .paycheck .date { color:var(--ink); font-size:1rem; font-weight:800; letter-spacing:-.025em }
-:root[data-layout=den] .paycheck input[type=checkbox] { accent-color:var(--accent-fill); width:22px; height:22px; flex-shrink:0 }
-:root[data-layout=den] .check-summary { border:0; background:transparent; padding:0; margin:0 0 18px }
-:root[data-layout=den] .check-summary-row { padding:10px 0; border-bottom:1px solid var(--amount-line); gap:14px; color:var(--ink); font-size:.8rem; line-height:1.4 }
-:root[data-layout=den] .paycheck .amount-input-wrap { border:1px solid var(--line); background:var(--surface-subtle); border-radius:8px; color:var(--ink); padding:4px 7px; flex-shrink:0 }
-:root[data-layout=den] .paycheck .amount-input { background:transparent; color:var(--ink); border:0; font-size:.9rem; width:90px; max-width:100%; min-height:30px; appearance:textfield; -moz-appearance:textfield }
-:root[data-layout=den] .paycheck .prominent-row { padding:12px; background:var(--accent-soft); border:1px solid var(--accent-line); border-radius:10px; margin:12px 0; font-weight:700 }
-:root[data-layout=den] .paycheck .paycheck-debt-row { background:var(--surface-subtle); border:1px solid var(--line); border-radius:12px; padding:13px; margin:15px 0 }
-:root[data-layout=den] .paycheck-creditor { font:750 .9rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--ink) }
-:root[data-layout=den] .paycheck-debt-amounts { border-top:1px solid var(--line); margin-top:12px; padding-top:12px; gap:7px }
-:root[data-layout=den] .paycheck-cash-left { border:1px solid var(--accent-line); border-radius:11px; background:var(--accent-soft); padding:14px; margin:18px 0; font-size:.83rem }:root[data-layout=den] .paycheck-cash-left strong { font-size:1.2rem }
-:root[data-layout=den] .paycheck :is(.bonus-inline-btn,.add-debt-payment) { padding:10px 12px; min-height:40px; border-radius:9px; font-size:.72rem }
-:root[data-layout=den] .paycheck.completed { opacity:.85 }:root[data-layout=den] .paycheck.completed .paycheck-head { background:var(--status-soft) }
-:root[data-layout=den] .paycheck-bear-scene { display:none }
-:root[data-layout=den] .paycheck :is(.milestone-banner,.milestone-banner-account) { border-radius:10px; margin:0 0 14px; font-size:.8rem }
-/* Settings, connections, tools, and all existing editors share the new surfaces. */
-:root[data-layout=den] #connectionDialog { background:none; border:0; padding:0; box-shadow:none }
-:root[data-layout=den] #connectionDialog>section,:root[data-layout=den] #privateConnections>section { padding:22px; border:1px solid var(--line); background:var(--card) }
-:root[data-layout=den] #connectionDialog>section:first-of-type { background:var(--den-income) }
-:root[data-layout=den] :is(#plaidSection,#lunchflowSection,.bank-display-options,.debt-timing-settings) { padding:16px; border:1px solid var(--line); border-radius:14px; background:var(--surface-subtle); margin-top:18px }
-:root[data-layout=den] #trackerOptions>.check-label { padding:14px 0; margin:0; border-top:1px solid var(--line); font-size:.85rem; gap:12px }
-:root[data-layout=den] #trackerOptions .subtle { line-height:1.55; font-size:.74rem }
-:root[data-layout=den] .den-settings-links { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:24px }
-.den-settings-links a,.den-settings-links button { display:flex; align-items:center; gap:6px; padding:10px 12px; text-decoration:none; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:10px; font:650 .75rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif }.den-settings-links svg { width:16px; height:16px }
-:root[data-layout=den] #denDesignSettings { padding:22px; margin-bottom:24px; border:1px solid var(--line); border-radius:20px; background:var(--card) }
-#denDesignSettings label { display:block; font-size:.8rem; font-weight:650; margin-bottom:8px }#denDesignChoice { font:inherit; font-size:.85rem; width:100%; padding:12px; border:1px solid var(--line); border-radius:10px; background:var(--paper); color:var(--ink) }
-:root[data-layout=den] #tab-tools .hero { border:1px solid var(--line)!important }
-:root[data-layout=den] dialog.income-card { border:1px solid var(--line); box-shadow:0 20px 80px #071a3a55!important; padding:24px; max-height:90dvh }
 /* Wallet: layered destination cards. No bottom tab bar or radial menu. */
-:root[data-layout=den] .den-dock { position:fixed; z-index:1000; right:max(18px,calc((100vw - 840px)/2)); bottom:calc(18px + env(safe-area-inset-bottom)); display:block }
-.den-dock button { display:flex; align-items:center; justify-content:center; gap:10px; padding:12px 18px; min-height:52px; border:1px solid #7498c2; border-radius:18px; background:#05264b; color:#fff; box-shadow:0 3px 0 #fff8,0 5px 18px #0c264850; font:750 .9rem/1.2 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; cursor:pointer }
-.den-wallet-icon { position:relative; display:inline-block; width:29px; height:23px; flex-shrink:0 }.den-wallet-icon i { position:absolute; width:23px; height:15px; border:1.5px solid #fff; border-radius:4px; background:#0868ff; top:0; right:0 }.den-wallet-icon i:nth-child(2) { background:#ff8a23; top:4px; right:3px }.den-wallet-icon i:nth-child(3) { background:#21b967; top:8px; right:6px }
-.den-menu-open #denDock { visibility:hidden }
-#denMenu { max-width:none; max-height:none; width:100%; height:100dvh; inset:0; padding:24px 20px calc(20px + env(safe-area-inset-bottom)); margin:0; border:0; background:var(--paper); color:var(--ink); overflow:auto; box-sizing:border-box; border-radius:0 }
-#denMenu::backdrop { background:#15273e9c; backdrop-filter:blur(8px) }
-.den-menu-sheet { width:min(100%,510px); margin:0 auto }
-.den-menu-sheet>header { position:relative; margin-bottom:24px; padding-right:48px }
-.den-wallet-brand { display:flex; align-items:center; gap:8px; font-size:1.15rem; letter-spacing:-.045em }.den-wallet-brand svg { width:25px; height:25px }
-.den-menu-sheet h2 { font-size:2.5rem; font-weight:850; letter-spacing:-.055em; line-height:1.1; margin:18px 0 5px; color:var(--ink) }.den-menu-sheet header p { margin:0; color:var(--muted); font-size:.85rem }
-#denClose { position:absolute; top:0; right:0; display:grid; place-items:center; width:42px; height:42px; border:1px solid var(--line); border-radius:50%; background:var(--card); color:var(--ink); cursor:pointer }#denClose svg { width:22px; height:22px }
-.den-wallet-stack { display:flex; flex-direction:column; padding:10px 8px 0; isolation:isolate }
-.den-wallet-card { position:relative; width:100%; display:flex; align-items:flex-start; gap:13px; padding:20px 18px 38px; border:1px solid #ffffffaa; border-radius:21px; background:#05264b; color:#fff; text-align:left; font:inherit; box-shadow:0 -2px 0 #fff4,0 6px 16px #0a1f3c38; cursor:pointer; transition:translate .18s ease }
-.den-wallet-card+.den-wallet-card { margin-top:-17px }.den-wallet-card:last-child { padding-bottom:22px }
-.den-wallet-card:nth-child(odd) { transform:rotate(-1.7deg) }.den-wallet-card:nth-child(even) { transform:rotate(1.7deg) }
-.den-wallet-card:hover,.den-wallet-card:focus-visible { translate:0 -5px; z-index:2 }
-.den-wallet-card>svg { width:24px; height:24px; margin-left:auto; align-self:center; flex-shrink:0 }.den-wallet-glyph { display:grid; place-items:center; width:40px; height:40px; border:1px solid currentColor; border-radius:11px; background:#ffffff15; flex-shrink:0 }.den-wallet-glyph svg { width:25px; height:25px }
-.den-wallet-content { flex:1; min-width:0; display:block }.den-wallet-label { display:block; font-size:.78rem; font-weight:800; letter-spacing:.09em; text-transform:uppercase; margin:0 0 5px }.den-wallet-content>strong { display:block; font-size:1.8rem; font-weight:850; line-height:1.15; letter-spacing:-.05em; overflow-wrap:anywhere }.den-wallet-content small { display:block; font-size:.76rem; line-height:1.4; margin-top:4px }
-.den-wallet-metrics { display:flex; gap:18px; margin-top:15px }.den-wallet-metrics>span+span { border-left:1px solid #93b1d0; padding-left:18px }.den-wallet-metrics strong { font-size:1.35rem; letter-spacing:-.04em }.den-wallet-metrics small { font-size:.65rem }
-.den-wallet-income { background:#0862f2 }.den-wallet-bills { background:#fff9ed; color:#171e30; border-color:#d6c5aa }.den-wallet-debts { background:#e0d7fc; color:#181732; border-color:#aea0d1 }.den-wallet-savings { background:#e4fc94; color:#163014; border-color:#abc564 }.den-wallet-den { background:#29333f }
-.den-wallet-bills .den-wallet-glyph { color:#fff; background:#fa751a; border-color:#df6519 }.den-wallet-debts .den-wallet-glyph { color:#fff; background:#4b3587; border-color:#3a296e }.den-wallet-savings .den-wallet-glyph { color:#fff; background:#2e6b25; border-color:#24561d }
-.den-wallet-card progress { display:block; width:100%; height:6px; margin-top:10px; accent-color:#ed7018 }
-.den-menu-sheet>footer button { display:flex; align-items:center; justify-content:center; gap:10px; margin:22px 0 0; width:100%; padding:14px; min-height:48px; border:1px solid var(--line); border-radius:14px; background:var(--card); color:var(--ink); font:750 .85rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; cursor:pointer }.den-menu-sheet>footer svg { width:20px; height:20px }
-#denDestinations { padding:18px; border:1px solid var(--line); border-radius:16px; background:var(--card); margin:18px 0 0 }#denDestinations h3 { margin:0 0 12px; font-size:1rem }#denDestinations button { display:flex; align-items:center; gap:10px; width:100%; padding:12px; border:1px solid var(--line); border-radius:10px; margin-top:8px; background:var(--surface-subtle); color:var(--ink); cursor:pointer; font:650 .85rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif }#denDestinations svg { width:20px; height:20px }
-#denMenu button:focus-visible { outline:3px solid #4d8cf5; outline-offset:4px }
+:root[data-layout=den] .den-dock { position:fixed; z-index:1000; right:max(18px,calc((100vw - 1080px)/2)); bottom:calc(18px + env(safe-area-inset-bottom)); display:block }
+:where(:root[data-layout=den]) .den-dock button { display:flex; align-items:center; justify-content:center; gap:10px; padding:12px 18px; min-height:52px; border:1px solid #7498c2; border-radius:24px; background:var(--card); color:var(--ink); box-shadow:0 3px 0 #fff8,0 5px 18px #0c264850; font:750 .9rem/1.2 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; cursor:pointer }
+:where(:root[data-layout=den]) .den-wallet-icon { position:relative; display:inline-block; width:29px; height:23px; flex-shrink:0 }
+:where(:root[data-layout=den]) .den-wallet-icon i { position:absolute; width:23px; height:15px; border:1.5px solid #fff; border-radius:4px; background:#0868ff; top:0; right:0 }
+:where(:root[data-layout=den]) .den-wallet-icon i:nth-child(2) { background:#ff8a23; top:4px; right:3px }
+:where(:root[data-layout=den]) .den-wallet-icon i:nth-child(3) { background:#21b967; top:8px; right:6px }
+:where(:root[data-layout=den]) .den-menu-open #denDock { visibility:hidden }
+:where(:root[data-layout=den]) #denMenu { max-width:none; max-height:none; width:100%; height:100dvh; inset:0; padding:24px 20px calc(20px + env(safe-area-inset-bottom)); margin:0; border:0; background:var(--paper); color:var(--ink); overflow:auto; box-sizing:border-box; border-radius:0 }
+:where(:root[data-layout=den]) #denMenu::backdrop { background:#15273e9c; backdrop-filter:blur(8px) }
+:where(:root[data-layout=den]) .den-menu-sheet { width:min(100%,510px); margin:0 auto }
+:where(:root[data-layout=den]) .den-menu-sheet>header { position:relative; margin-bottom:24px; padding-right:48px }
+:where(:root[data-layout=den]) .den-wallet-brand { display:flex; align-items:center; gap:8px; font-size:1.15rem; letter-spacing:-.045em }
+:where(:root[data-layout=den]) .den-wallet-brand svg { width:25px; height:25px }
+:where(:root[data-layout=den]) .den-menu-sheet h2 { font-size:2.5rem; font-weight:850; letter-spacing:-.055em; line-height:1.1; margin:18px 0 5px; color:var(--ink) }
+:where(:root[data-layout=den]) .den-menu-sheet header p { margin:0; color:var(--muted); font-size:.85rem }
+:where(:root[data-layout=den]) #denClose { position:absolute; top:0; right:0; display:grid; place-items:center; width:42px; height:42px; border:1px solid var(--line); border-radius:50%; background:var(--card); color:var(--ink); cursor:pointer }
+:where(:root[data-layout=den]) #denClose svg { width:22px; height:22px }
+:where(:root[data-layout=den]) .den-wallet-stack { display:flex; flex-direction:column; padding:10px 8px 0; isolation:isolate }
+:where(:root[data-layout=den]) .den-wallet-card { position:relative; width:100%; display:flex; align-items:flex-start; gap:13px; padding:20px 18px 38px; border:1px solid #ffffffaa; border-radius:21px; background:#05264b; color:#fff; text-align:left; font:inherit; box-shadow:0 -2px 0 #fff4,0 6px 16px #0a1f3c38; cursor:pointer; transition:translate .18s ease }
+:where(:root[data-layout=den]) .den-wallet-card+.den-wallet-card { margin-top:-17px }
+:where(:root[data-layout=den]) .den-wallet-card:last-child { padding-bottom:22px }
+:where(:root[data-layout=den]) .den-wallet-card:nth-child(odd) { transform:rotate(-1.7deg) }
+:where(:root[data-layout=den]) .den-wallet-card:nth-child(even) { transform:rotate(1.7deg) }
+:where(:root[data-layout=den]) .den-wallet-card:hover, :where(:root[data-layout=den]) .den-wallet-card:focus-visible { translate:0 -5px; z-index:2 }
+:where(:root[data-layout=den]) .den-wallet-card>svg { width:24px; height:24px; margin-left:auto; align-self:center; flex-shrink:0 }
+:where(:root[data-layout=den]) .den-wallet-glyph { display:grid; place-items:center; width:40px; height:40px; border:1px solid currentColor; border-radius:11px; background:#ffffff15; flex-shrink:0 }
+:where(:root[data-layout=den]) .den-wallet-glyph svg { width:25px; height:25px }
+:where(:root[data-layout=den]) .den-wallet-content { flex:1; min-width:0; display:block }
+:where(:root[data-layout=den]) .den-wallet-label { display:block; font-size:.78rem; font-weight:800; letter-spacing:.09em; text-transform:uppercase; margin:0 0 5px }
+:where(:root[data-layout=den]) .den-wallet-content>strong { display:block; font-size:1.8rem; font-weight:850; line-height:1.15; letter-spacing:-.05em; overflow-wrap:anywhere }
+:where(:root[data-layout=den]) .den-wallet-content small { display:block; font-size:.76rem; line-height:1.4; margin-top:4px }
+:where(:root[data-layout=den]) .den-wallet-metrics { display:flex; gap:18px; margin-top:15px }
+:where(:root[data-layout=den]) .den-wallet-metrics>span+span { border-left:1px solid #93b1d0; padding-left:18px }
+:where(:root[data-layout=den]) .den-wallet-metrics strong { font-size:1.35rem; letter-spacing:-.04em }
+:where(:root[data-layout=den]) .den-wallet-metrics small { font-size:.65rem }
+:where(:root[data-layout=den]) .den-wallet-income { background:#0862f2 }
+:where(:root[data-layout=den]) .den-wallet-bills { background:#fff9ed; color:#171e30; border-color:#d6c5aa }
+:where(:root[data-layout=den]) .den-wallet-debts { background:#e0d7fc; color:#181732; border-color:#aea0d1 }
+:where(:root[data-layout=den]) .den-wallet-savings { background:#e4fc94; color:#163014; border-color:#abc564 }
+:where(:root[data-layout=den]) .den-wallet-den { background:#29333f }
+:where(:root[data-layout=den]) .den-wallet-bills .den-wallet-glyph { color:#fff; background:#fa751a; border-color:#df6519 }
+:where(:root[data-layout=den]) .den-wallet-debts .den-wallet-glyph { color:#fff; background:#4b3587; border-color:#3a296e }
+:where(:root[data-layout=den]) .den-wallet-savings .den-wallet-glyph { color:#fff; background:#2e6b25; border-color:#24561d }
+:where(:root[data-layout=den]) .den-wallet-card progress { display:block; width:100%; height:6px; margin-top:10px; accent-color:#ed7018 }
+:where(:root[data-layout=den]) .den-menu-sheet>footer button { display:flex; align-items:center; justify-content:center; gap:10px; margin:22px 0 0; width:100%; padding:14px; min-height:48px; border:1px solid var(--line); border-radius:14px; background:var(--card); color:var(--ink); font:750 .85rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; cursor:pointer }
+:where(:root[data-layout=den]) .den-menu-sheet>footer svg { width:20px; height:20px }
+:where(:root[data-layout=den]) #denDestinations { padding:18px; border:1px solid var(--line); border-radius:16px; background:var(--card); margin:18px 0 0 }
+:where(:root[data-layout=den]) #denDestinations h3 { margin:0 0 12px; font-size:1rem }
+:where(:root[data-layout=den]) #denDestinations button { display:flex; align-items:center; gap:10px; width:100%; padding:12px; border:1px solid var(--line); border-radius:10px; margin-top:8px; background:var(--surface-subtle); color:var(--ink); cursor:pointer; font:650 .85rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif }
+:where(:root[data-layout=den]) #denDestinations svg { width:20px; height:20px }
+:where(:root[data-layout=den]) #denMenu button:focus-visible { outline:3px solid #4d8cf5; outline-offset:4px }
 :root:not([data-layout=den]) #denMenu { display:none }
 :root[data-layout=den] :is(body.setup-loading,body.setup-active) .den-dock { visibility:hidden }
-@media(min-width:900px) {
-  :root[data-layout=den] .wrap { max-width:1060px; padding-inline:30px }
-  :root[data-layout=den] #tab-debt:not([hidden]) { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:24px; align-items:start }
-  :root[data-layout=den] #tab-debt>.den-intro,:root[data-layout=den] #schedulePlanSection { grid-column:1/-1 }
-  :root[data-layout=den] #scheduleOut { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; align-items:start }
-  :root[data-layout=den] #scheduleOut .paycheck { margin-bottom:0 }
-  :root[data-layout=den] :is(#billAgenda,#debtAccounts) { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; align-items:start }
-  :root[data-layout=den] :is(#billAgenda,#debtAccounts)>article { margin:0 }
-  :root[data-layout=den] #paidBillsList { grid-column:1/-1 }
-  :root[data-layout=den] .den-dock { right:max(24px,calc((100vw - 1000px)/2)) }
-}
-@media(max-width:420px) {
-  :root[data-layout=den] .wrap { padding:18px 14px calc(110px + env(safe-area-inset-bottom)) }
-  :root[data-layout=den] :is(#debtIncomeCard,#billTracker,#debtHeroBox,.savings-hero) { padding:18px }
-  :root[data-layout=den] .hero-controls { grid-template-columns:repeat(2,32px) }
-  .den-summary-stats { gap:8px }.den-summary-stats>div+div { padding-left:8px }.den-summary-stats strong { font-size:1.06rem }
-  :root[data-layout=den] .den-page-summary { padding:17px }.den-income-payday { padding:11px!important; gap:8px!important }.den-income-payday svg { display:none }.den-income-payday>span:last-child { padding-left:10px }.den-income-payday strong { font-size:1rem }
-  .den-allocation-grid { grid-template-columns:repeat(2,minmax(0,1fr)) }.den-allocation-grid>div:nth-child(3n+1) { padding-left:12px; border-left:1px solid #587596 }.den-allocation-grid>div:nth-child(2n+1) { padding-left:0; border:0 }
-  :root[data-layout=den] .paycheck { padding:16px }:root[data-layout=den] .paycheck-head { margin:-16px -16px 15px; padding:16px }
-  :root[data-layout=den] .paycheck-debt-amounts { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px }
-  #denMenu { padding:20px 14px }.den-wallet-stack { padding-inline:5px }.den-wallet-card { padding:17px 13px 32px; gap:10px }.den-wallet-card:last-child { padding-bottom:20px }.den-wallet-content>strong { font-size:1.55rem }.den-wallet-glyph { width:34px; height:34px }.den-wallet-metrics { gap:12px }.den-wallet-metrics>span+span { padding-left:12px }.den-wallet-metrics strong { font-size:1.12rem }
-}
-@media(prefers-reduced-motion:reduce) { .den-wallet-card { transition:none } }
-
-:root[data-layout=den] #debtHeroBox .payoff-method-toggle { flex:1 0 100%; min-width:0; justify-content:stretch }
-:root[data-layout=den] .paycheck input[type=number]::-webkit-inner-spin-button,:root[data-layout=den] .paycheck input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0 }
-:root[data-layout=den] .paycheck-debt-amounts .account-payment-input { width:100%; min-height:32px; padding:6px; border:1px solid var(--line); border-radius:7px; background:var(--card); color:var(--ink); font-size:.85rem }
-:root[data-layout=den] .den-income-heading { order:-5; display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:15px; font-size:.68rem; font-weight:750; text-transform:uppercase; letter-spacing:.06em }
-.den-income-heading button { display:flex; gap:5px; align-items:center; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:9px; font:650 .75rem/1.2 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; padding:9px 12px; text-transform:none; letter-spacing:0 }.den-income-heading svg { width:17px; height:17px }
+/* Foundation and the page shell. */
+:root[data-layout=den] body { background:radial-gradient(ellipse at 12% 0%,#e3edf9 0,transparent 48%),linear-gradient(140deg,var(--paper),#c6d1e7); background-attachment:fixed; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--ink) }
+:root[data-layout=den][data-theme=dark] body { background:linear-gradient(135deg,#142337,var(--paper)) }
+:where(:root[data-layout=den]) .den-only { display:block }
+:root[data-layout=den] [hidden] { display:none!important }
+:root[data-layout=den] .wrap { max-width:780px; padding:24px 18px calc(110px + env(safe-area-inset-bottom)); margin:0 auto }
+:root[data-layout=den] :is(.app-title-box,.bottom-tabs,.hero-bear,.hero-peek-wrap::before,.hero-peek-wrap::after,#tab-debt>.tab-header-peek,.den-original-title,.tab-heading-icon,.bd-source-only) { display:none!important }
+:root[data-layout=den] :is(.hero-peek-wrap,.tab-header-peek) { padding:0; margin:0 0 16px }
+:root[data-layout=den] :is(button,input,select,textarea) { font-family:inherit }
+:root[data-layout=den] button { cursor:pointer }
+:root[data-layout=den] button:disabled { cursor:not-allowed }
+:root[data-layout=den] :is(button,a,input,select,textarea,summary):focus-visible { outline:3px solid var(--accent); outline-offset:3px }
+:root[data-layout=den] .den-brand { display:flex; align-items:center; justify-content:space-between; margin:0 2px 4px; gap:12px }
+:where(:root[data-layout=den]) .den-brand>div { display:flex; align-items:center; gap:7px; font-size:1.2rem; font-weight:850; letter-spacing:-.055em }
+:where(:root[data-layout=den]) .den-brand>div:first-child svg { width:37px; height:29px }
+:root[data-layout=den] .den-brand .bd-avatar { display:grid; place-items:center; width:38px; height:38px; border:1px solid #ffffff70; border-radius:50%; background:#ffffff55; color:var(--ink); box-shadow:0 2px 5px #33527e15; font-weight:650; font-size:.85rem }
+:where(:root[data-layout=den]) .den-brand .bd-avatar span { display:block }
+:root[data-layout=den] :is(.den-intro,.tab-intro) { background:none!important; border:0!important; box-shadow:none!important; padding:0!important; border-radius:0; margin:0 }
+:root[data-layout=den] .bd-page-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; min-height:54px }
+:root[data-layout=den] :is(.den-intro h2,.bd-page-heading h2) { margin:0; color:var(--ink)!important; font:850 clamp(2.4rem,10.8vw,3rem)/1.15 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; letter-spacing:-.065em }
+:root[data-layout=den] .den-intro { margin-bottom:16px }
+:where(:root[data-layout=den]) .den-intro p { margin:4px 0 0; color:var(--muted); font-size:.78rem }
+:where(:root[data-layout=den]) .bd-heading-actions { display:flex; gap:6px; flex-shrink:0 }
+:root[data-layout=den] :is(.bd-heading-actions button,.bd-add-account) { min-height:37px; margin:0; padding:8px 12px; border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--ink); font-size:.78rem; font-weight:650; box-shadow:0 2px 3px #25456c12 }
+:root[data-layout=den] :is(.income-card,.hero,.paycheck) { border:1px solid var(--line); border-radius:16px; box-shadow:var(--den-elevation); background:var(--card); margin-bottom:16px; padding:16px }
+:root[data-layout=den] :is(h3,h4,.hero-title) { font-family:inherit; letter-spacing:-.025em }
+:root[data-layout=den] .card-heading { margin:0 0 12px; gap:8px }
+:root[data-layout=den] .card-heading h3 { font-size:1.1rem; font-weight:800; margin:0 }
+:root[data-layout=den] .subtle { color:var(--muted); line-height:1.5 }
+/* Distinct light page summaries. */
+:root[data-layout=den] .den-page-summary { background:linear-gradient(130deg,var(--den-summary),color-mix(in srgb,var(--den-summary) 80%,var(--card))); border:1px solid #ffffffaa; border-radius:16px; padding:15px 17px; margin-bottom:14px; color:var(--ink); box-shadow:inset 0 1px 0 #fff7,var(--den-elevation) }
+:where(:root[data-layout=den]) .den-summary-heading { display:flex; justify-content:space-between; align-items:center; gap:8px }
+:where(:root[data-layout=den]) .den-summary-heading h3 { font-size:.7rem; letter-spacing:.06em; font-weight:800; text-transform:uppercase; margin:0 }
+:where(:root[data-layout=den]) .den-summary-heading button, :where(:root[data-layout=den]) .den-income-heading button { display:flex; align-items:center; gap:6px; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:18px; padding:7px 11px; font-size:.73rem; font-weight:650; min-height:32px }
+:where(:root[data-layout=den]) .den-summary-heading svg, :where(:root[data-layout=den]) .den-income-heading svg { width:17px; height:17px }
+:where(:root[data-layout=den]) .den-bills-paid { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:7px 0 13px }
+:where(:root[data-layout=den]) .den-bills-paid>strong { font-size:clamp(1.8rem,7.8vw,2.5rem); letter-spacing:-.055em; font-weight:850 }
+:where(:root[data-layout=den]) .den-paid-ring { display:grid; place-items:center; width:61px; height:61px; border-radius:50%; background:conic-gradient(#0868ff var(--paid,0%),#b8c9f4 0); flex-shrink:0 }
+:where(:root[data-layout=den]) .den-paid-ring span { display:grid; place-items:center; width:49px; height:49px; border-radius:50%; background:var(--den-summary); font-size:.95rem; font-weight:750 }
+:where(:root[data-layout=den]) .den-summary-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border-top:1px solid #a6b2d7; padding-top:10px; gap:9px }
+:where(:root[data-layout=den]) .den-summary-stats>div+div { padding-left:10px; border-left:1px solid #a6b2d7 }
+:where(:root[data-layout=den]) .den-summary-stats strong { display:block; font-size:clamp(.95rem,4.25vw,1.5rem); font-weight:850; letter-spacing:-.045em; overflow-wrap:anywhere }
+:where(:root[data-layout=den]) .den-summary-stats span { color:var(--muted); font-size:.7rem; line-height:1.4 }
+:where(:root[data-layout=den]) .den-summary-amount { display:block; font-size:clamp(2.8rem,12vw,4rem); letter-spacing:-.065em; font-weight:850; line-height:1.1; margin:8px 0 12px }
+:where(:root[data-layout=den]) #denDebtSummary { position:relative }
+:where(:root[data-layout=den]) #denDebtSummary .den-summary-stats { grid-template-columns:1fr 1fr; border-top:0; padding-top:0 }
+:where(:root[data-layout=den]) #denDebtSummary .den-summary-heading { padding-right:120px; min-height:34px }
+:where(:root[data-layout=den]) #denDebtSummary .den-summary-heading button { display:none }
+:where(:root[data-layout=den]) .den-summary-method { position:absolute; top:14px; right:16px }
+:where(:root[data-layout=den]) .den-summary-method label { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%) }
+:where(:root[data-layout=den]) .den-summary-method select { background:#062851; color:#fff; border:0; border-radius:12px; font:600 .75rem/1.2 inherit; padding:9px 11px; max-width:115px }
+:where(:root[data-layout=den]) .den-summary-progress { display:flex; align-items:center; gap:5px; margin-top:16px; font-size:.7rem; color:var(--muted) }
+:where(:root[data-layout=den]) .den-summary-progress progress { flex:1; height:6px; margin-left:8px; accent-color:#0868ff }
+:root[data-layout=den] .account-view-tabs { display:flex; gap:3px; background:#ffffff85; padding:3px; border:1px solid #fff; border-radius:22px; box-shadow:0 2px 3px #365b8f22; margin:0 0 14px }
+:root[data-layout=den] .account-view-tabs button { flex:1; padding:9px 10px; min-height:35px; border-radius:19px; border:0; background:transparent; color:var(--ink); font-weight:600; font-size:.8rem }
+:root[data-layout=den] .account-view-tabs button[aria-selected=true] { background:linear-gradient(#093363,#042448); color:#fff; box-shadow:0 2px 4px #123c6d35 }
+/* Compact account cards share a true component structure across bills and debt. */
+:root[data-layout=den] :is(#billListCard,#debtListCard) { padding:0; border:0; background:none; box-shadow:none; border-radius:0 }
+:root[data-layout=den] :is(#billListCard,#debtListCard)>.card-heading { margin:4px 0 9px; justify-content:space-between }
+:root[data-layout=den] :is(#billListCard,#debtListCard)>.card-heading h3 { font-size:.8rem; font-weight:650; color:var(--muted) }
+:root[data-layout=den] :is(#billListCard,#debtListCard) .chart-eyebrow { display:none }
+:root[data-layout=den] .account-sort-controls { margin:0 0 10px; gap:8px; display:flex; flex-wrap:wrap }
+:root[data-layout=den] .account-sort-controls :is(select,button) { padding:7px 10px; font-size:.75rem; min-height:32px; border-radius:9px; background:var(--card); color:var(--ink); border:1px solid var(--line) }
+:root[data-layout=den] .account-sort-controls label { font-size:.72rem }
+:root[data-layout=den] .bd-account-card { position:relative; display:block; background:var(--card); border:1px solid #b6c9e3; border-radius:15px; padding:12px 14px 9px; margin:0 0 12px; box-shadow:0 2px 3px #2f528526,0 5px 12px #2b4b7714; color:var(--ink); overflow:visible }
+:where(:root[data-layout=den]) .bd-account-head { display:flex; align-items:flex-start; gap:8px; min-height:26px; padding-right:64px }
+:where(:root[data-layout=den]) .bd-account-identity { display:flex; gap:8px; align-items:center; min-width:0; flex:1 }
+:root[data-layout=den] .bd-account-identity h4 { font-size:1.02rem; font-weight:850; line-height:1.15; margin:0; padding:0; color:var(--ink); overflow-wrap:anywhere; display:block }
+:where(:root[data-layout=den]) .bd-account-icon { display:grid; place-items:center; width:29px; height:29px; flex:0 0 29px; color:#092c59 }
+:where(:root[data-layout=den]) .bd-account-icon svg { width:27px; height:27px }
+:where(:root[data-layout=den]) .bill-tile .bd-account-icon { color:#fa7423 }
+:root[data-layout=den] .den-date-stamp { position:absolute; right:14px; top:12px; display:flex; flex-direction:column; align-items:center; justify-content:center; width:45px; height:44px; padding:3px; border-radius:9px; background:#ff994c; color:#181c2c; line-height:1; box-sizing:border-box }
+:where(:root[data-layout=den]) .den-date-stamp span { font-size:.59rem; font-weight:800; margin-bottom:3px }
+:where(:root[data-layout=den]) .den-date-stamp strong { font-size:1.4rem; font-weight:850 }
+:root[data-layout=den] .debt-account .den-date-stamp { right:43px; background:var(--surface-inset) }
+:root[data-layout=den] .den-date-stamp.is-paid { background:var(--status-soft); color:var(--status) }
+:root[data-layout=den] .bd-account-card .bd-account-open { position:absolute; top:19px; right:10px; min-height:32px; width:25px; padding:2px; border:0; background:transparent; color:var(--ink) }
+:where(:root[data-layout=den]) .bd-account-open svg { width:21px; height:21px }
+:root[data-layout=den] .bd-account-card .bd-account-edit { position:absolute; right:67px; top:11px; width:27px; height:23px; min-height:23px; padding:0; border:1px solid var(--line); border-radius:7px; background:var(--card); color:var(--ink); font-size:.7rem; letter-spacing:.02em }
+:root[data-layout=den] .debt-account .bd-account-edit { top:65px; right:15px }
+:root[data-layout=den] .debt-account .bd-account-head { padding-right:80px }
+:where(:root[data-layout=den]) .bd-account-amount { margin:2px 62px 7px 37px; line-height:1.15 }
+:where(:root[data-layout=den]) .debt-account .bd-account-amount { margin-left:0; margin-right:88px }
+:where(:root[data-layout=den]) .bd-account-amount>strong { font-size:1.95rem; font-weight:850; letter-spacing:-.055em; white-space:nowrap }
+:where(:root[data-layout=den]) .bd-amount-caption { font-size:.75rem; color:var(--muted); display:block }
+:where(:root[data-layout=den]) .debt-account .bd-amount-caption { display:inline; margin-left:5px }
+:root[data-layout=den] .bd-minimum { display:flex; flex-direction:row-reverse; justify-content:flex-end; gap:4px; padding:0; margin-top:3px; font-size:.72rem; color:var(--muted); border:0; background:none }
+:where(:root[data-layout=den]) .bd-minimum strong { font-size:.78rem; font-weight:600 }
+:where(:root[data-layout=den]) .bd-minimum>span { text-transform:lowercase }
+:where(:root[data-layout=den]) .bd-account-metrics { display:flex; gap:0; padding:7px 0 2px; border-top:1px solid var(--line); align-items:stretch }
+:where(:root[data-layout=den]) .bd-account-metrics>div { flex:1; min-width:0; padding:0 9px }
+:where(:root[data-layout=den]) .bd-account-metrics>div:first-child { padding-left:0 }
+:where(:root[data-layout=den]) .bd-account-metrics>div+div { border-left:1px solid var(--line) }
+:where(:root[data-layout=den]) .bd-account-metrics :is(dt,small,span) { display:block; font-size:.63rem; line-height:1.35; color:var(--muted); margin:0 }
+:where(:root[data-layout=den]) .bd-account-metrics :is(dd,strong) { display:block; font-size:.82rem; line-height:1.3; font-weight:750; letter-spacing:-.025em; margin:1px 0 0; color:var(--ink) }
+:where(:root[data-layout=den]) .bill-tile .bd-account-metrics strong { font-size:.71rem; font-weight:500 }
+:where(:root[data-layout=den]) .bd-account-actions { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:5px }
+:root[data-layout=den] .bd-account-actions>button { margin:0; border:1px solid #a4c7ff; border-radius:8px; padding:5px 11px; min-height:29px; background:var(--accent-soft); color:var(--accent); font-size:.71rem; font-weight:650 }
+:root[data-layout=den] .bd-account-actions>.bill-paid-button { background:var(--accent-fill); color:var(--on-accent); border-color:var(--accent-fill) }
+:root[data-layout=den] .bd-account-card .account-connection { margin:0 0 0 auto; border:0; padding:0; font-size:.61rem; color:var(--muted); background:transparent; line-height:1.3 }
+:where(:root[data-layout=den]) .bd-account-actions:empty, :where(:root[data-layout=den]) .bd-account-metrics:empty { display:none }
+:root[data-layout=den] .bd-account-notes :is(.debt-account-footer,.debt-due-date) { font-size:.66rem; margin:3px 0 0; padding:0; border:0; color:var(--muted) }
+:root[data-layout=den] .bd-account-card:has(.den-date-stamp) .bd-plain-due { position:absolute; width:1px; height:1px; clip-path:inset(50%); overflow:hidden }
+:root[data-layout=den] .bd-account-card .account-card-footer { margin:3px 0 0; padding:0; border:0; background:none }
+:root[data-layout=den] .bd-account-card .account-card-footer:empty { display:none }
+:where(:root[data-layout=den]) .bd-balance-unavailable { font-size:1rem; color:var(--muted) }
+:where(:root[data-layout=den]) .bd-page-footer>button { display:flex; align-items:center; justify-content:center; gap:12px; min-height:44px; width:100%; background:var(--accent-fill); color:var(--on-accent); border:0; border-radius:14px; font-size:.9rem; font-weight:700; padding:10px }
+:where(:root[data-layout=den]) .bd-page-footer svg { width:22px; height:22px }
+:where(:root[data-layout=den]) .bd-forecast-shortcut { display:flex; align-items:center; gap:12px; width:100%; border:1px solid var(--line); border-radius:14px; padding:12px 14px; background:var(--card); color:var(--ink); box-shadow:var(--den-elevation); text-align:left }
+:where(:root[data-layout=den]) .bd-forecast-shortcut>svg { width:27px; height:27px }
+:where(:root[data-layout=den]) .bd-forecast-shortcut>svg:last-child { margin-left:auto; width:17px }
+:where(:root[data-layout=den]) .bd-forecast-shortcut strong { display:block; font-size:.88rem }
+:where(:root[data-layout=den]) .bd-forecast-shortcut small { font-size:.67rem; color:var(--muted) }
+/* Settings hub, with a consistent row rhythm and full detail editors. */
+:root[data-layout=den] #connectionDialog { padding:0; border:0; box-shadow:none; background:none }
+:where(:root[data-layout=den]) .bd-profile { display:grid; grid-template-columns:56px minmax(0,1fr) auto; gap:10px; align-items:center; margin:10px 1px 18px }
+:where(:root[data-layout=den]) .bd-profile-avatar { display:grid; place-items:center; width:54px; height:54px; border:3px solid #fff; border-radius:50%; background:#e7eaf4aa; box-shadow:0 2px 4px #294c7c15; font-size:1.25rem; font-weight:700; color:#17253e }
+:where(:root[data-layout=den]) .bd-profile-info { min-width:0 }
+:where(:root[data-layout=den]) .bd-profile-info>strong { display:block; font-size:1.02rem; font-weight:800 }
+:where(:root[data-layout=den]) .bd-profile-info>span { display:block; font-size:.7rem; overflow-wrap:anywhere; margin-top:1px }
+:where(:root[data-layout=den]) .bd-profile-info small { display:flex; align-items:center; gap:5px; font-size:.65rem; color:var(--muted); margin-top:7px; line-height:1.3 }
+:where(:root[data-layout=den]) .bd-profile-info small svg { width:19px; height:19px; flex-shrink:0 }
+:where(:root[data-layout=den]) .bd-profile-actions { text-align:right; align-self:start; padding-top:3px }
+:where(:root[data-layout=den]) .bd-profile-actions button { display:flex; align-items:center; gap:4px; border:0; background:none; color:var(--accent); padding:0; margin-top:14px; font-size:.66rem; font-weight:550; white-space:nowrap }
+:where(:root[data-layout=den]) .bd-profile-actions svg { width:16px; height:16px }
+:where(:root[data-layout=den]) .bd-status { display:inline-block; color:var(--muted); font-size:.63rem; font-weight:500; white-space:nowrap; line-height:1.6 }
+:where(:root[data-layout=den]) .bd-status.is-connected { color:#154d2b; background:#def7d9; border-radius:20px; padding:1px 9px }
+:where(:root[data-layout=den]) .bd-profile-actions .bd-status { background:#e6f9e5; color:#214a2c; padding:4px 10px; border-radius:20px }
+:where(:root[data-layout=den]) .bd-settings-search { display:flex; align-items:center; gap:10px; padding:0 14px; height:40px; border:1px solid #fff9; border-radius:20px; background:color-mix(in srgb,var(--card) 85%,transparent); box-shadow:var(--den-elevation); margin-bottom:17px }
+:where(:root[data-layout=den]) .bd-settings-search svg { width:19px; height:19px; color:var(--ink) }
+:root[data-layout=den] .bd-settings-search input { border:0; background:transparent; box-shadow:none; width:100%; min-width:0; padding:0; font:inherit; font-size:.78rem; color:var(--ink); text-align:left }
+:where(:root[data-layout=den]) .bd-setting-group { margin-bottom:17px }
+:where(:root[data-layout=den]) .bd-group-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 5px 7px }
+:root[data-layout=den] .bd-group-heading h3 { margin:0; font-size:.78rem; font-weight:800; letter-spacing:0; text-transform:uppercase }
+:where(:root[data-layout=den]) .bd-group-heading>button { display:flex; align-items:center; gap:6px; background:none; border:0; color:var(--accent); font-size:.75rem; padding:0 }
+:where(:root[data-layout=den]) .bd-group-heading svg { width:17px; height:17px }
+:where(:root[data-layout=den]) .bd-setting-surface { border:1px solid #b8c9e3; border-radius:14px; padding:0 12px; box-shadow:var(--den-elevation); background:var(--card); overflow:hidden }
+:root[data-layout=den] .bd-setting-row { display:flex; align-items:center; gap:10px; width:100%; min-height:39px; padding:7px 1px; margin:0; border:0; border-radius:0; border-bottom:1px solid var(--line); background:transparent; color:var(--ink); font:400 .83rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; text-align:left; box-shadow:none }
+:where(:root[data-layout=den]) .bd-setting-row:last-child { border-bottom:0!important }
+:where(:root[data-layout=den]) .bd-setting-row>svg:last-child { width:15px; height:15px; flex-shrink:0; color:var(--ink) }
+:where(:root[data-layout=den]) .bd-setting-icon { flex:0 0 22px; width:22px; height:23px; display:grid; place-items:center; color:#102f56 }
+:root[data-layout=den][data-theme=dark] .bd-setting-icon { color:#b5d3ff }
+:where(:root[data-layout=den]) .bd-setting-icon svg { width:22px; height:22px }
+:where(:root[data-layout=den]) .bd-setting-label { flex:1; min-width:0 }
+:where(:root[data-layout=den]) .bd-setting-value { color:var(--muted); font-size:.73rem; text-align:right; max-width:43%; line-height:1.3 }
+:where(:root[data-layout=den]) #bdConnections .bd-setting-label { flex:0 1 auto }
+:where(:root[data-layout=den]) #bdConnections .bd-setting-value { flex:1; max-width:none; text-align:left; margin-left:2px }
+:where(:root[data-layout=den]) #bdConnections .bd-status { font-size:.62rem }
+:where(:root[data-layout=den]) .bd-mode-row { display:flex; justify-content:space-between; align-items:center; gap:18px; padding:9px 3px 8px }
+:where(:root[data-layout=den]) .bd-mode-row>svg { width:27px; height:27px; color:var(--ink) }
+:where(:root[data-layout=den]) .bd-mode-segment { display:flex; flex:0 1 230px; padding:2px; background:var(--surface-subtle); border:1px solid var(--line); border-radius:10px }
+:where(:root[data-layout=den]) .bd-mode-segment button { flex:1; padding:6px 8px; border:0; border-radius:8px; background:none; color:var(--ink); font-size:.72rem; min-height:29px }
+:where(:root[data-layout=den]) .bd-mode-segment button[aria-pressed=true] { background:#1459b0; color:white; box-shadow:0 2px 5px #1a467b40 }
+:where(:root[data-layout=den]) .bd-theme-swatches { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:4px 6px 8px }
+:where(:root[data-layout=den]) .bd-theme-swatches button { width:42px; height:42px; border:0; flex-shrink:0; border-radius:50%; background:var(--swatch); padding:0; display:grid; place-items:center; color:#fff; font-size:1.25rem }
+:where(:root[data-layout=den]) .bd-theme-swatches button[aria-pressed=true] { outline:2px solid #0868ff; outline-offset:3px; border:2px solid #fff }
+:where(:root[data-layout=den]) .bd-theme-swatches span { visibility:hidden }
+:where(:root[data-layout=den]) .bd-theme-swatches [aria-pressed=true] span { visibility:visible }
+:where(:root[data-layout=den]) #bdAllThemes { display:flex; justify-content:flex-end; padding:0 4px 8px }
+:root[data-layout=den] #bdAllThemes button { border:0; background:none; padding:0; color:var(--accent); font-size:.64rem; width:auto; min-height:20px; margin:0 }
+:root[data-layout=den] .bd-switch-row input { appearance:none; width:39px; height:23px; flex:0 0 39px; position:relative; border:1px solid var(--line); border-radius:20px; background:var(--surface-inset); padding:0; margin:0; cursor:pointer }
+:where(:root[data-layout=den]) .bd-switch-row input::before { content:''; position:absolute; width:17px; height:17px; top:2px; left:2px; border-radius:50%; background:var(--muted) }
+:root[data-layout=den] .bd-switch-row input:checked { background:#0967ff; border-color:#0967ff }
+:where(:root[data-layout=den]) .bd-switch-row input:checked::before { background:#fff; transform:translateX(16px) }
+:where(:root[data-layout=den]) #bdSwitchRows>.bd-setting-row:last-child { border-bottom:1px solid var(--line)!important }
+:where(:root[data-layout=den]) #featureSettingsStatus:empty { display:none }
+:root[data-layout=den] dialog.bd-detail-dialog { width:calc(100% - 28px); max-width:580px; padding:0; border:1px solid var(--line); border-radius:20px; background:var(--card); color:var(--ink); max-height:88dvh; overflow:auto; margin:auto; box-shadow:0 20px 80px #071a3a55 }
+:where(:root[data-layout=den]) .bd-detail-dialog::backdrop { background:#0c203e70; backdrop-filter:blur(5px) }
+:where(:root[data-layout=den]) .bd-detail-heading { position:sticky; z-index:2; top:0; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:16px 18px; border-bottom:1px solid var(--line); background:var(--card) }
+:where(:root[data-layout=den]) .bd-detail-heading h2 { font-size:1.25rem; margin:0; letter-spacing:-.035em }
+:where(:root[data-layout=den]) .bd-detail-heading>button { width:33px; height:33px; display:grid; place-items:center; background:var(--surface-inset); color:var(--ink); border:1px solid var(--line); border-radius:50%; padding:6px }
+:where(:root[data-layout=den]) .bd-detail-heading svg { width:20px; height:20px }
+:where(:root[data-layout=den]) .bd-detail-content, :where(:root[data-layout=den]) .bd-bill-detail-content { padding:18px }
+:where(:root[data-layout=den]) .bd-detail-content>section, :where(:root[data-layout=den]) .bd-detail-content>.bank-provider { border:0; padding:0; margin:0; background:none; box-shadow:none }
+:where(:root[data-layout=den]) .bd-detail-content .connection-title-row { margin:0 0 10px }
+:where(:root[data-layout=den]) .bd-detail-content .connection-title-row :is(h3,h4) { font-size:1rem }
+:where(:root[data-layout=den]) .bd-detail-content :is(input,select) { max-width:100%; box-sizing:border-box; background:var(--surface-inset); color:var(--ink); border:1px solid var(--line); border-radius:9px; padding:9px }
+:where(:root[data-layout=den]) .bd-detail-content :is(p,label,summary) { font-size:.82rem; line-height:1.5 }
+:where(:root[data-layout=den]) .bd-detail-content>section+section { border-top:1px solid var(--line); margin-top:20px; padding-top:20px }
+:where(:root[data-layout=den]) .bd-detail-content button, :where(:root[data-layout=den]) .bd-detail-content .connection-button { border:1px solid var(--line); border-radius:9px; background:var(--surface-inset); color:var(--ink); padding:9px 12px; min-height:36px; font-size:.78rem; margin:3px 4px 3px 0 }
+:where(:root[data-layout=den]) .bd-detail-content .check-label { display:flex; align-items:center; gap:8px; margin:12px 0 }
+:where(:root[data-layout=den]) .bd-detail-content input[type=checkbox] { width:18px; height:18px; flex-shrink:0 }
+:where(:root[data-layout=den]) .bd-detail-content .footer-btn-row { display:none }
+:root[data-layout=den] #denDesignSettings { margin-top:20px }
+:where(:root[data-layout=den]) .bd-detail-content #denDesignChoice { display:block; width:100%; margin-top:6px }
+/* Income composition. */
+:root[data-layout=den] #tab-income .bank-card { position:relative; display:flex; flex-direction:column; padding:14px; margin:0; background:var(--den-income); border-color:#9bc9f3; color:var(--ink); --on-dark:var(--ink); --on-dark-muted:var(--muted); --on-dark-line:var(--line); --on-dark-accent:var(--accent); box-shadow:inset 0 1px 0 #fff8,var(--den-elevation) }
+:where(:root[data-layout=den]) .den-income-heading { order:-4; display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 3px }
+:where(:root[data-layout=den]) .den-income-heading>span { font-size:.68rem; font-weight:800; letter-spacing:.035em; text-transform:uppercase; max-width:65% }
+:root[data-layout=den] #incomeSummary { order:-3 }
+:where(:root[data-layout=den]) .den-income-payday { order:0 }
+:root[data-layout=den] #incomeSummary .income-total { font-size:clamp(2.5rem,11vw,3.7rem); font-weight:850; letter-spacing:-.06em; line-height:1.1; color:var(--ink); margin:1px 0 2px }
+:root[data-layout=den] #incomeSummary .income-eyebrow { display:none }
+:root[data-layout=den] #incomeSummary .income-account-name { font-size:.73rem; margin:0; color:var(--muted) }
+:root[data-layout=den] #incomeSummary .income-next-payday { display:none }
+:root[data-layout=den] #tab-income :is(#incomeBankUpdated,#incomeBalances) { margin:5px 0; order:-1; font-size:.63rem; color:var(--muted) }
+:root[data-layout=den] #tab-income :is(#incomeBankUpdated,#incomeBalances):empty { display:none }
+:where(:root[data-layout=den]) .den-income-payday { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border:1px solid #fff; border-radius:12px; margin:9px -7px -6px; background:color-mix(in srgb,var(--card) 68%,transparent) }
+:where(:root[data-layout=den]) .den-income-payday>span { display:flex; align-items:center; gap:10px; font-size:.72rem; line-height:1.4 }
+:where(:root[data-layout=den]) .den-income-payday svg { width:24px; height:24px; flex-shrink:0 }
+:where(:root[data-layout=den]) .den-income-payday>span:last-child { display:block; border-left:1px solid var(--line); padding-left:14px }
+:where(:root[data-layout=den]) .den-income-payday strong { display:block; font-size:1rem; color:var(--ink); line-height:1.2 }
+:where(:root[data-layout=den]) .den-income-payday>span:last-child>strong { font-size:1.4rem; font-weight:850; letter-spacing:-.04em }
+:where(:root[data-layout=den]) .den-income-payday small { color:var(--muted); font-size:.65rem }
+:root[data-layout=den] #tab-income .bank-card>.bank-refresh { position:absolute; top:50px; right:14px; width:29px; min-height:29px; padding:5px; background:#ffffff88; color:var(--ink); border:1px solid var(--line); border-radius:50% }
+:where(:root[data-layout=den]) .bank-card>.bank-refresh span { display:none }
+:where(:root[data-layout=den]) .bd-income-editors:empty { display:none }
+:where(:root[data-layout=den]) .bd-income-editors .setup-panel-wrap.open { padding:18px; background:var(--card); border:1px solid var(--line); border-radius:16px; margin-bottom:16px; color:var(--ink) }
+:where(:root[data-layout=den]) .bd-income-editors #incomeBudgetSlot { margin:0 }
+:root[data-layout=den] .bd-next-paycheck { padding:12px 15px }
+:where(:root[data-layout=den]) .bd-next-paycheck h3, :where(:root[data-layout=den]) .bd-section-heading h3 { font-size:1.05rem; font-weight:800; margin:0 0 5px; letter-spacing:-.04em }
+:where(:root[data-layout=den]) .bd-paycheck-preview>button { display:flex; align-items:center; gap:10px; width:100%; background:none; border:0; border-top:1px solid var(--line); padding:6px 1px; color:var(--ink); text-align:left; font-size:.77rem }
+:where(:root[data-layout=den]) .bd-paycheck-preview svg { width:20px; height:20px; flex-shrink:0 }
+:where(:root[data-layout=den]) .bd-paycheck-preview svg:last-child { width:16px; height:16px; margin-left:6px; color:var(--muted) }
+:where(:root[data-layout=den]) .bd-paycheck-preview span { flex:1 }
+:where(:root[data-layout=den]) .bd-paycheck-preview strong { font-size:.84rem; font-weight:750 }
+:where(:root[data-layout=den]) .bd-next-total { display:flex; align-items:center; justify-content:space-between; gap:12px; border-top:1px solid var(--line); padding-top:8px; margin-top:2px; font-size:.73rem }
+:where(:root[data-layout=den]) .bd-next-total>span>strong { display:block; font-size:1.6rem; letter-spacing:-.045em; line-height:1.15; font-weight:850 }
+:where(:root[data-layout=den]) .bd-next-total button { display:flex; align-items:center; gap:10px; border:1px solid #a8cdff; background:var(--accent-soft); color:var(--accent); padding:9px 13px; border-radius:20px; font-weight:650; font-size:.74rem }
+:where(:root[data-layout=den]) .bd-next-total svg { width:17px; height:17px }
+:root[data-layout=den] #personalForecastCard { padding:12px 14px }
+:where(:root[data-layout=den]) .bd-forecast-details { border-top:1px solid var(--line); margin-top:10px; padding-top:9px }
+:where(:root[data-layout=den]) .bd-forecast-details>summary { list-style:none; display:flex; align-items:center; justify-content:space-between; gap:8px; color:var(--accent); font-size:.73rem; cursor:pointer }
+:where(:root[data-layout=den]) .bd-forecast-details>summary svg { width:16px; height:16px }
+:root[data-layout=den] .forecast-range-controls { margin:5px 0 9px }
+:where(:root[data-layout=den]) .forecast-range-controls .forecast-debt-modes { gap:3px }
+:root[data-layout=den] .forecast-debt-modes button { font-size:.68rem; padding:6px 9px; min-height:29px }
+:root[data-layout=den] #forecastRangeStatus { font-size:.63rem; margin:6px 0 }
+:root[data-layout=den] .bd-recent { padding:12px 14px }
+:where(:root[data-layout=den]) .bd-recent-row { display:flex; align-items:center; gap:10px; width:100%; background:none; border:0; border-top:1px solid var(--line); padding:9px 0; color:var(--ink); text-align:left }
+:where(:root[data-layout=den]) .bd-recent-row>svg { width:22px; height:22px; flex-shrink:0 }
+:where(:root[data-layout=den]) .bd-recent-row>svg:last-child { width:15px; height:15px }
+:where(:root[data-layout=den]) .bd-recent-row>span { flex:1; min-width:0 }
+:where(:root[data-layout=den]) .bd-recent-row strong { font-size:.78rem; line-height:1.3 }
+:where(:root[data-layout=den]) .bd-recent-row small { display:block; font-size:.66rem; color:var(--muted); margin-top:2px }
+:where(:root[data-layout=den]) .bd-empty { font-size:.75rem; color:var(--muted); line-height:1.5; margin:8px 0 }
+:where(:root[data-layout=den]) .bd-recent-footer button { background:none; color:var(--accent); border:0; padding:6px 0 0; font-weight:600; font-size:.76rem }
+:root[data-layout=den] #bankActivityCard { padding:15px; border:1px solid var(--line); border-radius:16px; background:var(--card); margin-bottom:16px }
+/* Dashboard trackers: one navy palette, four content-led compositions. */
+:root[data-layout=den] .bd-tracker { --ink:#fff; --muted:#c0d3ec; --line:#365c83; --accent:#8bcaff; --accent-soft:#174776; --accent-line:#5e91bf; --card:#082c52; --on-dark:#fff; --on-dark-muted:#c0d3ec; --on-dark-line:#365c83; --on-dark-accent:#8bcaff; --on-dark-hover:#174776; position:relative; display:flex; flex-direction:column; background:var(--den-tracker)!important; border:1px solid #72abe0!important; border-radius:17px; padding:18px; margin:0; color:#fff!important; box-shadow:inset 0 1px 0 #ffffff22,0 3px 0 #fff7,0 8px 18px #1837602e; overflow:visible }
+:root[data-layout=den] .bd-tracker .tracker-header { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0; margin:0 0 12px; background:none; border:0; box-shadow:none }
+:root[data-layout=den] .bd-tracker .hero-title { display:flex; align-items:center; gap:10px; margin:0; padding:0; background:none; border:0; border-radius:0; box-shadow:none; color:#fff; font-size:.79rem; font-weight:750; letter-spacing:.08em; text-transform:uppercase; min-width:0 }
+:where(:root[data-layout=den]) .bd-tracker-icon { display:grid; place-items:center; width:32px; height:32px; flex:0 0 32px; border:1px solid #78b3e7; border-radius:9px; background:#174878 }
+:where(:root[data-layout=den]) .bd-tracker-icon svg { width:21px; height:21px }
+:root[data-layout=den] .bd-tracker .subtle { color:#c0d3ec; font-size:.65rem }
+:root[data-layout=den] .bd-tracker .bank-refresh { border:1px solid #6a91b9; background:#153e67; color:#fff; padding:6px; width:29px; min-height:29px; border-radius:8px }
+:where(:root[data-layout=den]) .bd-tracker .bank-refresh span { display:none }
+:root[data-layout=den] #debtIncomeSummary .income-total { font-size:clamp(2.5rem,11vw,3.5rem); color:#fff; font-weight:850; letter-spacing:-.055em; line-height:1.08; margin:0 0 3px }
+:root[data-layout=den] #debtIncomeSummary :is(.income-eyebrow,.income-account-name) { color:#c0d3ec; font-size:.7rem; margin:0 }
+:where(:root[data-layout=den]) .income-eyebrow { text-transform:none!important }
+:root[data-layout=den] .income-secondary-accounts { display:flex; flex-wrap:wrap; gap:8px; border-top:1px solid var(--line); padding-top:9px; margin-top:10px }
+:root[data-layout=den] .income-account-balance { display:flex; flex-direction:column; align-items:flex-start; flex:1; padding:0 9px; gap:3px; border-left:1px solid var(--line); font-size:.68rem }
+:where(:root[data-layout=den]) .income-account-balance:first-child { padding-left:0!important; border-left:0!important }
+:where(:root[data-layout=den]) .income-account-balance strong { font-size:1rem }
+:root[data-layout=den] #debtIncomeSummary .income-next-payday { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; background:#114b84; border:1px solid #548abd; border-radius:11px; margin:14px 0 0; font-size:.73rem; color:#c5def7 }
+:where(:root[data-layout=den]) #debtIncomeSummary .income-next-payday strong { color:#fff; font-size:.83rem }
+:root[data-layout=den] #debtBankUpdated { margin:6px 0 0; font-size:.59rem }
+:where(:root[data-layout=den]) .bd-tracker :is(#accountSaveStatus,.bank-refresh-status):empty { display:none }
+:where(:root[data-layout=den]) .den-income-detail { order:1 }
+:where(:root[data-layout=den]) .den-income-actions { order:2 }
+:where(:root[data-layout=den]) .den-payday-total { display:flex; justify-content:space-between; align-items:center; font-size:.7rem; margin:10px 0 }
+:where(:root[data-layout=den]) .den-payday-total strong { font-size:1rem }
+:where(:root[data-layout=den]) .den-allocation-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px 0 }
+:where(:root[data-layout=den]) .den-allocation-grid>div { padding:0 9px; border-left:1px solid #42688f }
+:where(:root[data-layout=den]) .den-allocation-grid>div:nth-child(3n+1) { border-left:0; padding-left:0 }
+:where(:root[data-layout=den]) .den-allocation-grid small { display:block; font-size:.62rem; color:#c0d3ec; margin-bottom:3px; line-height:1.35 }
+:where(:root[data-layout=den]) .den-allocation-grid strong { font-size:1rem; letter-spacing:-.02em; overflow-wrap:anywhere }
+:where(:root[data-layout=den]) .den-allocation-grid .den-remainder { background:#0b4b91; border:1px solid #508dc6; padding:6px 8px; border-radius:9px; margin-top:-5px }
+:where(:root[data-layout=den]) .den-remainder small { color:#d9ecff }
+:where(:root[data-layout=den]) .den-card-actions { display:flex; gap:9px; margin-top:15px }
+:root[data-layout=den] .den-card-actions button { display:flex; flex:1; align-items:center; justify-content:center; gap:7px; border:1px solid #78a9d8; border-radius:10px; min-height:38px; padding:8px; background:transparent; color:#fff; font-size:.75rem; font-weight:600; min-width:0 }
+:where(:root[data-layout=den]) .den-card-actions svg { width:17px; height:17px }
+:where(:root[data-layout=den]) .den-card-actions button:last-child { background:#0768de!important; border-color:#6aaeff!important }
+:root[data-layout=den] #billTracker>.tracker-header>[data-open-dashboard-bills] { display:none }
+:root[data-layout=den] #billTracker .bill-tracker-balance { padding-right:95px; margin:0; color:#fff }
+:root[data-layout=den] .bill-tracker-balance>strong { font-size:2.5rem; line-height:1.1; letter-spacing:-.05em; color:#fff; font-weight:850 }
+:root[data-layout=den] .bill-tracker-balance :is(span,small) { color:#c0d3ec; font-size:.7rem; margin-top:2px }
+:root[data-layout=den] #billTrackerChooseAccount { background:#174878; border:1px solid #5785b3; color:#fff; border-radius:8px; padding:5px 8px; font-size:.64rem }
+:where(:root[data-layout=den]) #billTracker>.den-bill-ring { position:absolute; top:65px; right:22px }
+:where(:root[data-layout=den]) .den-tracker-ring { width:67px; height:67px; display:grid; place-items:center; border-radius:50%; background:conic-gradient(#42baff var(--paid),#31567a 0) }
+:where(:root[data-layout=den]) .den-tracker-ring span { display:grid; place-items:center; width:52px; height:52px; border-radius:50%; background:#07264a; color:#fff; font-size:1.1rem; font-weight:750 }
+:root[data-layout=den] .bill-tracker-month { background:none; border:0; padding:7px 0; margin:4px 0 9px; display:flex; align-items:center; gap:7px; color:#c0d3ec; flex-wrap:wrap }
+:where(:root[data-layout=den]) .bill-tracker-month progress { display:none }
+:where(:root[data-layout=den]) .bill-tracker-month :is(strong,span) { font-size:.71rem!important; color:#c0d3ec!important }
+:root[data-layout=den] .bill-tracker-totals { display:flex; gap:0; border-block:1px solid #42688f; padding:10px 0; margin:0 }
+:where(:root[data-layout=den]) .bill-tracker-totals>div { flex:1; border:0!important; background:none!important; padding:0!important; border-radius:0!important }
+:where(:root[data-layout=den]) .bill-tracker-totals>div+div { border-left:1px solid #42688f!important; padding-left:14px!important }
+:where(:root[data-layout=den]) .bill-tracker-totals span { font-size:.67rem!important; color:#c0d3ec!important }
+:where(:root[data-layout=den]) .bill-tracker-totals strong { font-size:1.3rem!important; color:#fff!important; font-weight:800 }
+:root[data-layout=den] .bill-tracker-next h4 { font-size:.76rem; margin:13px 0 7px; color:#fff }
+:root[data-layout=den] #billTrackerUpcoming li { background:none; padding:8px 0; border:0; border-bottom:1px solid #365c83; border-radius:0; margin:0; color:#fff; gap:10px }
+:where(:root[data-layout=den]) #billTrackerUpcoming li small { color:#c0d3ec!important; font-size:.65rem }
+:where(:root[data-layout=den]) #billTrackerUpcoming li b { color:#fff; font-size:.88rem }
+:where(:root[data-layout=den]) #billTrackerUpcoming .is-overdue { color:#ffd0ac!important }
+:where(:root[data-layout=den]) .den-contribution { order:1 }
+:where(:root[data-layout=den]) .den-bill-actions { order:2 }
+:where(:root[data-layout=den]) .den-next-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid #5389bd; border-radius:10px; margin-top:12px; background:#12467a; color:#fff; font-size:.74rem }
+:where(:root[data-layout=den]) .den-next-row svg { width:21px; height:21px; flex-shrink:0 }
+:where(:root[data-layout=den]) .den-next-row>span { flex:1 }
+:where(:root[data-layout=den]) .den-next-row small { display:block; color:#c0d3ec; font-size:.63rem; margin-top:2px }
+:where(:root[data-layout=den]) .den-next-row>strong { font-size:.91rem }
+:root[data-layout=den] .bd-tracker .payoff-method-toggle { display:flex; flex:initial; width:100%; background:#113b67; border:1px solid #4d7197; border-radius:10px; padding:3px; margin:0 0 13px; gap:2px; box-sizing:border-box }
+:root[data-layout=den] .bd-tracker .pm-btn { flex:1; background:transparent; border:0; border-radius:7px; padding:7px 3px; min-height:30px; color:#cfe2f6; font-size:.65rem; min-width:0; margin:0 }
+:where(:root[data-layout=den]) .bd-tracker .pm-btn.active { background:#0767e4!important; color:#fff!important; box-shadow:0 2px 4px #001e4e50 }
+:root[data-layout=den] .bd-tracker .hero-date-banner { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:0 0 13px; margin:0!important; border:0; border-bottom:1px solid #42688f; border-radius:0; background:none }
+:root[data-layout=den] .bd-tracker .hero-date-banner .big { font-size:1.6rem!important; font-weight:850; line-height:1.2; letter-spacing:-.04em; color:#fff!important; margin:4px 0 }
+:root[data-layout=den] .bd-tracker .label { color:#c0d3ec; font-size:.69rem; margin:0 }
+:root[data-layout=den] .bd-tracker :is(.day-counter,.paycheck-counter) { display:inline-block; background:none; border:0; padding:0; margin:6px 9px 0 0; color:#c0d3ec; font-size:.69rem; line-height:1.3; font-weight:400 }
+:root[data-layout=den] .bd-tracker .hero-pie-corner { position:relative; width:78px; height:78px; background:conic-gradient(#3db6ff calc(var(--den-progress,0)*1%),#2b5078 0)!important; box-shadow:none; margin:0 }
+:root[data-layout=den] .bd-tracker .hero-pie-hole-sm { width:60px; height:60px; background:#06264b!important }
+:where(:root[data-layout=den]) .bd-tracker .hero-pie-hole-sm .pct { color:#fff!important; font-size:1.2rem!important }
+:where(:root[data-layout=den]) .bd-tracker .hero-pie-hole-sm small { color:#c0d3ec!important }
+:root[data-layout=den] .bd-tracker-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; padding-top:12px; order:1 }
+:root[data-layout=den] .bd-tracker-stats>.row { display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; gap:4px; padding:0; border:0; margin:0; color:#fff; line-height:1.35; min-width:0 }
+:where(:root[data-layout=den]) .bd-tracker-stats .row>span:first-child { font-size:.61rem; color:#c0d3ec }
+:where(:root[data-layout=den]) .bd-tracker-stats .row>span:last-child { font-size:1rem; font-weight:750; letter-spacing:-.02em; overflow-wrap:anywhere; text-align:left }
+:where(:root[data-layout=den]) .den-debt-next { order:2 }
+:where(:root[data-layout=den]) .den-debt-actions { order:3 }
+:where(:root[data-layout=den]) .den-savings-detail { order:3 }
+:root[data-layout=den] .savings-hero .hero-controls { display:flex; gap:5px }
+:where(:root[data-layout=den]) .savings-hero .hero-controls .icon-btn { display:grid; place-items:center; width:27px; height:29px; min-height:29px; padding:4px; background:#143e68; border:1px solid #6189b1; border-radius:8px; color:#fff }
+:root[data-layout=den] .bd-savings-name { margin:-7px 0 14px 42px }
+:where(:root[data-layout=den]) .bd-savings-name .label { font-size:.82rem!important; color:#fff!important; font-weight:600 }
+:root[data-layout=den] .savings-hero .hero-date-banner { justify-content:flex-start; gap:20px }
+:root[data-layout=den] .savings-hero .hero-date-banner>.hero-pie-wrap-corner { order:-1; flex-shrink:0; align-self:center }
+:root[data-layout=den] .savings-hero-edit { background:#143e68!important; border:1px solid #628bb2!important; color:#fff; border-radius:12px }
+:where(:root[data-layout=den]) .savings-hero-edit :is(.field-name-dark,.savings-withdraw-hint) { color:#d1e2f6!important }
+:where(:root[data-layout=den]) .savings-hero-edit input { background:#082b51!important; color:#fff!important; border-color:#628bb2!important }
+:where(:root[data-layout=den]) .den-progress-copy { display:flex; justify-content:space-between; gap:12px; margin:13px 0 7px; font-size:.66rem; color:#c0d3ec }
+:where(:root[data-layout=den]) .den-progress-copy strong { color:#fff }
+:where(:root[data-layout=den]) .den-savings-detail progress { height:5px; width:100%; accent-color:#4abaff; border:0; border-radius:6px; display:block }
+:where(:root[data-layout=den]) .den-savings-detail progress::-webkit-progress-bar { background:#2b5078; border-radius:6px }
+:where(:root[data-layout=den]) .den-savings-detail progress::-webkit-progress-value { background:#4abaff; border-radius:6px }
+:where(:root[data-layout=den]) .den-savings-chart { color:#58c5ff; margin-top:13px }
+:where(:root[data-layout=den]) .den-savings-chart>svg { display:block; width:100%; height:90px }
+:where(:root[data-layout=den]) .den-chart-grid { fill:none; stroke:#41668b; stroke-width:.7; stroke-dasharray:3 3 }
+:where(:root[data-layout=den]) .den-savings-chart>div { display:flex; justify-content:space-between; gap:8px; font-size:.6rem; color:#c0d3ec }
+/* Detailed paycheck cards stay below all trackers. */
+:root[data-layout=den] #schedulePlanSection { margin-top:10px }
+:root[data-layout=den] .section-title { display:flex; align-items:center; padding:0 44px 0 0; margin:0 0 14px; font-size:1.3rem; color:var(--ink); font-weight:800; letter-spacing:-.035em; min-height:38px }
 :root[data-layout=den] .section-title::before { display:none }
-:root[data-layout=den] #denBillsSummary .den-summary-stats strong { font-variant-numeric:tabular-nums }
-:root[data-layout=den] .bill-tracker-month progress { accent-color:#51beff }
-:root[data-layout=den] :is(.bill-tracker-month progress,.den-wallet-card progress)::-webkit-progress-bar { background:#9bb2cf; border-radius:8px }
-:root[data-layout=den] .bill-tracker-month progress::-webkit-progress-value { background:#51beff; border-radius:8px }
-:root[data-layout=den] .den-wallet-card progress::-webkit-progress-value { background:#ef751c; border-radius:8px }
-@media(min-width:370px) { .den-allocation-grid { grid-template-columns:repeat(3,minmax(0,1fr)) }.den-allocation-grid>div:nth-child(2n+1) { padding-left:12px; border-left:1px solid #587596 }.den-allocation-grid>div:nth-child(3n+1) { padding-left:0; border:0 } }
+:root[data-layout=den] .schedule-reset-btn { left:auto; right:0; width:33px; height:33px; border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:11px }
+:root[data-layout=den] .bd-paycheck { padding:0; overflow:hidden; border-radius:16px; margin:0 0 18px; background:var(--card); border:1px solid #a9c5e4; box-shadow:var(--den-elevation) }
+:root[data-layout=den] .bd-paycheck .paycheck-head { display:flex; align-items:center; gap:10px; padding:12px 14px; margin:0; background:var(--den-income); border-bottom:1px solid var(--line); border-radius:0 }
+:where(:root[data-layout=den]) .paycheck-head>input { accent-color:var(--accent-fill); width:19px; height:19px; margin:0; flex-shrink:0 }
+:where(:root[data-layout=den]) .bd-paycheck-title { flex:1; min-width:0 }
+:where(:root[data-layout=den]) .bd-paycheck-title small { display:block; font-size:.67rem; color:var(--muted); line-height:1.35 }
+:where(:root[data-layout=den]) .bd-paycheck-title strong { font-size:1rem; font-weight:800; letter-spacing:-.035em }
+:where(:root[data-layout=den]) .bd-paycheck-status { border:1px solid #a5c6ed; border-radius:8px; padding:3px 6px; background:#ffffffaa; color:#225493; font-size:.62rem; font-weight:550 }
+:where(:root[data-layout=den]) .bd-paycheck-collapse { display:grid; place-items:center; border:0; background:none; color:var(--ink); padding:4px; width:22px; height:30px }
+:where(:root[data-layout=den]) .bd-paycheck-collapse svg { width:17px; height:17px; transform:rotate(90deg) }
+:where(:root[data-layout=den]) .bd-paycheck-collapse[aria-expanded=false] svg { transform:rotate(0) }
+:where(:root[data-layout=den]) .bd-paycheck-body { padding:14px }
+:root[data-layout=den] .bd-paycheck .check-summary { background:none; border:0; padding:0; margin:0 }
+:where(:root[data-layout=den]) .bd-paycheck-section { margin:0 0 16px }
+:where(:root[data-layout=den]) .bd-paycheck-section h4, :where(:root[data-layout=den]) .bd-paycheck-section-title { font-size:.65rem; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); margin:0 0 7px; padding:0 }
+:root[data-layout=den] .bd-paycheck .check-summary-row { padding:7px 0; border-top:0; border-bottom:1px solid var(--line); gap:8px; font-size:.76rem; background:none; line-height:1.35 }
+:where(:root[data-layout=den]) .bd-paycheck .check-summary-row>span:first-child { min-width:0 }
+:where(:root[data-layout=den]) .bd-paycheck .check-summary-row small { font-size:.63rem; color:var(--muted) }
+:root[data-layout=den] .bd-paycheck .paycheck-income { border:0; padding:0; display:block }
+:where(:root[data-layout=den]) .bd-paycheck .paycheck-income>span:first-child { display:none }
+:root[data-layout=den] .bd-paycheck .paycheck-income .amount-input-wrap { font-size:1.7rem; font-weight:800; letter-spacing:-.04em; color:var(--ink); justify-content:flex-start }
+:root[data-layout=den] .bd-paycheck .paycheck-income input { font-size:1.7rem; font-weight:850; width:145px; text-align:left; padding:2px 3px; border:0; border-bottom:1px dashed #82a9de; border-radius:0; background:none; color:var(--ink) }
+:root[data-layout=den] .bd-paycheck .amount-input-wrap { display:inline-flex; align-items:center; gap:2px; font-size:.83rem; color:var(--ink); white-space:nowrap; flex-shrink:0 }
+:root[data-layout=den] .bd-paycheck .amount-input { width:78px; min-height:27px; padding:3px 6px; border:1px solid var(--line); border-radius:7px; background:var(--surface-subtle); color:var(--ink); font-size:.83rem; text-align:right }
+:root[data-layout=den] .bd-paycheck .prominent-row { background:var(--surface-inset); border:0; border-radius:8px; margin-top:7px; padding:8px 9px; font-size:.72rem; font-weight:600 }
+:root[data-layout=den] .bd-paycheck .bonus-inline-btn { min-height:28px; padding:5px 8px; border:1px solid var(--line)!important; background:var(--surface-subtle)!important; color:var(--accent)!important; border-radius:8px; font-size:.65rem; margin:6px 0 2px }
+:where(:root[data-layout=den]) .bd-takehome { position:relative }
+:where(:root[data-layout=den]) .bd-takehome>.bonus-inline-btn { position:absolute; right:0; top:15px }
+:where(:root[data-layout=den]) .bd-paycheck .paycheck-bills-heading { display:none }
+:root[data-layout=den] .bd-paycheck .paycheck-shared-details { border:0; background:none; border-bottom:1px solid var(--line); padding:0; border-radius:0; margin:0 }
+:where(:root[data-layout=den]) .bd-paycheck .paycheck-shared-details>summary { padding:8px 0; color:var(--accent); font-size:.69rem }
+:root[data-layout=den] .bd-paycheck .paycheck-debt-row { display:flex; flex-wrap:wrap; gap:10px; padding:11px; margin:8px 0; border:1px solid var(--line); border-radius:12px; background:var(--surface-subtle) }
+:root[data-layout=den] .bd-paycheck .paycheck-debt-name { display:flex; flex-direction:column; align-items:flex-start; flex:1; min-width:100px; font-size:.8rem }
+:root[data-layout=den] .bd-paycheck .paycheck-creditor-link { padding:0; margin:0; color:var(--ink); background:none; border:0; font-size:.86rem; font-weight:800; text-align:left; letter-spacing:-.025em }
+:root[data-layout=den] .bd-paycheck .paycheck-debt-amounts { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; flex:1 0 100%; width:100%; margin:0 }
+:where(:root[data-layout=den]) .bd-paycheck .paycheck-debt-amounts>div, :where(:root[data-layout=den]) .bd-paycheck .paycheck-debt-amounts>label { padding:0; min-width:0; background:none; border:0; text-align:left }
+:where(:root[data-layout=den]) .bd-paycheck .paycheck-debt-amounts small { font-size:.59rem; color:var(--muted); display:block; margin-bottom:4px }
+:where(:root[data-layout=den]) .bd-paycheck .paycheck-debt-amounts span { font-size:.72rem!important; color:var(--ink); font-weight:650; overflow-wrap:anywhere; display:block }
+:root[data-layout=den] .bd-paycheck .pay-input { width:100%; min-width:0; min-height:27px; padding:3px; font-size:.73rem; border:1px solid #9abff1; background:var(--card); color:var(--ink); border-radius:6px; box-sizing:border-box }
+:root[data-layout=den] .bd-paycheck input[type=number]::-webkit-inner-spin-button, :root[data-layout=den] .bd-paycheck input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0 }
+:where(:root[data-layout=den]) .bd-paycheck .paycheck-debt-actions { display:flex; align-items:center; gap:5px }
+:where(:root[data-layout=den]) .bd-paycheck .paycheck-debt-actions button { min-height:26px; font-size:.61rem; padding:4px 8px; border-radius:7px }
+:where(:root[data-layout=den]) .bd-paycheck .add-debt-payment { background:none; border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:.67rem; color:var(--accent); margin:4px 0 12px }
+:where(:root[data-layout=den]) .bd-paycheck-totals { padding:9px 11px; border:1px solid var(--line); border-radius:10px; background:var(--surface-subtle); margin-top:4px }
+:root[data-layout=den] .bd-paycheck-totals>.line { padding:5px 0!important; margin:0!important; border:0!important; font-size:.71rem; gap:8px; line-height:1.35; background:none }
+:root[data-layout=den] .bd-paycheck .paycheck-cash-left { display:flex; justify-content:space-between; align-items:center; gap:10px; background:#e2f5e8; color:#174d32; border:1px solid #b2d9bf; border-radius:10px; padding:11px; margin:10px 0 0; font-size:.82rem }
+:where(:root[data-layout=den]) .bd-paycheck .paycheck-cash-left strong { font-size:1.25rem; letter-spacing:-.035em; color:inherit }
+:root[data-layout=den][data-theme=dark] .bd-paycheck .paycheck-cash-left { background:#204638; border-color:#4a7a61; color:#d3f5df }
+/* Desktop widens the composition without losing the phone design. */
+@media(min-width:900px) {
+:root[data-layout=den] .wrap { max-width:1080px; padding:26px 30px 110px }
+:root[data-layout=den] #tab-debt:not([hidden]) { display:grid; grid-template-columns:1fr 1fr; gap:18px 24px; align-items:start }
+:root[data-layout=den] #tab-debt>.den-intro, :root[data-layout=den] #schedulePlanSection { grid-column:1/-1 }
+:root[data-layout=den] #tab-debt>.hero-peek-wrap { margin:0 }
+:root[data-layout=den] #scheduleOut, :root[data-layout=den] #scheduleRestOut { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start }
+:root[data-layout=den] :is(#billAgenda,#debtAccounts) { display:grid; grid-template-columns:1fr 1fr; gap:14px 20px; align-items:start }
+:root[data-layout=den] #paidBillsList { grid-column:1/-1 }
+:root[data-layout=den] .bd-account-card { margin-bottom:0 }
+:where(:root[data-layout=den]) .bd-settings-hub { display:grid; grid-template-columns:1fr 1fr; gap:0 24px; align-items:start }
+:where(:root[data-layout=den]) .bd-profile, :where(:root[data-layout=den]) .bd-settings-search { grid-column:1/-1 }
+:where(:root[data-layout=den]) .bd-profile { max-width:520px; margin-bottom:24px }
+:where(:root[data-layout=den]) .bd-settings-search { margin-bottom:22px }
+:where(:root[data-layout=den]) #bdAppearance { grid-column:1; grid-row:3 }
+:where(:root[data-layout=den]) #bdHousehold { grid-column:2; grid-row:3 }
+:where(:root[data-layout=den]) #bdConnections { grid-column:1; grid-row:4 }
+:where(:root[data-layout=den]) #bdOptions { grid-column:2; grid-row:4 }
+:where(:root[data-layout=den]) .bd-setting-row { min-height:47px!important }
+:where(:root[data-layout=den]) .bd-setting-group { margin-bottom:24px }
+:where(:root[data-layout=den]) .bd-theme-swatches { padding-bottom:19px }
+:where(:root[data-layout=den]) .bd-theme-swatches button { width:48px; height:48px }
+:where(:root[data-layout=den]) .bd-mode-row { padding-bottom:15px }
+:root[data-layout=den] #tab-income:not([hidden]) { display:grid; grid-template-columns:1fr 1fr; gap:0 22px; align-items:start }
+:where(:root[data-layout=den]) #tab-income>.tab-header-peek, :where(:root[data-layout=den]) #tab-income>.bd-income-editors, :where(:root[data-layout=den]) #tab-income>#bankActivityCard, :where(:root[data-layout=den]) #tab-income>#incomeStatus { grid-column:1/-1 }
+:where(:root[data-layout=den]) #tab-income>.hero-peek-wrap { grid-column:1 }
+:where(:root[data-layout=den]) #bdNextPaycheck { grid-column:2; grid-row:2 / span 2 }
+:where(:root[data-layout=den]) #personalForecastCard { grid-column:1 }
+:where(:root[data-layout=den]) #bdRecentTransactions { grid-column:2 }
+:where(:root[data-layout=den]) #tab-income>.bd-spending { grid-column:1/-1 }
+:where(:root[data-layout=den]) .bd-account-amount>strong { font-size:2.2rem }
+:where(:root[data-layout=den]) .bd-account-metrics :is(dd,strong) { font-size:.95rem }
+:where(:root[data-layout=den]) .bd-account-identity h4 { font-size:1.15rem!important }
+}
+@media(max-width:360px) {
+:root[data-layout=den] .wrap { padding:17px 12px 100px }
+:where(:root[data-layout=den]) .bd-heading-actions button { padding:7px 9px!important; font-size:.7rem!important }
+:root[data-layout=den] .bd-tracker { padding:15px }
+:where(:root[data-layout=den]) .bd-tracker-stats { gap:7px!important }
+:where(:root[data-layout=den]) .bd-tracker-stats .row>span:last-child { font-size:.88rem }
+:where(:root[data-layout=den]) .den-allocation-grid strong { font-size:.88rem }
+:where(:root[data-layout=den]) .bd-profile { grid-template-columns:42px minmax(0,1fr) auto; gap:7px }
+:where(:root[data-layout=den]) .bd-profile-avatar { width:41px; height:41px; font-size:1rem }
+:where(:root[data-layout=den]) .bd-profile-info>strong { font-size:.92rem }
+:where(:root[data-layout=den]) .bd-profile-actions button { font-size:.58rem }
+:where(:root[data-layout=den]) .bd-profile-actions .bd-status { font-size:.58rem; padding:3px 8px }
+:where(:root[data-layout=den]) .bd-setting-row { font-size:.71rem!important; gap:7px!important }
+:where(:root[data-layout=den]) .bd-setting-value { font-size:.64rem }
+:where(:root[data-layout=den]) .bd-setting-surface { padding:0 10px }
+:where(:root[data-layout=den]) .bd-theme-swatches button { width:36px; height:36px }
+:where(:root[data-layout=den]) .bd-account-amount>strong { font-size:1.7rem }
+:where(:root[data-layout=den]) .bd-account-identity h4 { font-size:.9rem!important }
+:where(:root[data-layout=den]) .bd-account-metrics :is(dt,small,span) { font-size:.58rem }
+:where(:root[data-layout=den]) .bd-account-metrics :is(dd,strong) { font-size:.73rem }
+:where(:root[data-layout=den]) .bd-account-amount { margin-left:35px }
+:where(:root[data-layout=den]) .debt-account .bd-account-amount { margin-left:0 }
+:where(:root[data-layout=den]) .den-income-payday { padding:9px }
+:where(:root[data-layout=den]) .den-income-payday svg { width:20px; height:20px }
+:where(:root[data-layout=den]) .den-income-payday strong { font-size:.84rem }
+:where(:root[data-layout=den]) .den-income-payday>span:last-child>strong { font-size:1.18rem }
+:where(:root[data-layout=den]) .den-wallet-card { padding-inline:12px; gap:10px }
+:where(:root[data-layout=den]) .den-wallet-glyph { width:32px; height:32px }
+:where(:root[data-layout=den]) .den-wallet-metrics { gap:10px }
+:where(:root[data-layout=den]) .den-wallet-metrics>span+span { padding-left:10px }
+:where(:root[data-layout=den]) .den-wallet-metrics strong { font-size:1.15rem }
+}
+@media(forced-colors:active) {
+:root[data-layout=den] .bd-switch-row input { appearance:auto }
+:where(:root[data-layout=den]) .bd-switch-row input::before { display:none } }
+@media(prefers-reduced-motion:reduce) {
+:where(:root[data-layout=den]) .den-wallet-card { transition:none } }
+:root[data-layout=den] .section-divider { display:none }
+:root[data-layout=den] #bdSettingsSearch { text-align:left }
+:root[data-layout=den] .bd-tracker .hero-balance-note { order:2; margin:10px 0 0; color:#c0d3ec; font-size:.67rem; line-height:1.4 }
+:root[data-layout=den] #personalForecastCard .forecast-chart { margin:8px 0 5px; padding:0; background:transparent; border:0; box-shadow:none; border-radius:0 }
+:root[data-layout=den] #personalForecastCard .forecast-chart>svg { height:115px }
+:root[data-layout=den] #personalForecastCard .chart-scrubber { margin:9px 0 0; font-size:.65rem }
+:root[data-layout=den] #personalForecastCard .chart-scrubber input { padding:0; margin-top:6px }
+:root[data-layout=den] #personalForecastCard .chart-axis { margin-top:0 }
+:root[data-layout=den] .bd-forecast-details { padding:9px 0 0; border:0; border-top:1px solid var(--line); background:none; border-radius:0 }
+:root[data-layout=den] .bd-forecast-details>summary { padding:0; font-size:.72rem; font-weight:500; color:var(--accent) }
+:where(:root[data-layout=den]) .bd-forecast-details>summary::after { display:none }
+:where(:root[data-layout=den]) .bd-list-toolbar { display:flex; justify-content:space-between; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 10px }
+:where(:root[data-layout=den]) .bd-list-count { font-size:.72rem; color:var(--muted); display:flex; align-items:center; gap:5px }
+:where(:root[data-layout=den]) .bd-list-count .forecast-tag { font-size:.65rem; padding:3px 6px; margin:0 }
+:root[data-layout=den] .bd-list-options { border:0; background:none; padding:0; margin:0; border-radius:0; position:relative; flex:1; min-width:0 }
+:root[data-layout=den] .bd-list-options>summary { display:flex; align-items:center; justify-content:flex-end; gap:5px; color:var(--muted); font-size:.7rem; padding:4px 0; list-style:none; font-weight:500; cursor:pointer }
+:where(:root[data-layout=den]) .bd-list-options>summary svg { width:13px; height:13px; transform:rotate(90deg) }
+:where(:root[data-layout=den]) .bd-list-options>summary::after { display:none }
+:where(:root[data-layout=den]) .bd-list-options[open] { flex-basis:100% }
+:where(:root[data-layout=den]) .bd-list-options[open]>summary { justify-content:flex-start }
+:root[data-layout=den] .bd-list-options .account-sort-controls { display:flex; margin:9px 0 0; padding:10px; border:1px solid var(--line); border-radius:10px; background:var(--card); align-items:flex-end }
+:where(:root[data-layout=den]) .bd-list-options .account-sort-controls label { flex:1; margin:0 }
+:where(:root[data-layout=den]) .bd-list-options .account-sort-controls select { display:block; width:100%; margin-top:4px }
+:where(:root[data-layout=den]) .account-sort-status:empty { display:none }
+:root[data-layout=den] #refreshAllDebts { display:flex; align-items:center; gap:4px; min-height:26px; margin:0; padding:3px 7px; background:var(--card); color:var(--muted); border:1px solid var(--line); border-radius:8px; font-size:.65rem }
+:where(:root[data-layout=den]) #refreshAllDebts svg { width:14px; height:14px }
+:root[data-layout=den] .bd-list-tools { padding:0; margin:14px 0 18px; border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--ink); box-shadow:var(--den-elevation); overflow:hidden }
+:where(:root[data-layout=den]) .bd-list-tools>summary { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; font-size:.76rem; color:var(--muted); cursor:pointer; list-style:none }
+:where(:root[data-layout=den]) .bd-list-tools>summary svg { width:16px; height:16px }
+:where(:root[data-layout=den]) .bd-list-tools>summary::after { display:none }
+:root[data-layout=den] .bd-list-tools .account-total-card { box-shadow:none; border:0; margin:0; padding:14px; background:none }
+:where(:root[data-layout=den]) .bd-list-tools .bill-sharing-toolbar { margin:0; padding:12px 14px; border-top:1px solid var(--line) }
+:root[data-layout=den] .bd-chart-explore { padding:7px 0 0; margin:6px 0 0; border:0; border-top:1px solid var(--line); border-radius:0; background:none }
+:root[data-layout=den] .bd-chart-explore>summary { display:flex; justify-content:space-between; align-items:center; list-style:none; padding:0; font-size:.68rem; color:var(--muted); font-weight:500; cursor:pointer }
+:where(:root[data-layout=den]) .bd-chart-explore>summary svg { width:14px; height:14px; transform:rotate(90deg) }
+:where(:root[data-layout=den]) .bd-chart-explore>summary::after { display:none }
+:root[data-layout=den] .bd-account-identity[data-brand=capital-one] { position:relative; padding-top:5px; min-height:26px }
+:root[data-layout=den] .bd-account-identity[data-brand=capital-one] h4 { color:#07518a; font-style:italic; font-size:1.13rem; letter-spacing:-.05em }
+:where(:root[data-layout=den]) .bd-account-identity[data-brand=capital-one] .bd-account-icon { position:absolute; left:58px; top:-8px; width:53px; height:20px }
+:where(:root[data-layout=den]) .bd-account-identity[data-brand=capital-one] .bd-account-icon svg { width:53px; height:20px }
+:root[data-layout=den] .bd-account-identity[data-brand=elga] h4 { color:#142c67; letter-spacing:-.04em }
+:where(:root[data-layout=den]) .bd-account-identity[data-brand=elga] .bd-account-icon { color:#142c67 }
+:root[data-layout=den] .bd-account-identity[data-brand=indigo] h4 { color:#2315bc; text-transform:uppercase }
+:root[data-layout=den][data-theme=dark] .bd-account-identity[data-brand] h4 { color:#a8caff }
 
-/* Keep the uniform dark trackers legible when a bright existing palette is chosen. */
-:root[data-layout=den][data-color-scheme] { --den-tracker:linear-gradient(125deg,color-mix(in srgb,var(--gradient-start,var(--header)) 30%,#031e3f),color-mix(in srgb,var(--gradient-end,var(--hero-debt)) 30%,#031e3f)) }
-:root[data-layout=den] :is(#debtHeroBox,.savings-hero) { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); column-gap:12px }
-:root[data-layout=den] :is(#debtHeroBox,.savings-hero)>* { grid-column:1/-1; min-width:0 }
-:root[data-layout=den] #debtHeroBox>.row,:root[data-layout=den] .savings-hero>.den-savings-stat { grid-column:auto; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; gap:6px; font-size:.68rem; line-height:1.35 }
-:root[data-layout=den] :is(#debtHeroBox>.row,.savings-hero>.den-savings-stat)>span:last-child { font-size:1.12rem; overflow-wrap:anywhere; text-align:left }
-:root[data-layout=den] #billTracker { position:relative }
-:root[data-layout=den] #billTracker>.bill-tracker-balance { padding-right:80px }
-:root[data-layout=den] #billTracker>.den-bill-ring { position:absolute; top:67px; right:19px }
-.den-tracker-ring { display:grid; place-items:center; width:70px; height:70px; border-radius:50%; background:conic-gradient(#42baff var(--paid),#31567a 0) }.den-tracker-ring span { display:grid; place-items:center; width:53px; height:53px; border-radius:50%; background:#07264a; color:#fff; font-size:1.15rem; font-weight:800 }
-:root[data-layout=den] .bill-tracker-balance>strong { overflow-wrap:anywhere }
-@media(max-width:360px) { :root[data-layout=den] #billTracker>.bill-tracker-balance { padding-right:64px }:root[data-layout=den] .bill-tracker-balance>strong { font-size:2.1rem }.den-tracker-ring { width:58px; height:58px }.den-tracker-ring span { width:44px; height:44px; font-size:1rem }:root[data-layout=den] :is(#debtHeroBox>.row,.savings-hero>.den-savings-stat)>span:last-child { font-size:.96rem } }
-/* Preferences use the same real checkboxes, presented as accessible switches. */
-:root[data-layout=den] #trackerOptions>.check-label { display:flex; flex-direction:row-reverse; justify-content:space-between; align-items:center }
-:root[data-layout=den] #trackerOptions>.check-label>input[type=checkbox] { appearance:none; -webkit-appearance:none; width:42px; height:25px; flex:0 0 42px; position:relative; border:1px solid var(--line); border-radius:20px; background:var(--surface-inset); margin:0; cursor:pointer }
-:root[data-layout=den] #trackerOptions>.check-label>input[type=checkbox]::before { content:''; position:absolute; top:3px; left:3px; width:17px; height:17px; border-radius:50%; background:var(--muted); transition:transform .15s }
-:root[data-layout=den] #trackerOptions>.check-label>input[type=checkbox]:checked { background:var(--accent-fill); border-color:var(--accent-fill) }
-:root[data-layout=den] #trackerOptions>.check-label>input[type=checkbox]:checked::before { background:var(--on-accent); transform:translateX(17px) }
-:root[data-layout=den] #connectionDialog>section:has(>#accountMode) { background:var(--den-income)!important; border-color:var(--line) }
-:root[data-layout=den] #connectionDialog>section:has(>#accountMode)>h3 { display:flex; align-items:center; gap:10px; font-size:1.15rem }
-:root[data-layout=den] #connectionDialog>section:has(>#accountMode)>h3::before { content:'B'; display:grid; place-items:center; width:38px; height:38px; border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--ink); font-size:1.2rem; font-weight:850 }
-@media(forced-colors:active) { :root[data-layout=den] #trackerOptions>.check-label>input[type=checkbox] { appearance:auto; -webkit-appearance:auto }:root[data-layout=den] #trackerOptions>.check-label>input[type=checkbox]::before { display:none } }
-@media(prefers-reduced-motion:reduce) { :root[data-layout=den] #trackerOptions>.check-label>input[type=checkbox]::before { transition:none } }
-/* Keep tracker facts together even when a missing-balance notice is inserted. */
-:root[data-layout=den] #savingsHeroContainer .savings-hero>.den-savings-stat { grid-column:auto }
-:root[data-layout=den] #debtHeroBox>.row { order:1 }
-:root[data-layout=den] #debtHeroBox>p { order:2 }
-:root[data-layout=den] :is(#debtHeroBox,.savings-hero) .hero-date-banner { border-radius:0 }
-:root[data-layout=den] .hero :is(.day-counter,.paycheck-counter) { display:inline-block; padding:0; margin:5px 9px 0 0; border:0; border-radius:0; background:none; font-size:.73rem; font-weight:500 }
-@media(max-width:420px) { :root[data-layout=den] #debtHeroBox>.row>span:last-child,:root[data-layout=den] #savingsHeroContainer .savings-hero>.den-savings-stat>span:last-child { font-size:.97rem; letter-spacing:-.035em } }
-:root[data-layout=den] .schedule-reset-btn { left:auto; right:0; width:38px; height:38px }
+
+:root[data-layout=den][data-color-scheme],:root[data-layout=den][data-holiday] { --den-tracker:linear-gradient(125deg,color-mix(in srgb,var(--gradient-start,var(--header)) 30%,#031e3f),color-mix(in srgb,var(--gradient-end,var(--hero-debt)) 30%,#031e3f)) }
+
+:root[data-layout=den][data-theme=dark] .bd-account-icon { color:#b5d3ff }
+:root[data-layout=den] .bd-paycheck-preview>button { font-weight:450; border-radius:0 }
+:root[data-layout=den] .debt-account .den-date-stamp.is-near { background:#ff994c; color:#181c2c }
+
+:where(:root[data-layout=den]) .bd-detail-feedback:empty { display:none }
+:where(:root[data-layout=den]) .bd-detail-feedback { padding:10px; border:1px solid var(--line); border-radius:10px; background:var(--surface-inset); color:var(--ink); font-size:.8rem; line-height:1.45 }
