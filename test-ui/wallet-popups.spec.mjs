@@ -64,7 +64,7 @@ test('wallet fits one page, settings toggles save on the hub, and brand images l
   await page.setViewportSize({width,height});await page.locator('#denOpen').click();
   expect(await page.locator('#denMenu').evaluate(el=>el.scrollHeight<=el.clientHeight+1)).toBe(true);
   for(const card of await page.locator('.den-wallet-card').all()){await expect(card).toBeInViewport({ratio:1});expect((await card.boundingBox()).height).toBeGreaterThanOrEqual(44);}
-  await expect(page.locator('#denMenu footer button')).toBeInViewport({ratio:1});await page.locator('#denClose').click();
+  await expect(page.locator('#denMenu footer')).toHaveCount(0);await page.locator('#denClose').click();
  }
  await menuGo(page,'settings');await expect(page.locator('#bdOptions #sharedBillsToggle')).toBeVisible();await expect(page.locator('#bdOptions #carPaymentsInDebtToggle')).toBeVisible();
  await page.locator('#carPaymentsInDebtToggle').check();await expect.poll(()=>JSON.parse(f.tracker.state.values['income-planner']).showCarPaymentsInDebt).toBe(true);

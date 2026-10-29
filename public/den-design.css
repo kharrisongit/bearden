@@ -74,8 +74,6 @@
 :where(:root[data-layout=den]) .den-wallet-debts .den-wallet-glyph { color:#fff; background:#4b3587; border-color:#3a296e }
 :where(:root[data-layout=den]) .den-wallet-savings .den-wallet-glyph { color:#fff; background:#2e6b25; border-color:#24561d }
 :where(:root[data-layout=den]) .den-wallet-card progress { display:block; width:100%; height:6px; margin-top:10px; accent-color:#ed7018 }
-:where(:root[data-layout=den]) .den-menu-sheet>footer button { display:flex; align-items:center; justify-content:center; gap:10px; margin:22px 0 0; width:100%; padding:14px; min-height:48px; border:1px solid var(--line); border-radius:14px; background:var(--card); color:var(--ink); font:750 .85rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; cursor:pointer }
-:where(:root[data-layout=den]) .den-menu-sheet>footer svg { width:20px; height:20px }
 :where(:root[data-layout=den]) #denMenu button:focus-visible { outline:3px solid #4d8cf5; outline-offset:4px }
 :where(:root[data-layout=den]) #denMenu .den-wallet-card:focus-visible { outline-offset:-5px }
 :root:not([data-layout=den]) #denMenu { display:none }
@@ -188,11 +186,6 @@
 :where(:root[data-layout=den]) .bd-balance-unavailable { font-size:1rem; color:var(--muted) }
 :where(:root[data-layout=den]) .bd-page-footer>button { display:flex; align-items:center; justify-content:center; gap:12px; min-height:44px; width:100%; background:var(--accent-fill); color:var(--on-accent); border:0; border-radius:14px; font-size:.9rem; font-weight:700; padding:10px }
 :where(:root[data-layout=den]) .bd-page-footer svg { width:22px; height:22px }
-:where(:root[data-layout=den]) .bd-forecast-shortcut { display:flex; align-items:center; gap:12px; width:100%; border:1px solid var(--line); border-radius:14px; padding:12px 14px; background:var(--card); color:var(--ink); box-shadow:var(--den-elevation); text-align:left }
-:where(:root[data-layout=den]) .bd-forecast-shortcut>svg { width:27px; height:27px }
-:where(:root[data-layout=den]) .bd-forecast-shortcut>svg:last-child { margin-left:auto; width:17px }
-:where(:root[data-layout=den]) .bd-forecast-shortcut strong { display:block; font-size:.88rem }
-:where(:root[data-layout=den]) .bd-forecast-shortcut small { font-size:.67rem; color:var(--muted) }
 /* Settings hub, with a consistent row rhythm and full detail editors. */
 :root[data-layout=den] #connectionDialog { padding:0; border:0; box-shadow:none; background:none }
 :where(:root[data-layout=den]) .bd-profile { display:grid; grid-template-columns:56px minmax(0,1fr) auto; gap:10px; align-items:center; margin:10px 1px 18px }
@@ -339,7 +332,6 @@
 :root[data-layout=den] #debtBankUpdated { margin:6px 0 0; font-size:.59rem }
 :where(:root[data-layout=den]) .bd-tracker :is(#accountSaveStatus,.bank-refresh-status):empty { display:none }
 :where(:root[data-layout=den]) .den-income-detail { order:1 }
-:where(:root[data-layout=den]) .den-income-actions { order:2 }
 :where(:root[data-layout=den]) .den-payday-total { display:flex; justify-content:space-between; align-items:center; font-size:.7rem; margin:10px 0 }
 :where(:root[data-layout=den]) .den-payday-total strong { font-size:1rem }
 :where(:root[data-layout=den]) .den-allocation-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px 0 }
@@ -347,8 +339,9 @@
 :where(:root[data-layout=den]) .den-allocation-grid>div:nth-child(3n+1) { border-left:0; padding-left:0 }
 :where(:root[data-layout=den]) .den-allocation-grid small { display:block; font-size:.62rem; color:#c0d3ec; margin-bottom:3px; line-height:1.35 }
 :where(:root[data-layout=den]) .den-allocation-grid strong { font-size:1rem; letter-spacing:-.02em; overflow-wrap:anywhere }
-:where(:root[data-layout=den]) .den-allocation-grid .den-remainder { background:#0b4b91; border:1px solid #508dc6; padding:6px 8px; border-radius:9px; margin-top:-5px }
-:where(:root[data-layout=den]) .den-remainder small { color:#d9ecff }
+:root[data-layout=den] .den-remainder { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px 12px; min-width:0; box-sizing:border-box; background:#0b4b91; border:1px solid #508dc6; padding:12px; border-radius:10px; margin-top:14px }
+:root[data-layout=den] .den-remainder small { flex:1 1 150px; min-width:0; color:#d9ecff; font-size:.72rem; line-height:1.45; overflow-wrap:anywhere }
+:root[data-layout=den] .den-remainder strong { color:#fff; font-size:1.08rem; line-height:1.3; overflow-wrap:anywhere; max-width:100% }
 :where(:root[data-layout=den]) .den-card-actions { display:flex; gap:9px; margin-top:15px }
 :root[data-layout=den] .den-card-actions button { display:flex; flex:1; align-items:center; justify-content:center; gap:7px; border:1px solid #78a9d8; border-radius:10px; min-height:38px; padding:8px; background:transparent; color:#fff; font-size:.75rem; font-weight:600; min-width:0 }
 :where(:root[data-layout=den]) .den-card-actions svg { width:17px; height:17px }
@@ -566,12 +559,6 @@
 :where(:root[data-layout=den]) .account-sort-status:empty { display:none }
 :root[data-layout=den] #refreshAllDebts { display:flex; align-items:center; gap:4px; min-height:26px; margin:0; padding:3px 7px; background:var(--card); color:var(--muted); border:1px solid var(--line); border-radius:8px; font-size:.65rem }
 :where(:root[data-layout=den]) #refreshAllDebts svg { width:14px; height:14px }
-:root[data-layout=den] .bd-list-tools { padding:0; margin:14px 0 18px; border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--ink); box-shadow:var(--den-elevation); overflow:hidden }
-:where(:root[data-layout=den]) .bd-list-tools>summary { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; font-size:.76rem; color:var(--muted); cursor:pointer; list-style:none }
-:where(:root[data-layout=den]) .bd-list-tools>summary svg { width:16px; height:16px }
-:where(:root[data-layout=den]) .bd-list-tools>summary::after { display:none }
-:root[data-layout=den] .bd-list-tools .account-total-card { box-shadow:none; border:0; margin:0; padding:14px; background:none }
-:where(:root[data-layout=den]) .bd-list-tools .bill-sharing-toolbar { margin:0; padding:12px 14px; border-top:1px solid var(--line) }
 :root[data-layout=den] .bd-chart-explore { padding:7px 0 0; margin:6px 0 0; border:0; border-top:1px solid var(--line); border-radius:0; background:none }
 :root[data-layout=den] .bd-chart-explore>summary { display:flex; justify-content:space-between; align-items:center; list-style:none; padding:0; font-size:.68rem; color:var(--muted); font-weight:500; cursor:pointer }
 :where(:root[data-layout=den]) .bd-chart-explore>summary svg { width:14px; height:14px; transform:rotate(90deg) }
@@ -723,8 +710,6 @@
 :root[data-layout=den] .den-wallet-glyph { width:35px; height:38px; border-radius:10px }
 :root[data-layout=den] .den-wallet-glyph svg { width:22px; height:22px }
 :root[data-layout=den] .den-wallet-card > svg { width:18px; height:18px }
-:root[data-layout=den] .den-menu-sheet > footer { flex-shrink:0 }
-:root[data-layout=den] .den-menu-sheet > footer button { margin-top:12px; padding:10px; min-height:44px; font-size:.8rem }
 @media(max-height:620px) {
  :root[data-layout=den] #denMenu { padding:10px 14px max(10px,env(safe-area-inset-bottom)) }
  :root[data-layout=den] .den-menu-sheet > header { margin-bottom:5px; min-height:36px }
@@ -739,7 +724,6 @@
  :root[data-layout=den] .den-wallet-metrics { margin-top:3px; gap:10px }
  :root[data-layout=den] .den-wallet-metrics > span+span { padding-left:10px }
  :root[data-layout=den] .den-wallet-metrics strong { font-size:1rem }
- :root[data-layout=den] .den-menu-sheet > footer button { margin-top:7px; min-height:38px; padding:7px }
 }
 /* Connection state is a dot; names remain available to assistive technology. */
 :root[data-layout=den] :is(.bd-status,.connection-state[data-connected]) {
@@ -819,3 +803,13 @@
  :root[data-layout=den] .den-wallet-stack { display:grid; grid-template-columns:1fr 1fr; grid-template-rows:repeat(3,minmax(0,1fr)); gap:8px }
  :root[data-layout=den] .den-wallet-card,:root[data-layout=den] .den-wallet-card + .den-wallet-card { margin:0; padding:10px 12px }
 }
+
+/* Disclosures use one readable chevron and the whole summary is a tap target. */
+:root[data-layout=den] details > summary { min-height:44px; box-sizing:border-box; gap:10px; list-style:none }
+:root[data-layout=den] details > summary::marker { content:"" }
+:root[data-layout=den] details > summary::-webkit-details-marker { display:none }
+:root[data-layout=den] details > summary::after { content:""; display:block; position:static; width:26px; height:26px; flex:0 0 26px; margin-left:auto; color:inherit; background:currentColor; -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m5 9 7 7 7-7' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat; mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m5 9 7 7 7-7' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat; transform:rotate(0deg); transition:transform .15s ease }
+:root[data-layout=den] details[open] > summary::after { transform:rotate(180deg) }
+:root[data-layout=den] :is(.bd-list-options,.bd-forecast-details,.bd-chart-explore) > summary > svg { display:none }
+:root[data-layout=den] .bd-list-total { margin:16px 0 20px; padding:16px; border:1px solid var(--line); border-radius:16px; background:var(--card); box-shadow:var(--den-elevation) }
+@media(prefers-reduced-motion:reduce) { :root[data-layout=den] details > summary::after { transition:none } }

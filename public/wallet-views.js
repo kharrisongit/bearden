@@ -49,7 +49,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
   settingsHub.innerHTML='<div class="bd-profile"><div class="bd-profile-avatar" data-bd-initials>BD</div><div class="bd-profile-info"><strong>Your account</strong><span id="bdAccountEmail">On this device</span><small id="bdBackupStatus">'+svg('cloud')+'<span>Local plan</span></small></div><div class="bd-profile-actions"><span class="bd-status" id="bdAccountBadge">Local</span><button type="button" data-bd-detail="account">Manage account '+chevron+'</button></div></div>'
     +'<label class="bd-settings-search">'+svg('search')+'<input type="search" id="bdSettingsSearch" placeholder="Find a setting" aria-label="Find a setting"></label>'
     +group('Appearance','<div class="bd-mode-row">'+svg('sun')+'<div class="bd-mode-segment" role="group" aria-label="Color mode"><button type="button" data-bd-mode="light">Light</button><button type="button" data-bd-mode="dark">Dark</button><button type="button" data-bd-mode="auto">Auto</button></div></div><div class="bd-theme-swatches" role="group" aria-label="Color palette">'+[['','Standard blue','#0868ff'],['lavender','Lavender','#bca1f4'],['sunset','Sunset','#ff9650'],['rose','Rose','#f59aba'],['twilight','Twilight','linear-gradient(135deg,#121f50,#725cae)']].map(([value,name,color])=>'<button type="button" data-bd-palette="'+value+'" aria-label="'+name+' palette" title="'+name+'" style="--swatch:'+color+'"><span aria-hidden="true">✓</span></button>').join('')+'</div><div id="bdAllThemes"></div>','bdAppearance')
-    +group('Household',row('Pay schedules','bills','data-den-go="income-edit"','Biweekly')+row('Shared contributions','people','data-bd-household','Set up')+row('Budget','chart','data-den-go="budget"','Edit'),'bdHousehold')
+    +group('Household',row('Pay schedules','bills','data-den-go="income-edit"','Biweekly')+row('Shared contributions','people','data-bd-household','Set up'),'bdHousehold')
     +group('Connections',row('Plaid','target','data-bd-detail="plaid"','<span data-bd-status="classicBankStatus">Connect</span>')+row('Lunch Flow','stack','data-bd-detail="lunchflow"','<span data-bd-status="lunchflowStatus">Connect</span>')+row('Email accounts','mail','data-bd-detail="email"','<span data-bd-status="classicEmailStatus">Connect</span>')+row('Rent portal','overview','data-bd-detail="rent"','<span data-bd-status="rentStatus">Connect</span>'),'bdConnections','<button type="button" id="bdSyncAll">Sync all '+svg('refresh')+'</button>')
     +group('Options','<div id="bdSwitchRows"></div>'+row('Debt payment timing','bills','data-bd-detail="timing"','<span id="bdTimingValue"></span>')+row('More preferences','settings','data-bd-detail="preferences"','','aria-label="More preferences, setup and layout"')+row('Tools','tools','id="bdToolsButton" data-den-go="tools"','Notes &amp; games'),'bdOptions')
     +'<p id="bdSearchEmpty" class="subtle" hidden>No settings match your search.</p>';
@@ -146,6 +146,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
     }
   }
   $('#debts-nav-debt').textContent='Accounts';
+  $$('[data-open-bill-sharing]').forEach(button=>button.remove());
   for(const kind of ['bill','debt']){
     const list=$('#'+kind+'ListCard'),heading=$(':scope>.card-heading',list),sort=$('.account-sort-controls',list);
     const toolbar=make('div','bd-list-toolbar'),count=$('#'+kind+'AccountCount');
@@ -154,8 +155,8 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
     const refresh=$('#refreshAllDebts',heading);if(refresh)toolbar.append(refresh);
     heading.replaceWith(toolbar);
     const total=$('#'+(kind==='bill'?'bills':'debt')+'TotalAmount').closest('section');
-    const extra=make('details','bd-list-tools','<summary>List tools &amp; totals '+chevron+'</summary>');
-    const sharing=$('.bill-sharing-toolbar',list);if(sharing)extra.append(sharing);extra.append(total);list.after(extra);
+    $('.bill-sharing-toolbar',list)?.remove();
+    total.classList.add('bd-list-total');list.after(total);
   }
   // Income: balance / next paycheck / forecast / recent transactions / spending.
   const income=$('#tab-income'),bank=$('.bank-card',income),bankWrap=bank.parentElement;
@@ -177,8 +178,6 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
   const spending=$('#spendingDonut').closest('section');spending.classList.add('bd-spending');activity.after(spending);
   const oldIncomeControls=$('.income-controls-header',income);oldIncomeControls?.remove();
   $('#tab-debts').append(make('div','bd-page-footer','<button type="button" data-den-go="plan">Plan next paycheck '+chevron+'</button>'));
-  $('#accounts-bills').append(make('button','bd-forecast-shortcut',''+svg('plan')+'<span><strong>Bills forecast</strong><small>Upcoming bills and your projected balance</small></span>'+chevron));
-  $('.bd-forecast-shortcut').type='button';$('.bd-forecast-shortcut').onclick=()=>go('forecast');
   // Trackers get a dedicated header and metric area; savings deliberately places
   // the progress ring on the left, unlike the debt tracker.
   function buildTrackers(){

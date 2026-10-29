@@ -5,6 +5,7 @@ test('settings is a compact hub with profile, working search and the original de
  await page.setViewportSize({width:390,height:844});await fixture(page);await menuGo(page,'settings');
  await expect(page.locator('#bdAccountEmail')).toHaveText('you@example.com');
  await expect(page.locator('#bdSettingsHub .bd-setting-group')).toHaveCount(4);
+ await expect(page.locator('#tab-settings [data-den-go=budget]')).toHaveCount(0);
  await expect(page.locator('#classicLogin')).toBeHidden();
  const row=await page.locator('#bdHousehold .bd-setting-row').first().boundingBox();expect(row.height).toBeLessThan(50);
  await page.locator('#bdSettingsSearch').fill('contributions');
@@ -62,8 +63,10 @@ test('account cards keep details, list tools, totals and their original actions 
  const bill=page.locator('[data-account-id=electric]');expect((await bill.boundingBox()).height).toBeLessThan(205);
  await bill.locator('.bd-bill-details').click();await expect(bill.locator('dialog')).toBeVisible();await expect(bill.locator('dialog')).toContainText('Due Oct 29');await bill.locator('dialog .bd-detail-heading button').click();
  await page.locator('#billListCard .bd-list-options summary').click();await page.locator('#billsSort').selectOption('date-asc');await expect(page.locator('#billAgenda .bill-tile').first()).toHaveAttribute('data-account-id','internet');
- await page.locator('#accounts-bills .bd-list-tools summary').click();await expect(page.locator('#billsTotalAmount')).toBeVisible();await expect(page.locator('#accounts-bills [data-open-bill-sharing]')).toBeVisible();
+ await expect(page.locator('#billsTotalAmount')).toBeVisible();expect(await page.locator('#billsTotalAmount').evaluate(el=>!el.closest('details'))).toBe(true);
+ await expect(page.locator('[data-open-bill-sharing]')).toHaveCount(0);await expect(page.locator('#accounts-bills .bd-forecast-shortcut')).toHaveCount(0);
  await menuGo(page,'debts');await expect(page.locator('#tab-debts .bd-page-heading [data-account-kind=debt]')).toBeVisible();
+ await expect(page.locator('#debtTotalAmount')).toBeVisible();expect(await page.locator('#debtTotalAmount').evaluate(el=>!el.closest('details'))).toBe(true);
  const debt=page.locator('[data-tracker-account="1"]');expect((await debt.boundingBox()).height).toBeLessThan(210);
  await debt.locator('[data-show-debt-details]').click();await expect(page.locator('#debtProgressDialog')).toContainText('Capital One');await page.locator('#closeDebtProgress').click();
  await page.screenshot({path:'test-results/wallet-v3-debt.png',fullPage:true});

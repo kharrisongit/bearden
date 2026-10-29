@@ -70,7 +70,7 @@
       +walletCard('debts','Debt','debts','<strong data-wallet-value="debt">—</strong><small data-wallet-value="payoff">Your payoff plan</small>')
       +walletCard('savings','Savings','savings','<strong data-wallet-value="savings">—</strong><small data-wallet-value="goals">Your savings goals</small>')
       +walletCard('settings','Settings','settings','<small>Account · Appearance · Connections</small>')
-      +'</nav><footer>'+button('overview','Back to dashboard','overview')+'</footer></div>';
+      +'</nav></div>';
     document.body.append(menu);
     let scrollBeforeMenu = 0, previousOverflow = '';
     function closeMenu() { if(menu.open)menu.close(); }
@@ -146,10 +146,9 @@
     planTitle.innerHTML='<span class="den-original-title">📋 Your Schedule:</span><span class="den-only">Your paychecks</span>';
 
 
-    const actions = (a,b) => '<div class="den-card-actions">'+a+b+'</div>';
-    insert($('#debtIncomeCard'),'den-income-actions',actions(button('income-edit','Income','income'),button('budget','Budget','settings')));
+    const actions = (a,b='') => '<div class="den-card-actions">'+a+b+'</div>';
     insert($('#billTracker'),'den-bill-actions',actions(button('bills','View bills','bills'),button('forecast','Forecast','plan')));
-    insert($('#debtHeroBox'),'den-debt-actions',actions(button('debts','View debts','debts'),button('plan','Payoff plan','plan')));
+    insert($('#debtHeroBox'),'den-debt-actions',actions(button('debts','View debts','debts')));
     const views=window.mountWalletViews({icon,bear,esc,money,go,queueRefresh});
     // Existing widgets continue to own all their numbers, edits and calculations.
     let dashboard = null, frame = null;
@@ -169,7 +168,7 @@
       const fixed = next ? (next.accountBillsThisCheck || []).reduce((sum,bill)=>sum+bill.amount,0) : dashboard?.fixedBills || 0;
       const allocations = (upcoming?.allocations || 0) + fixed;
       const allocationRows = [...(fixed?[['Bills',fixed]]:[]),...['budget','expense','debt','savings'].filter(k=>totals.has(k)).map(k=>[({budget:'Budget',expense:'One-time',debt:'Debt',savings:'Savings'})[k],totals.get(k)])];
-      insert($('#debtIncomeCard'),'den-income-detail',upcoming?'<div class="den-payday-total"><span>Estimated next paycheck</span><strong>'+money(upcoming.amount)+'</strong></div><div class="den-allocation-grid">'+allocationRows.map(([label,amount])=>'<div><small>'+label+'</small><strong>'+money(amount)+'</strong></div>').join('')+'<div class="den-remainder"><small>After planned allocations</small><strong>'+money(upcoming.amount-allocations)+'</strong></div></div>':'');
+      insert($('#debtIncomeCard'),'den-income-detail',upcoming?'<div class="den-payday-total"><span>Estimated next paycheck</span><strong>'+money(upcoming.amount)+'</strong></div><div class="den-allocation-grid">'+allocationRows.map(([label,amount])=>'<div><small>'+label+'</small><strong>'+money(amount)+'</strong></div>').join('')+'</div><div class="den-remainder"><small>After planned allocations</small><strong>'+money(upcoming.amount-allocations)+'</strong></div>':'');
       const contribution = dashboard?.nextContribution;
       insert($('#billTracker'),'den-contribution',contribution?'<div class="den-next-row">'+icon('income')+'<span>Next contribution<small>'+dateLabel(contribution.date)+'</small></span><strong>+'+money(contribution.amount)+'</strong></div>':'');
       const debtAmount = (next?.payments || []).reduce((a,b)=>a+b,0);

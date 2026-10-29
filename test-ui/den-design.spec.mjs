@@ -11,6 +11,11 @@ for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`Den 
  await expect(page.locator('.den-payday-total')).toContainText('$1,845.00');
  await expect(page.locator('.den-remainder strong')).toHaveText(await page.evaluate(()=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(window.getDebtPlan().schedule[0].cashAfterDebt)));
  await expect(page.locator('.den-brand button[aria-label="Settings"]')).toBeVisible();
+ await expect(page.locator('#debtIncomeCard [data-den-go="income-edit"],#debtIncomeCard [data-den-go="budget"]')).toHaveCount(0);
+ expect(await page.locator('.den-remainder').evaluate(el=>{
+  const card=el.closest('.bd-tracker').getBoundingClientRect(),row=el.getBoundingClientRect(),label=el.querySelector('small').getBoundingClientRect();
+  return row.width>card.width*.8&&label.left>=row.left+10&&label.right<=row.right-10&&el.scrollWidth<=el.clientWidth;
+ })).toBe(true);
  await expect(page.locator('.den-contribution')).toContainText('$1,510.00');
  await expect(page.locator('#savingsHero-1 .den-savings-detail')).toContainText('$1,150.00 to go');
  await expect(page.locator('#savingsHero-1 progress')).toHaveAttribute('value','42.5');
@@ -32,7 +37,7 @@ for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`Den 
  }
  await menuGo(page,'savings');await expect(page.locator('#savingsHeroContainer')).toBeFocused();
  await page.locator('#savingsHero-1 .den-savings-detail button').first().click();await expect(page.locator('#savingsGoalEdit-1')).toBeVisible();
- await page.locator('#debtHeroBox [data-den-go="plan"]').click();await expect(page.locator('#schedulePlanSection')).toBeFocused();
+ await expect(page.locator('#debtHeroBox [data-den-go="plan"]')).toHaveCount(0);await page.locator('#debtHeroBox [data-den-go="debts"]').click();await expect(page.locator('#tab-debts')).toBeVisible();
  await menuGo(page,'overview');await expect(page.locator('.den-intro')).toBeFocused();
  await page.locator('#billTracker .den-bill-actions [data-den-go="forecast"]').click();await expect(page.locator('#billsForecastCard')).toBeVisible();await expect(page.locator('#billsForecastCard')).toBeFocused();
  expect(errors).toEqual([]);

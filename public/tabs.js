@@ -645,6 +645,7 @@
   try{await fn();}catch(e){shareMessage(e.message);}finally{shareBusy=false;button.disabled=false;}
  }
  async function openBillSharing(){
+  if(document.documentElement.dataset.layout==='den')return;
   await initialize();if(!ready)return;
   if(!window.BearDen.config?.authenticated){window.selectBearTab('settings');$('#connectionMessage').textContent='Sign in to BearDen to share or import fixed bills.';return;}
   await renderIncome();shareCandidates=householdBills.filter(b=>Number.isSafeInteger(b.amount)&&b.date);
@@ -711,6 +712,7 @@
   e.target.disabled=true;try{planner.household.enabled=e.target.checked;await save('Preference saved');$('#featureSettingsStatus').textContent='Shared bills preference saved.';}catch(error){planner.household=before;e.target.checked=!!before.enabled;$('#featureSettingsStatus').textContent=error.message;}finally{e.target.disabled=false;}
  };
  async function openSharedBillLink(){
+  if(document.documentElement.dataset.layout==='den')return;
   await initialize();if(!ready)return;
   const match=location.hash.match(/^#bills=(.+)$/),pending=match?.[1]||sessionStorage.getItem('bearden-pending-bill-share');if(!pending)return;
   let code;try{code=sharingModel.normalizeBillShareCode(pending);}catch{return;}
