@@ -74,21 +74,21 @@ async function downloadedPdf(page){
  return {pdf,filename:download.suggestedFilename(),bytes};
 }
 
-test('PDF summarizes the full personal simulation in two pages and offers optional complete ledgers without changing financial state',async({page})=>{
+test('PDF summarizes the full bills simulation in two pages and offers optional complete ledgers without changing financial state',async({page})=>{
  test.setTimeout(60000);
  const errors=[];page.on('pageerror',e=>errors.push(e.message));const f=await fixture(page);
- await page.locator('#nav-income').click();await page.locator('#forecastScrub').fill('9');
- await expect(page.locator('#incomeForecast .forecast-ledger-row')).toHaveCount(1);
+ await page.locator('#nav-bills').click();await page.locator('#accounts-nav-calendar').click();await page.locator('#billsForecastScrub').fill('9');
+ await expect(page.locator('#billsForecast .forecast-ledger-row')).toHaveCount(3);
  const before=f.state,writes=f.writes.length;
- await page.locator('[data-export-forecast="personal"]').click();await ready(page);
+ await page.locator('[data-export-forecast="bills"]').click();await ready(page);
  await expect(page.locator('#forecastReportSummary')).toContainText('Nov 27');
- await expect(page.locator('#forecastReportDetails')).toContainText(/2 (?:forecast )?(?:ledger )?(?:entries|rows)/i);
+ await expect(page.locator('#forecastReportDetails')).toContainText(/5 (?:forecast )?(?:ledger )?(?:entries|rows)/i);
  await expect(page.locator('#forecastReportShare')).toBeHidden();
  const {pdf,filename}=await downloadedPdf(page);
  expect(filename).toContain('2026-10-28');
  expect(pdf.getPageCount()).toBe(2);
  expect(filename).toContain('-summary.pdf');
- expect(pdf.getTitle()).toMatch(/personal/i);
+ expect(pdf.getTitle()).toMatch(/bills/i);
  await expect(page.locator('#forecastReportIncludeLedgers')).not.toBeChecked();
  await page.locator('#forecastReportIncludeLedgers').check();await ready(page);
  const detailed=await downloadedPdf(page);
@@ -100,7 +100,7 @@ test('PDF summarizes the full personal simulation in two pages and offers option
  expect(compact.pdf.getPageCount()).toBe(pdf.getPageCount());
  expect(f.state).toEqual(before);expect(f.writes.length).toBe(writes);
  await page.locator('#closeForecastReport').click();await expect(page.locator('#forecastReportDialog')).not.toBeVisible();
- await expect(page.locator('#incomeForecast .forecast-main')).toHaveText('$283.72');
+ await expect(page.locator('#billsForecast .forecast-main')).toHaveText('$2,055.00');
  expect(errors).toEqual([]);
 });
 
@@ -126,27 +126,28 @@ test('a stale bills balance exports an explanatory report and sharing requires a
 });
 
 test('a missing optional PDF library shows a local export error and can be retried without changing the forecast',async({page})=>{
- test.setTimeout(60000);const f=await fixture(page,{blockPdf:true});await page.locator('#nav-income').click();
- await page.locator('[data-export-forecast="personal"]').click();
+ test.setTimeout(60000);const f=await fixture(page,{blockPdf:true});await page.locator('#nav-bills').click();await page.locator('#accounts-nav-calendar').click();
+ await page.locator('[data-export-forecast="bills"]').click();
  await expect(page.locator('#forecastReportDialog')).toBeVisible();
  await expect(page.locator('#forecastReportStatus')).toContainText(/could not|couldn't|unable|try again|reload/i,{timeout:15000});
  await expect(page.locator('#forecastReportDownload')).toBeHidden();
  f.unblockPdf();await page.locator('#retryForecastReport').click();await ready(page);await downloadedPdf(page);
  await page.locator('#closeForecastReport').click();
  await expect(page.locator('#incomeForecast .forecast-main')).toHaveText('$508.72');
+ await page.locator('#nav-income').click();
  await page.locator('[data-forecast-debt-mode="none"]').click();
  await expect(page.locator('#incomeForecast .forecast-main')).toHaveText('$2,229.18');
 });
 
 test('closing during PDF generation does not reopen the report or publish a stale download',async({page})=>{
- test.setTimeout(60000);const f=await fixture(page,{holdPdf:true});await page.locator('#nav-income').click();
+ test.setTimeout(60000);const f=await fixture(page,{holdPdf:true});await page.locator('#nav-bills').click();await page.locator('#accounts-nav-calendar').click();
  const requested=page.waitForRequest(/\/vendor\/pdf-lib\.mjs/);
- await page.locator('[data-export-forecast="personal"]').click();await requested;
+ await page.locator('[data-export-forecast="bills"]').click();await requested;
  await expect(page.locator('#forecastReportDialog')).toBeVisible();
  await page.locator('#closeForecastReport').click();f.releasePdf();
  // Wait for the delayed dependency to finish; the cancelled generation must stay closed.
  await page.evaluate(()=>import('/vendor/pdf-lib.mjs'));
- await expect(page.locator('[data-export-forecast="personal"]')).toBeEnabled({timeout:30000});
+ await expect(page.locator('[data-export-forecast="bills"]')).toBeEnabled({timeout:30000});
  await expect(page.locator('#forecastReportDialog')).not.toBeVisible();
  await expect(page.locator('#forecastReportDownload')).toBeHidden();
  await expect(page.locator('html')).not.toHaveClass(/popup-scroll-locked/);

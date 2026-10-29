@@ -26,4 +26,4 @@
 .report-progress span{display:block;width:35%;height:100%;background:var(--accent);animation:report-progress 1.2s ease-in-out infinite alternate}
 @keyframes report-progress{to{transform:translateX(185%)}}
 @media(prefers-reduced-motion:reduce){.report-progress span{animation:none;width:100%;opacity:.6}}
-@media(max-width:460px){#personalForecastCard>.card-heading h3,#billsForecastCard>.card-heading h3{flex-basis:100%}.forecast-report-dialog{padding:20px}.forecast-report-dialog h2{font-size:1.4rem}}
+@media(max-width:460px){#billsForecastCard>.card-heading h3{flex-basis:100%}.forecast-report-dialog{padding:20px}.forecast-report-dialog h2{font-size:1.4rem}}
