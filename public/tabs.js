@@ -34,7 +34,7 @@
   const billView=e.target.closest('[data-account-view]'),debtView=e.target.closest('[data-debt-view]');
   if(billView){if(billView.dataset.accountView==='debt')selectDebtView('debt');else selectBillView(billView.dataset.accountView);}
   if(debtView)selectDebtView(debtView.dataset.debtView);
-  if(e.target.closest('[data-open-dashboard-bills]')){selectBillView('bills');window.scrollTo(0,0);}
+  if(e.target.closest('[data-open-dashboard-bills]')){const now=new Date();calendarViews.bills.month=new Date(now.getFullYear(),now.getMonth(),1);calendarViews.bills.selected=null;selectBillView('bills');window.scrollTo(0,0);}
  });
  document.querySelectorAll('[data-account-tabs]').forEach(bar=>bar.addEventListener('keydown',e=>{
   const views=accountSections[bar.dataset.accountTabs],button=e.target.closest('[role="tab"]'),i=views.findIndex(view=>view.button===button?.id);if(i<0)return;
@@ -66,6 +66,8 @@
  const pencil='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg>';
  let review={rows:[],bills:[],spending:{categories:[],total:0}};
  const calendarViews=Object.fromEntries(['bills','debts'].map(name=>[name,{month:new Date(new Date().getFullYear(),new Date().getMonth(),1),selected:null,agendaOpen:false,scope:'all'}]));
+ let billsMonthSummary=null;
+ window.getBillsMonthSummary=()=>billsMonthSummary;
  let calendarContext=null,model,mailModel,rentModel,sharingModel,planner={manual:[],covered:{},paid:[],accountVisibility:{},dismissedEstimates:[],estimates:{},bankRules:{},transactionCategories:{},creditCards:{},transactionLinks:{},emailLinks:{},billFunding:{},household:{},forecastDebtMode:'full'},linked={},ready=false;
 
  const accountSortModes=new Set(['amount-asc','amount-desc','date-asc','date-desc','name-asc','name-desc','custom']);
@@ -84,7 +86,7 @@
    else comparison=mode==='name-desc'?text(b.name,a.name):text(a.name,b.name);
    return comparison||(mode==='custom'?amountOrder(a,b):text(a.name,b.name))||text(a.sortKey,b.sortKey);
   });
-  accountSortRows[kind]=sorted;renderAccountSortControls();return sorted;
+  accountSortRows[kind]=[...new Map(sorted.map(row=>[row.sortKey,row])).values()];renderAccountSortControls();return sorted;
  }
  function renderAccountSortControls(){
   for(const kind of ['bills','debts']){
@@ -177,7 +179,7 @@
  async function save(message){if(!ready)throw Error('Accounts have not loaded. Reload before saving changes.');await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();if(message)window.showBearToast?.(message);}
  let initializing;
  $('#configureHousehold').disabled=true;$('#billTrackerChooseAccount').disabled=true;$('#sharedBillsToggle').disabled=true;$('#carPaymentsInDebtToggle').disabled=true;
- function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=budget-cadence1'),import('./email-model.mjs?v=connections-audit1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=short-share1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#billTrackerChooseAccount').disabled=false;$('#sharedBillsToggle').disabled=false;$('#carPaymentsInDebtToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
+ function initialize(){return initializing??=(async()=>{try{await window.classicReady;[model,mailModel,rentModel,sharingModel]=await Promise.all([import('./income-model.mjs?v=bill-month1'),import('./email-model.mjs?v=connections-audit1'),import('./rent-model.mjs?v=rent-portal1'),import('./bill-sharing.mjs?v=short-share1')]);const stored=await window.BearDen.storage.get('income-planner');if(stored)planner={...planner,...JSON.parse(stored.value)};ready=true;$('#configureHousehold').disabled=false;$('#billTrackerChooseAccount').disabled=false;$('#sharedBillsToggle').disabled=false;$('#carPaymentsInDebtToggle').disabled=false;await renderIncome();}catch(e){error(new Error('Accounts could not load. Reload before editing. '+e.message));}})();}
  window.addEventListener('load',initialize,{once:true});
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});
@@ -732,9 +734,10 @@
   const part=name=>card.querySelector('[data-calendar-part="'+name+'"]');
   const {plan,billPlan,paymentsPlanner,linked,household,today,trackedBills}=calendarContext;
   const {month,selected,agendaOpen}=view,includeDebt=view.scope==='all',start=iso(month),end=iso(new Date(month.getFullYear(),month.getMonth()+1,0));
-  const shown=payment=>includeDebt||!model.isDebtPayment(payment);
-  const bills=model.billEvents(billPlan,paymentsPlanner,linked,start,end).filter(shown);
-  const paidBills=model.billEvents({...billPlan,paid:[]},{...paymentsPlanner,paid:[]},linked,start,end).filter(b=>b.date>=start&&paymentsPlanner.paid.includes(b.key)&&shown(b));
+  const monthBills=document.documentElement.dataset.layout==='den'&&name==='bills'&&billsMonthSummary?.start===start?billsMonthSummary.bills:null;
+  const shown=payment=>(includeDebt||!model.isDebtPayment(payment))&&(!monthBills||model.isDebtPayment(payment)&&payment.date>=start&&payment.date<=end);
+  const bills=[...model.billEvents(billPlan,paymentsPlanner,linked,start,end).filter(shown),...(monthBills||[]).filter(b=>!b.paid)];
+  const paidBills=[...model.billEvents({...billPlan,paid:[]},{...paymentsPlanner,paid:[]},linked,start,end).filter(b=>b.date>=start&&paymentsPlanner.paid.includes(b.key)&&shown(b)),...(monthBills||[]).filter(b=>b.paid)];
   const events=model.calendarEvents(plan,household,[...bills,...paidBills],start,end,{includeDebt}),days=new Map(events.map(event=>[event.date,event]));
   const payoffIcon='<svg class="payoff-star" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/></svg>';
   for(const button of card.querySelectorAll('[data-calendar-scope]'))button.setAttribute('aria-pressed',String(button.dataset.calendarScope===view.scope));
@@ -838,20 +841,24 @@
    $('#incomeBalances').innerHTML=balanceNote;
    $('#incomeBankUpdated').textContent=connections.bankUpdated?'Last synced '+new Date(connections.bankUpdated).toLocaleString():'';
    const today=iso(new Date()),month=calendarViews.bills.month,start=iso(month),end=iso(new Date(month.getFullYear(),month.getMonth()+1,0));
-   const paidBills=model.billEvents({...billPlan,paid:[]},{...paymentsPlanner,paid:[]},linked,start,end).filter(b=>b.date>=start&&paymentsPlanner.paid.includes(b.key));
+   billsMonthSummary=model.billTrackerSummary(billPlan,paymentsPlanner,linked,today,{transactions:connections.transactions||[],month:start});
+   window.dispatchEvent(new Event('bearden-bills-month-updated'));
    calendarContext={plan,billPlan,paymentsPlanner,linked,household:planner.household,today,trackedBills:estimates.length};
    for(const name of Object.keys(calendarViews))renderPaymentCalendar(name);
    const yearEnd=modelDay(today,366);
    const upcomingBills=model.billEvents(billPlan,paymentsPlanner,linked,today,yearEnd);
    for(const bill of [...billPlan.bills,...planner.manual])if(bill.source!=='tracker-debt'&&bill.date>yearEnd&&!upcomingBills.some(b=>b.id===bill.id))upcomingBills.push(...model.billEvents({bills:[bill]},{...planner,manual:[]},linked,bill.date,bill.date));
    upcomingBills.sort((a,b)=>a.date.localeCompare(b.date));
-   const payments=model.accountPaymentRows(upcomingBills),list=sortedAccountRows('bills',payments.filter(b=>!model.isDebtPayment(b)).map(b=>({...b,sortKey:'bill:'+b.id,sortDate:b.date})));
+   // The original layout remains an account-management list. The wallet layout
+   // has a month picker and uses the same occurrences as its summary card.
+   const monthView=document.documentElement.dataset.layout==='den',payments=model.accountPaymentRows(upcomingBills);
+   const list=sortedAccountRows('bills',(monthView?billsMonthSummary.bills.filter(b=>!b.paid):payments.filter(b=>!model.isDebtPayment(b))).map(b=>({...b,sortKey:'bill:'+b.id,sortDate:b.date})));
    const accountPaid=model.billEvents({...billPlan,paid:[]},{...paymentsPlanner,paid:[]},linked,today,yearEnd).filter(b=>paymentsPlanner.paid.includes(b.key));
    renderDebtAccounts(plan,connections,accounts,payments,accountPaid);
    const billTile=(b,paid=false)=>{
     const loanSummary=billLoanMarkup(b);
     const editable=['bank-tracked','manual'].includes(b.source)||(legacy.bills||[]).some(saved=>saved.id===b.id);
-    const action=paid&&bankPaid.has(b.key)?'<span class="bill-bank-paid">✓ Bank payment</span>':'<button class="bill-paid-button" '+(paid?'data-bill-unpaid':'data-bill-paid')+'="'+esc(b.key)+'">'+(paid?'Mark unpaid':'✓ Mark paid')+'</button>';
+    const action=paid&&!planner.paid.includes(b.key)?'<span class="bill-bank-paid">'+(bankPaid.has(b.key)||b.source==='bank-tracked'?'✓ Bank payment':'✓ Paid')+'</span>':'<button class="bill-paid-button" '+(paid?'data-bill-unpaid':'data-bill-paid')+'="'+esc(b.key)+'">'+(paid?'Mark unpaid':'✓ Mark paid')+'</button>';
     return '<article class="bill-tile recurring-account" data-account-id="'+esc(b.id)+'">'+walletDueStamp(b.date,paid)
      +'<div class="bill-card-header"><div class="debt-account-tools">'+action+(editable?'<button type="button" class="bill-icon-button account-edit" data-edit-bill="'+esc(b.id)+'" aria-label="Edit '+esc(b.name)+'">'+pencil+'</button>':'')+'</div>'
      +'<div class="bill-tile-main"><div class="bill-tile-info"><h4>'+esc(b.name)+'</h4></div></div></div>'
@@ -861,14 +868,15 @@
      +(loanSummary?'<div class="bill-loan-summary">'+loanSummary+'</div>':'')+paymentMarkup('bill:'+b.id)+cardFooterMarkup('bill:'+b.id,b)+'</article>';
    };
    const paidListOpen=$('#paidBillsList')?.open||false;
-   $('#billAgenda').innerHTML=list.map(b=>billTile(b)).join('')||'<p class="subtle">Add a recurring bill or track one from your transactions.</p>';
-   $('#billAccountCount').textContent=list.length;
+   $('#billAgenda').innerHTML=list.map(b=>billTile(b)).join('')||'<p class="subtle">'+(monthView?billsMonthSummary.totalCount?'All bills paid for this month.':'No bills scheduled for this month.':'Add a recurring bill or track one from your transactions.')+'</p>';
+   $('#billAccountCount').textContent=monthView?billsMonthSummary.totalCount:list.length;
    renderAccountTotal('#billsTotalAmount',list.map(b=>({amount:b.amount})));
-   // Keep manual marks available independently of the month selected in Calendar,
-   // including advance payments and bills whose next due date has since changed.
+   // Keep paid cycles and their undo actions within the selected month, even
+   // when a new statement or bank sync has advanced the next due date.
    const knownBills=new Map([...billPlan.bills,...paymentsPlanner.manual].filter(b=>!model.isDebtPayment(b)).map(b=>[b.id,b]));
-   const manuallyPaid=[...new Set(planner.paid)].flatMap(key=>{const bill=knownBills.get(key.slice(0,-11)),date=key.slice(-10);return bill&&/^\d{4}-\d{2}-\d{2}$/.test(date)?[{key,date,name:bill.name}]:[];}).sort((a,b)=>b.date.localeCompare(a.date)||a.name.localeCompare(b.name));
-   const paidRecurring=paidBills.filter(b=>!model.isDebtPayment(b)&&!planner.paid.includes(b.key)).sort(amountOrder);
+   const manuallyPaid=[...new Set(planner.paid)].flatMap(key=>{const bill=knownBills.get(key.slice(0,-11)),date=key.slice(-10);return bill&&/^\d{4}-\d{2}-\d{2}$/.test(date)&&(!monthView||date>=start&&date<=end)?[{key,date,id:bill.id,name:bill.name}]:[];}).sort((a,b)=>b.date.localeCompare(a.date)||a.name.localeCompare(b.name));
+   const monthPaid=monthView?billsMonthSummary.bills.filter(b=>b.paid):model.billEvents({...billPlan,paid:[]},{...paymentsPlanner,paid:[]},linked,start,end).filter(b=>b.date>=start&&paymentsPlanner.paid.includes(b.key)&&!model.isDebtPayment(b));
+   const paidRecurring=monthPaid.filter(b=>!manuallyPaid.some(p=>p.key===b.key||p.id===b.id&&b.repeat==='monthly')).sort(amountOrder);
    if(manuallyPaid.length||paidRecurring.length)$('#billAgenda').insertAdjacentHTML('beforeend','<details id="paidBillsList" class="add-bill" '+(paidListOpen?'open':'')+'><summary>Paid bills ('+(manuallyPaid.length+paidRecurring.length)+')</summary>'+manuallyPaid.map(b=>'<div class="paid-bill-row"><span><strong>'+esc(b.name)+'</strong><small>'+esc(new Date(b.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}))+'</small></span><button type="button" class="bill-paid-button" data-bill-unpaid="'+esc(b.key)+'" aria-label="Undo paid for '+esc(b.name)+' on '+esc(b.date)+'">Undo paid</button></div>').join('')+paidRecurring.map(b=>billTile(b,true)).join('')+'</details>');
    forecastStart=today;forecastLength=[30,90,180,365].includes(planner.forecastDays)?planner.forecastDays:30;
    const future=modelDay(today,forecastLength);
@@ -1310,6 +1318,8 @@
  });
 
  document.addEventListener('click',e=>{
+  const monthMove=e.target.closest('[data-bills-month-move]');
+  if(monthMove){const view=calendarViews.bills;view.month=new Date(view.month.getFullYear(),view.month.getMonth()+Number(monthMove.dataset.billsMonthMove),1);view.selected=null;renderIncome();return;}
   const card=e.target.closest('[data-payment-calendar]');if(!card)return;
   const name=card.dataset.paymentCalendar,view=calendarViews[name];if(!view)return;
   const move=e.target.closest('[data-calendar-move]'),scope=e.target.closest('[data-calendar-scope]'),day=e.target.closest('[data-calendar-day]'),agenda=e.target.closest('[data-calendar-part="agenda-toggle"]');

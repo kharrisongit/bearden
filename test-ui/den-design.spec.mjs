@@ -76,7 +76,7 @@ test('new header cards use live totals and retain the bill, debt, and income edi
  await page.locator('#incomeToggleBtn').click();await expect(page.locator('#incomeDropdown')).toBeVisible();
  await page.locator('#incomeBudgetToggleBtn').click();await expect(page.locator('#budgetDropdown')).toBeVisible();
  await menuGo(page,'bills');
- await expect(page.locator('#denBillsSummary [data-den-copy="billTrackerPaidCount"]')).toHaveText(await page.locator('#billTrackerPaidCount').textContent());
+ await expect(page.locator('#denBillsPaidCount')).toHaveText(await page.locator('#billTrackerPaidCount').textContent());
  await expect(page.locator('#billAgenda .den-date-stamp').first()).toBeVisible();
  await expect(page.locator('#billAgenda .bd-account-metrics').first()).toContainText('Shared bills account');
  await page.locator('#denBillsSummary [data-forecast-accounts]').click();await expect(page.locator('#householdEditor')).toBeVisible();await page.locator('#closeHouseholdEditor').click();
@@ -84,7 +84,7 @@ test('new header cards use live totals and retain the bill, debt, and income edi
  await bill.locator('[data-edit-bill]').click();await expect(page.locator('#billEditor')).toBeVisible();await page.locator('#closeBillEditor').click();
  await bill.locator('[data-bill-paid]').click();await expect(page.locator('#paidBillsList')).toBeVisible();
  await page.locator('#paidBillsList summary').click();await page.locator('[aria-label="Undo paid for Electric on 2026-10-29"]').click();
- await expect(page.locator('#denBillsSummary [data-den-copy="billTrackerPaidCount"]')).toHaveText(await page.locator('#billTrackerPaidCount').textContent());
+ await expect(page.locator('#denBillsPaidCount')).toHaveText(await page.locator('#billTrackerPaidCount').textContent());
  await menuGo(page,'debts');
  await expect(page.locator('#denDebtTotal')).toHaveText('$3,420');
  await page.locator('#denPayoffMethod').selectOption('snowball');await expect(page.locator('#pmBtnSnowball')).toHaveClass(/active/);

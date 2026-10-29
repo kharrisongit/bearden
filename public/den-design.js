@@ -136,7 +136,8 @@
       section.innerHTML=html;$('#tab-'+tab+' > .account-view-tabs').before(section);
     };
     const stat = (label, key) => '<div><strong data-den-copy="'+key+'">—</strong><span>'+label+'</span></div>';
-    pageSummary('denBillsSummary','bills','<div class="den-summary-heading"><h3 data-den-copy="billTrackerMonth">This month</h3><button type="button" data-forecast-accounts>Account '+icon('arrow')+'</button></div><div class="den-bills-paid"><strong data-den-copy="billTrackerPaidCount">—</strong><div class="den-paid-ring" role="img" aria-label="Bills paid this month"><span id="denBillsPercent">0%</span></div></div><div class="den-summary-stats">'+stat('Bills balance','billTrackerBalance')+stat('Estimated total','billTrackerTotal')+stat('Left to pay','billTrackerRemaining')+'</div>');
+    pageSummary('denBillsSummary','bills','<div class="den-summary-heading"><div class="den-month-picker" role="group" aria-label="Bill month"><button type="button" data-bills-month-move="-1" aria-label="Previous bill month">'+icon('arrow')+'</button><div class="den-month-label" aria-live="polite"><h3 id="denBillsMonth">This month</h3><span id="denBillsYear"></span></div><button type="button" data-bills-month-move="1" aria-label="Next bill month">'+icon('arrow')+'</button></div><button type="button" data-forecast-accounts>Account '+icon('arrow')+'</button></div><div class="den-bills-paid"><strong id="denBillsPaidCount">—</strong><div class="den-paid-ring" role="img" aria-label="Bills paid this month"><span id="denBillsPercent">0%</span></div></div><div class="den-summary-stats">'+stat('Bills balance','billTrackerBalance')+'<div><strong id="denBillsTotal">—</strong><span>Estimated total</span></div><div><strong id="denBillsRemaining">—</strong><span>Left to pay</span></div></div>');
+    $('#denBillsSummary').setAttribute('aria-labelledby','denBillsMonth');
     pageSummary('denDebtSummary','debts','<div class="den-summary-heading"><h3>Total remaining</h3>'+button('plan','Payoff plan','plan')+'</div><strong class="den-summary-amount" id="denDebtTotal">—</strong><p id="denDebtCoverage" class="subtle" hidden></p><div class="den-summary-stats">'+stat('Estimated payoff','heroDate')+stat('Projected interest','heroInterest')+'</div><div class="den-summary-progress"><span data-den-copy="heroPiePct">0%</span> paid off<progress id="denDebtProgress" max="100" value="0" aria-label="Debt paid off"></progress></div><div class="den-summary-method"><label for="denPayoffMethod">Payoff method</label><select id="denPayoffMethod"><option value="avalanche">Avalanche</option><option value="snowball">Snowball</option><option value="minimum">Minimums</option><option value="burn">Burn</option></select></div>');
     $('#denPayoffMethod').onchange=event=>window.setPayoffMethod?.(event.target.value);
     insert($('#tab-income .bank-card'),'den-income-heading','<span>Account overview</span><button type="button" data-choose-accounts>Accounts '+icon('arrow')+'</button>');
@@ -155,6 +156,7 @@
     function queueRefresh() { if(frame)return; frame=requestAnimationFrame(()=>{frame=null;refresh();}); }
     window.addEventListener('bearden-dashboard-updated', event => {dashboard=event.detail;queueRefresh();});
     window.addEventListener('bearden-plan-changed',queueRefresh);
+    window.addEventListener('bearden-bills-month-updated',queueRefresh);
 
     function refresh() {
       if(root.dataset.layout!=='den')return;
@@ -194,10 +196,19 @@
       const content = id => document.getElementById(id)?.textContent.trim() || '—';
       for(const el of document.querySelectorAll('[data-den-copy]'))el.textContent=content(el.dataset.denCopy).replace(/\.00\b/g,'');
       const p=$('#billTrackerProgress'),percent=p.max?Math.round(p.value/p.max*100):0;
-      $('#denBillsPercent').textContent=percent+'%';
       insert($('#billTracker'),'den-bill-ring','<div class="den-tracker-ring" role="img" aria-label="'+esc(content('billTrackerPaidCount'))+'" style="--paid:'+percent+'%"><span>'+percent+'%</span></div>');
-      $('#denBillsSummary .den-paid-ring').style.setProperty('--paid',percent+'%');
-      $('#denBillsSummary .den-paid-ring').setAttribute('aria-label',content('billTrackerPaidCount'));
+      const billsMonth=window.getBillsMonthSummary?.();
+      if(billsMonth){
+        const month=new Date(billsMonth.start+'T12:00:00'),label=month.toLocaleDateString('en-US',{month:'long'}),paidLabel=billsMonth.paidCount+' of '+billsMonth.totalCount+' paid';
+        const monthPercent=billsMonth.totalCount?Math.round(billsMonth.paidCount/billsMonth.totalCount*100):0;
+        $('#denBillsMonth').textContent=label+' bills';$('#denBillsYear').textContent=month.getFullYear();
+        $('#denBillsPaidCount').textContent=paidLabel;
+        $('#denBillsTotal').textContent=money(billsMonth.total).replace(/\.00\b/g,'');
+        $('#denBillsRemaining').textContent=money(billsMonth.remaining).replace(/\.00\b/g,'');
+        $('#denBillsPercent').textContent=monthPercent+'%';
+        $('#denBillsSummary .den-paid-ring').style.setProperty('--paid',monthPercent+'%');
+        $('#denBillsSummary .den-paid-ring').setAttribute('aria-label',label+' '+month.getFullYear()+': '+paidLabel);
+      }
       $('#denWalletBillsProgress').max=p.max;$('#denWalletBillsProgress').value=p.value;
       $('#denDebtTotal').textContent=[...$('#debtTotalAmount').querySelectorAll('strong')].map(el=>el.textContent).join(' · ')||content('heroTotal');
       $('#denDebtTotal').textContent=$('#denDebtTotal').textContent.replace(/\.00\b/g,'');

@@ -66,14 +66,15 @@ export function trackerDebtBills(plan,cardBills=[],preferences={}, {includePaid=
 }
 export const isDebtPayment=b=>b.billKind!=='car-payment'&&(['tracker-debt','plaid-credit'].includes(b.source)||['credit-card','loan'].includes(b.billKind));
 
-// Dashboard totals use the current month, independently of the Accounts calendar.
-export function billTrackerSummary(legacy,planner,linked,today,{transactions=[]}={}){
- const start=today.slice(0,7)+'-01',d=new Date(start+'T12:00:00Z');
+// The dashboard defaults to today; the Bills page can select another month
+// without changing the cutoff for observed bank payments.
+export function billTrackerSummary(legacy,planner,linked,today,{transactions=[],month=today}={}){
+ const start=month.slice(0,7)+'-01',d=new Date(start+'T12:00:00Z');
  const end=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0,12)).toISOString().slice(0,10);
  const isBill=b=>!isDebtPayment(b)&&!['budget','baby-bear-budget'].includes(b.source)&&b.kind!=='household-bills'&&!b.transfer&&b.id!=='household-contribution';
  const source={...legacy,bills:(legacy?.bills||[]).filter(isBill)},settings={...planner,manual:(planner.manual||[]).filter(isBill)};
  const unique=events=>[...new Map(events.filter(b=>Number.isSafeInteger(b.amount)&&b.amount>0).map(b=>[b.key,b])).values()];
- const horizon=day(today,366);
+ const horizon=end>day(today,366)?end:day(today,366);
  const all=unique(billEvents({...source,paid:[]},{...settings,paid:[]},linked,start,horizon));
  const unpaid=unique(billEvents(source,settings,linked,start,horizon)),unpaidKeys=new Set(unpaid.map(b=>b.key));
  const monthly=all.filter(b=>b.date>=start&&b.date<=end).map(b=>({...b,paid:!unpaidKeys.has(b.key)}));
@@ -108,7 +109,7 @@ export function billTrackerSummary(legacy,planner,linked,today,{transactions=[]}
  }
  const paid=monthly.filter(b=>b.paid),remaining=monthly.filter(b=>!b.paid),pending=unpaid.filter(b=>unpaidKeys.has(b.key));
  const sum=rows=>rows.reduce((total,b)=>total+b.amount,0);
- return {start,end,totalCount:monthly.length,paidCount:paid.length,total:sum(monthly),paidAmount:sum(paid),remaining:sum(remaining),
+ return {start,end,bills:monthly.sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name)),totalCount:monthly.length,paidCount:paid.length,total:sum(monthly),paidAmount:sum(paid),remaining:sum(remaining),
   overdueCount:pending.filter(b=>b.date<today).length,upcoming:pending.slice(0,3),hasBills:[...known.values()].some(b=>b.date&&Number.isSafeInteger(b.amount)&&b.amount>0)};
 }
 // Calendar markers retain received paydays and paid bills; forecasts exclude them.

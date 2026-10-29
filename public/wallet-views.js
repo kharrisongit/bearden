@@ -149,7 +149,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
   for(const kind of ['bill','debt']){
     const list=$('#'+kind+'ListCard'),heading=$(':scope>.card-heading',list),sort=$('.account-sort-controls',list);
     const toolbar=make('div','bd-list-toolbar'),count=$('#'+kind+'AccountCount');
-    const countLabel=make('span','bd-list-count',kind==='bill'?'Recurring bills ':'Accounts ');countLabel.append(count);toolbar.append(countLabel);
+    const countLabel=make('span','bd-list-count',kind==='bill'?'Bills this month ':'Accounts ');countLabel.append(count);toolbar.append(countLabel);
     const sorting=make('details','bd-list-options','<summary>Sort &amp; organize '+chevron+'</summary>');sorting.append(sort);toolbar.append(sorting);
     const refresh=$('#refreshAllDebts',heading);if(refresh)toolbar.append(refresh);
     heading.replaceWith(toolbar);

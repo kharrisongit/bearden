@@ -61,7 +61,7 @@ test('account cards keep details, list tools, totals and their original actions 
  await page.setViewportSize({width:390,height:844});await fixture(page);await menuGo(page,'bills');
  const bill=page.locator('[data-account-id=electric]');expect((await bill.boundingBox()).height).toBeLessThan(205);
  await bill.locator('.bd-bill-details').click();await expect(bill.locator('dialog')).toBeVisible();await expect(bill.locator('dialog')).toContainText('Due Oct 29');await bill.locator('dialog .bd-detail-heading button').click();
- await page.locator('#billListCard .bd-list-options summary').click();await page.locator('#billsSort').selectOption('date-asc');await expect(page.locator('#billAgenda .bill-tile').first()).toHaveAttribute('data-account-id','car');
+ await page.locator('#billListCard .bd-list-options summary').click();await page.locator('#billsSort').selectOption('date-asc');await expect(page.locator('#billAgenda .bill-tile').first()).toHaveAttribute('data-account-id','internet');
  await page.locator('#accounts-bills .bd-list-tools summary').click();await expect(page.locator('#billsTotalAmount')).toBeVisible();await expect(page.locator('#accounts-bills [data-open-bill-sharing]')).toBeVisible();
  await menuGo(page,'debts');await expect(page.locator('#tab-debts .bd-page-heading [data-account-kind=debt]')).toBeVisible();
  const debt=page.locator('[data-tracker-account="1"]');expect((await debt.boundingBox()).height).toBeLessThan(210);
@@ -75,6 +75,7 @@ test('the rebuilt DOM preserves every existing ID exactly once',async({page})=>{
  await page.evaluate(()=>{localStorage.setItem('bearden:design','den');localStorage.setItem('layout-audit','1');});
  await page.reload();await page.evaluate(()=>window.classicReady);
  await expect(page.locator('.bd-tracker')).toHaveCount(4);
+ await expect(page.locator('#denBillsPaidCount')).toHaveText('1 of 4 paid');
  const after=await page.locator('[id]').evaluateAll(els=>els.map(e=>e.id));
  expect(before.filter(id=>!after.includes(id))).toEqual([]);expect(after.filter((id,i)=>after.indexOf(id)!==i)).toEqual([]);
 });

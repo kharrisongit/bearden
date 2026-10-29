@@ -55,3 +55,32 @@ test('month boundaries, zero bills and empty accounts do not invent amounts or p
  const leap=billTrackerSummary({},p,{},'2028-02-20');assert.equal(leap.end,'2028-02-29');
  const empty=billTrackerSummary({}, {manual:[bill('zero',today,0)]},{},today);assert.equal(empty.total,0);assert.equal(empty.totalCount,0);assert.equal(empty.paidCount,0);assert.equal(empty.hasBills,false);
 });
+
+test('selected months contain only their own paid and unpaid occurrences after a bill advances',()=>{
+ const manual=[bill('water','2026-11-20',5000),bill('new','2026-11-03',2000),bill('old','2026-09-15',3000,{repeat:'once'})];
+ const planner={manual,paid:['water:2026-10-20','water:2026-11-20']};
+ const oct=billTrackerSummary({},planner,{},today,{month:'2026-10-01'});
+ assert.deepEqual(oct.bills.map(b=>[b.key,b.paid]),[['water:2026-10-20',true]]);
+ assert.equal(oct.total,5000);assert.equal(oct.remaining,0);
+ const nov=billTrackerSummary({},planner,{},today,{month:'2026-11-01'});
+ assert.deepEqual(nov.bills.map(b=>[b.key,b.paid]),[['new:2026-11-03',false],['water:2026-11-20',true]]);
+ assert.equal(nov.total,7000);assert.equal(nov.remaining,2000);
+ const dec=billTrackerSummary({},planner,{},today,{month:'2026-12-01'});
+ assert.ok(dec.bills.every(b=>b.date.startsWith('2026-12')&&!b.paid));
+});
+
+test('month selection keeps weekly occurrences, year boundaries, and distant months in range',()=>{
+ const planner={manual:[bill('care','2026-10-02',10000,{repeat:'weekly'}),bill('year-end','2026-12-31',5000)]};
+ for(const month of ['2026-10-01','2026-12-01','2027-01-01','2028-01-01']){
+  const s=billTrackerSummary({},planner,{},today,{month});
+  assert.ok(s.bills.length>=4);assert.ok(s.bills.every(b=>b.date>=s.start&&b.date<=s.end));
+  assert.equal(s.totalCount,s.bills.length);assert.equal(s.total,s.bills.reduce((n,b)=>n+b.amount,0));
+ }
+});
+
+test('browsing a future month does not treat future-dated bank transactions as received',()=>{
+ const transactions=[{transaction_id:'future',date:'2026-11-20',name:'Power company',itemId:'bank',account_id:'bills',currency:'USD',amount:100}];
+ const tracked=bill('power','2026-12-20',10000,{source:'bank-tracked',groupKey:transactionKey(transactions[0]),lastPayment:'2026-11-20'});
+ const s=billTrackerSummary({bills:[tracked]},{},{},today,{transactions,month:'2026-11-01'});
+ assert.equal(s.paidCount,0);assert.equal(s.bills.length,0);
+});
