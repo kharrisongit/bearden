@@ -69,11 +69,11 @@
       +walletCard('bills','Bills','bills','<strong data-wallet-value="bills">—</strong><small data-wallet-value="paid">Your recurring bills</small><progress id="denWalletBillsProgress" max="1" value="0" aria-label="Bills paid this month"></progress>')
       +walletCard('debts','Debt','debts','<strong data-wallet-value="debt">—</strong><small data-wallet-value="payoff">Your payoff plan</small>')
       +walletCard('savings','Savings','savings','<strong data-wallet-value="savings">—</strong><small data-wallet-value="goals">Your savings goals</small>')
-      +walletCard('den','Your Den','settings','<small>Tools · Settings · Connections</small>')
-      +'</nav><div id="denDestinations" hidden><h3>Your Den</h3>'+button('tools','Tools & games','tools')+button('settings','Settings','settings')+button('connections','Connections','income')+'</div><footer>'+button('overview','Back to dashboard','overview')+'</footer></div>';
+      +walletCard('settings','Settings','settings','<small>Account · Appearance · Connections</small>')
+      +'</nav><footer>'+button('overview','Back to dashboard','overview')+'</footer></div>';
     document.body.append(menu);
     let scrollBeforeMenu = 0, previousOverflow = '';
-    function closeMenu() { if(menu.open){ $('#denDestinations').hidden=true; menu.close(); } }
+    function closeMenu() { if(menu.open)menu.close(); }
     $('#denOpen').onclick = () => {
       if(menu.open)return;
       menu.scrollTop=0;
@@ -108,7 +108,6 @@
       element.focus({preventScroll:true}); element.scrollIntoView({block:'start',behavior:'instant'});
     }
     function go(destination) {
-      if(destination === 'den'){const panel=$('#denDestinations');panel.hidden=!panel.hidden;if(!panel.hidden){panel.querySelector('button').focus();panel.scrollIntoView({block:'nearest'});}return;}
       navigating = menu.open; closeMenu();
       const tab = {overview:'debt',plan:'debt',savings:'debt',forecast:'bills',budget:'income','income-edit':'income',connections:'settings'}[destination] || destination;
       window.selectBearTab(tab);
@@ -126,7 +125,7 @@
       const action = event.target.closest('[data-den-go]'); if(action)go(action.dataset.denGo);
     });
     function markDestination(tab) {
-      for(const card of menu.querySelectorAll('.den-wallet-card'))card.setAttribute('aria-current',({debt:'overview',tools:'den',settings:'den'}[tab]||tab)===card.dataset.denGo?'page':'false');
+      for(const card of menu.querySelectorAll('.den-wallet-card'))card.setAttribute('aria-current',(tab==='debt'?'overview':tab)===card.dataset.denGo?'page':'false');
     }
     window.addEventListener('bearden-tab-changed', event => markDestination(event.detail));
     markDestination('debt');

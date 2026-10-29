@@ -49,13 +49,11 @@
 :where(:root[data-layout=den]) .den-menu-sheet header p { margin:0; color:var(--muted); font-size:.85rem }
 :where(:root[data-layout=den]) #denClose { position:absolute; top:0; right:0; display:grid; place-items:center; width:42px; height:42px; border:1px solid var(--line); border-radius:50%; background:var(--card); color:var(--ink); cursor:pointer }
 :where(:root[data-layout=den]) #denClose svg { width:22px; height:22px }
-:where(:root[data-layout=den]) .den-wallet-stack { display:flex; flex-direction:column; padding:10px 8px 0; isolation:isolate }
-:where(:root[data-layout=den]) .den-wallet-card { position:relative; width:100%; display:flex; align-items:flex-start; gap:13px; padding:20px 18px 38px; border:1px solid #ffffffaa; border-radius:21px; background:#05264b; color:#fff; text-align:left; font:inherit; box-shadow:0 -2px 0 #fff4,0 6px 16px #0a1f3c38; cursor:pointer; transition:translate .18s ease }
-:where(:root[data-layout=den]) .den-wallet-card+.den-wallet-card { margin-top:-17px }
+:where(:root[data-layout=den]) .den-wallet-stack { display:flex; flex-direction:column; padding:10px 0 0; isolation:isolate }
+:where(:root[data-layout=den]) .den-wallet-card { position:relative; width:100%; display:flex; align-items:flex-start; gap:13px; padding:20px 18px 38px; border:1px solid #ffffffaa; border-radius:21px; background:#05264b; color:#fff; text-align:left; font:inherit; box-shadow:0 -2px 0 #fff4,0 6px 16px #0a1f3c38; cursor:pointer; transition:box-shadow .18s ease }
+:where(:root[data-layout=den]) .den-wallet-card+.den-wallet-card { margin-top:-14px }
 :where(:root[data-layout=den]) .den-wallet-card:last-child { padding-bottom:22px }
-:where(:root[data-layout=den]) .den-wallet-card:nth-child(odd) { transform:rotate(-1.7deg) }
-:where(:root[data-layout=den]) .den-wallet-card:nth-child(even) { transform:rotate(1.7deg) }
-:where(:root[data-layout=den]) .den-wallet-card:hover, :where(:root[data-layout=den]) .den-wallet-card:focus-visible { translate:0 -5px; z-index:2 }
+:where(:root[data-layout=den]) .den-wallet-card:hover { box-shadow:inset 0 0 0 2px #ffffff50,0 6px 16px #0a1f3c38 }
 :where(:root[data-layout=den]) .den-wallet-card>svg { width:24px; height:24px; margin-left:auto; align-self:center; flex-shrink:0 }
 :where(:root[data-layout=den]) .den-wallet-glyph { display:grid; place-items:center; width:40px; height:40px; border:1px solid currentColor; border-radius:11px; background:#ffffff15; flex-shrink:0 }
 :where(:root[data-layout=den]) .den-wallet-glyph svg { width:25px; height:25px }
@@ -71,18 +69,15 @@
 :where(:root[data-layout=den]) .den-wallet-bills { background:#fff9ed; color:#171e30; border-color:#d6c5aa }
 :where(:root[data-layout=den]) .den-wallet-debts { background:#e0d7fc; color:#181732; border-color:#aea0d1 }
 :where(:root[data-layout=den]) .den-wallet-savings { background:#e4fc94; color:#163014; border-color:#abc564 }
-:where(:root[data-layout=den]) .den-wallet-den { background:#29333f }
+:where(:root[data-layout=den]) .den-wallet-settings { background:#29333f }
 :where(:root[data-layout=den]) .den-wallet-bills .den-wallet-glyph { color:#fff; background:#fa751a; border-color:#df6519 }
 :where(:root[data-layout=den]) .den-wallet-debts .den-wallet-glyph { color:#fff; background:#4b3587; border-color:#3a296e }
 :where(:root[data-layout=den]) .den-wallet-savings .den-wallet-glyph { color:#fff; background:#2e6b25; border-color:#24561d }
 :where(:root[data-layout=den]) .den-wallet-card progress { display:block; width:100%; height:6px; margin-top:10px; accent-color:#ed7018 }
 :where(:root[data-layout=den]) .den-menu-sheet>footer button { display:flex; align-items:center; justify-content:center; gap:10px; margin:22px 0 0; width:100%; padding:14px; min-height:48px; border:1px solid var(--line); border-radius:14px; background:var(--card); color:var(--ink); font:750 .85rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; cursor:pointer }
 :where(:root[data-layout=den]) .den-menu-sheet>footer svg { width:20px; height:20px }
-:where(:root[data-layout=den]) #denDestinations { padding:18px; border:1px solid var(--line); border-radius:16px; background:var(--card); margin:18px 0 0 }
-:where(:root[data-layout=den]) #denDestinations h3 { margin:0 0 12px; font-size:1rem }
-:where(:root[data-layout=den]) #denDestinations button { display:flex; align-items:center; gap:10px; width:100%; padding:12px; border:1px solid var(--line); border-radius:10px; margin-top:8px; background:var(--surface-subtle); color:var(--ink); cursor:pointer; font:650 .85rem/1.3 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif }
-:where(:root[data-layout=den]) #denDestinations svg { width:20px; height:20px }
 :where(:root[data-layout=den]) #denMenu button:focus-visible { outline:3px solid #4d8cf5; outline-offset:4px }
+:where(:root[data-layout=den]) #denMenu .den-wallet-card:focus-visible { outline-offset:-5px }
 :root:not([data-layout=den]) #denMenu { display:none }
 :root[data-layout=den] :is(body.setup-loading,body.setup-active) .den-dock { visibility:hidden }
 /* Foundation and the page shell. */
@@ -599,3 +594,109 @@
 
 :where(:root[data-layout=den]) .bd-detail-feedback:empty { display:none }
 :where(:root[data-layout=den]) .bd-detail-feedback { padding:10px; border:1px solid var(--line); border-radius:10px; background:var(--surface-inset); color:var(--ink); font-size:.8rem; line-height:1.45 }
+
+/* Wallet popups: distinct header, inset canvas and separated form sections. */
+:root[data-layout=den] dialog.bd-popup {
+  --popup-tint:var(--den-income);
+  width:calc(100% - 28px); max-width:580px; max-height:calc(100dvh - 40px);
+  margin:auto; padding:0; overflow:hidden; box-sizing:border-box;
+  border:1px solid var(--line); border-radius:24px;
+  background:var(--surface-inset); color:var(--ink);
+  box-shadow:0 24px 80px #071a3a55,0 0 0 5px #ffffff18;
+}
+:root[data-layout=den] dialog.bd-popup[data-popup-tone=lilac] { --popup-tint:var(--den-summary) }
+:root[data-layout=den] dialog.bd-popup[open] { display:flex; flex-direction:column }
+:root[data-layout=den] dialog.bd-popup::backdrop { background:#061b36a8; backdrop-filter:blur(7px) }
+:root[data-layout=den] .bd-popup .bd-popup-heading {
+  position:relative; top:0; flex-shrink:0; display:flex; align-items:center; gap:12px;
+  padding:20px; margin:0; border:0; border-bottom:1px solid var(--line);
+  background:var(--popup-tint); box-shadow:inset 0 1px 0 #fff5;
+}
+:root[data-layout=den] .bd-popup-icon { display:grid; place-items:center; width:44px; height:44px; flex-shrink:0; border:1px solid var(--line); border-radius:14px; background:var(--card); color:var(--ink) }
+:root[data-layout=den] .bd-popup-icon svg { width:23px; height:23px }
+:root[data-layout=den] .bd-popup-title { flex:1; min-width:0 }
+:root[data-layout=den] .bd-popup-eyebrow { display:block; margin-bottom:5px; color:var(--muted); font-size:.61rem; font-weight:800; letter-spacing:.12em; text-transform:uppercase }
+:root[data-layout=den] .bd-popup .bd-popup-heading :is(h2,h3) { margin:0; color:var(--ink); font-size:1.3rem; font-weight:800; line-height:1.15; letter-spacing:-.045em; overflow-wrap:anywhere }
+:root[data-layout=den] .bd-popup .bd-popup-close { display:grid; place-items:center; width:36px; height:36px; min-height:36px; margin:0; padding:8px; flex-shrink:0; border:1px solid var(--line); border-radius:50%; background:var(--card); color:var(--ink); box-shadow:none }
+:root[data-layout=den] .bd-popup-close svg { width:19px; height:19px }
+:root[data-layout=den] .bd-popup .bd-popup-body { min-height:0; padding:20px; overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+:root[data-layout=den] .bd-popup-body > :first-child { margin-top:0 }
+:root[data-layout=den] .bd-popup-body > :last-child { margin-bottom:0 }
+:root[data-layout=den] .bd-popup-body :is(p,.subtle) { color:var(--muted); font-size:.78rem; line-height:1.55; overflow-wrap:anywhere }
+:root[data-layout=den] .bd-popup-body :is(p,.subtle):empty { display:none }
+:root[data-layout=den] .bd-popup-body :is(label,summary) { color:var(--ink); font-size:.8rem; font-weight:600; line-height:1.5 }
+:root[data-layout=den] .bd-popup-body label:not(.check-label):has(> :is(input:not([type=checkbox]),select,textarea)) { display:block; margin:14px 0 0 }
+:root[data-layout=den] .bd-popup-body :is(input:not([type=checkbox]):not([type=range]):not([type=radio]),select,textarea) { display:block; width:100%; min-width:0; max-width:100%; box-sizing:border-box; margin-top:6px; min-height:46px; padding:11px 12px; border:1px solid var(--line); border-radius:11px; background:var(--surface-subtle); color:var(--ink); box-shadow:inset 0 1px 2px #0b214808; font-family:inherit; font-weight:400; line-height:1.3; font-size:16px }
+:root[data-layout=den] .bd-popup-body input:is([type=checkbox],[type=radio]) { width:19px; height:19px; min-height:0; flex-shrink:0; accent-color:var(--accent); margin:0; padding:0 }
+:root[data-layout=den] .bd-popup-body .check-label { display:flex; align-items:center; gap:10px; padding:10px 0; margin:10px 0 }
+:root[data-layout=den] .bd-popup-body .form-pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:start }
+:root[data-layout=den] .bd-popup-body .form-pair > label { display:flex!important; flex-direction:column; align-self:stretch; gap:6px }
+:root[data-layout=den] .bd-popup-body .form-pair > label > input { margin-top:auto }
+:root[data-layout=den] .bd-popup-body input:not([type=number]) { text-align:left }
+:root[data-layout=den] .bd-popup-body :is(.bd-popup-section,.debt-editor-section,.debt-detail-section,.debt-connect-choice,.color-picker-section) { margin:0 0 16px; padding:18px; border:1px solid var(--line); border-radius:16px; background:var(--card); box-shadow:0 3px 7px #183b6010 }
+:root[data-layout=den] .bd-popup-body :is(.bd-popup-section,.debt-editor-section,.debt-detail-section,.color-picker-section) > :is(h4,summary) { margin:0; font-size:.88rem; font-weight:750; line-height:1.45; color:var(--ink); letter-spacing:-.02em }
+:root[data-layout=den] .bd-popup-body :is(.bd-popup-section,.debt-editor-section,.debt-detail-section) > h4 { padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line) }
+:root[data-layout=den] .bd-popup-body details[open] > summary { margin-bottom:16px }
+:root[data-layout=den] .bd-popup-body :is(.bd-popup-section,.debt-editor-section) > label:first-of-type { margin-top:0 }
+:root[data-layout=den] .bd-popup-body :is(.email-link,.transaction-link,.electric-link) { margin:12px 0 0; padding:12px 0 0; border:0; border-top:1px solid var(--line); border-radius:0; background:none }
+:root[data-layout=den] .bd-popup-body :is(.email-link,.transaction-link):first-of-type { margin-top:0; padding-top:0; border-top:0 }
+:root[data-layout=den] .bd-popup-body :is(button,.connection-button) { min-height:40px; padding:10px 14px; border:1px solid var(--line); border-radius:11px; background:var(--card); color:var(--ink); font-size:.78rem; font-weight:650; line-height:1.4; box-shadow:0 2px 3px #183b600a }
+:root[data-layout=den] .bd-popup-body :is(button,.connection-button):hover { filter:brightness(.97) }
+:root[data-layout=den] .bd-popup-body button:disabled { opacity:.5 }
+:root[data-layout=den] .bd-popup-body :is(.bill-save,button[type=submit],.debt-detail-edit,#saveAccountOrder) { background:var(--accent-fill); color:var(--on-accent); border-color:var(--accent-fill); min-height:46px; font-weight:750 }
+:root[data-layout=den] .bd-popup-body :is(.bill-editor-actions,.account-order-actions),
+:root[data-layout=den] .bd-popup #debtEditorForm .bill-editor-actions { position:sticky; bottom:-20px; z-index:1; display:flex; gap:10px; flex-wrap:wrap; padding:14px 0; margin:16px 0 0; border-top:1px solid var(--line); background:var(--surface-inset) }
+:root[data-layout=den] .bd-popup-body .bill-editor-actions .bill-save { flex:1 }
+:root[data-layout=den] .bd-popup-body .account-delete-row { padding:14px 0 0; margin-top:4px; border-top:1px solid var(--line) }
+:root[data-layout=den] .bd-popup-body .account-delete-button { width:100%; color:var(--warn); background:var(--warn-soft); border-color:var(--warn); box-shadow:none }
+:root[data-layout=den] .bd-popup-body [role=status]:not(:empty),
+:root[data-layout=den] .bd-popup-body .bd-detail-feedback:not(:empty) { padding:12px; border:1px solid var(--line); border-radius:11px; background:var(--card); font-size:.78rem; line-height:1.5 }
+:root[data-layout=den] .bd-popup-body .debt-detail-metrics { gap:16px 12px }
+:root[data-layout=den] .bd-popup-body .debt-detail-metrics dd { font-size:1.12rem; font-weight:800; letter-spacing:-.035em }
+:root[data-layout=den] .bd-popup-body .debt-detail-section:first-child { background:var(--popup-tint) }
+:root[data-layout=den] .bd-popup-body .debt-detail-section:first-child dd { font-size:1.5rem }
+:root[data-layout=den] .bd-popup-body .debt-detail-section:first-child > dl > div:nth-child(n+3) dd { font-size:1.05rem }
+:root[data-layout=den] .bd-popup-body .account-type-choice { display:flex; align-items:center; gap:12px; width:100%; margin:14px 0 0; padding:18px; border-radius:17px; text-align:left; background:var(--card); border-color:var(--line); box-shadow:0 3px 7px #183b6010 }
+:root[data-layout=den] .bd-popup-body .account-type-choice.debt-choice { background:var(--den-summary) }
+:root[data-layout=den] .bd-popup-body .account-type-symbol { display:grid; place-items:center; width:40px; height:44px; border:1px solid var(--line); border-radius:12px; background:var(--card); flex-shrink:0; font-size:1.45rem }
+:root[data-layout=den] .bd-popup-body .account-type-choice strong { display:block; margin-bottom:5px; font-size:1rem; letter-spacing:-.025em }
+:root[data-layout=den] .bd-popup-body .account-type-choice small { display:block; font-size:.73rem; font-weight:400; line-height:1.5; color:var(--muted) }
+:root[data-layout=den] .bd-popup-body :is(.account-choice,.account-order-row,.bill-share-choice) { padding:12px; border:1px solid var(--line); border-radius:12px; margin:8px 0; background:var(--card) }
+:root[data-layout=den] .bd-popup-body .color-mode-controls { margin:0 0 16px; padding:5px; border:1px solid var(--line); border-radius:13px; background:var(--card) }
+:root[data-layout=den] .bd-popup-body .color-mode-controls button { flex:1; border-color:transparent; box-shadow:none }
+:root[data-layout=den] .bd-popup-body .color-mode-controls button[aria-pressed=true] { background:var(--accent-fill); color:var(--on-accent) }
+:root[data-layout=den] .bd-popup-body .color-swatch-grid { margin-top:14px; gap:8px }
+:root[data-layout=den] .bd-popup-body .color-swatch { min-height:72px; padding:10px 6px; background:var(--surface-subtle); border-radius:12px; font-size:.7rem }
+:root[data-layout=den] .bd-popup-body .color-swatch[aria-pressed=true] { border:2px solid var(--accent); background:var(--accent-soft) }
+:root[data-layout=den] .bd-popup-body .color-swatch-dot { width:28px; height:28px; border-radius:50%; box-shadow:0 1px 4px #0002 }
+:root[data-layout=den] .bd-popup-body .color-picker-footer { border:0; padding:0; background:none }
+:root[data-layout=den] .bd-popup .bd-detail-content > section,
+:root[data-layout=den] .bd-popup .bd-detail-content > .bank-provider { padding:18px; border:1px solid var(--line); border-radius:16px; background:var(--card); box-shadow:0 3px 7px #183b6010; margin:0 0 16px }
+:root[data-layout=den] .bd-popup-body .connection-title-row { gap:10px; flex-wrap:wrap }
+:root[data-layout=den] .bd-popup-body .connection-title-row :is(h3,h4) { margin:0; font-size:.95rem }
+:root[data-layout=den] .bd-popup-body .bd-detail-feedback:empty { display:none }
+:root[data-layout=den] .bd-popup-body .debt-timing-settings { background:var(--card); border:1px solid var(--line); border-radius:16px; margin:0; padding:18px }
+:root[data-layout=den] #householdForm { display:block }
+:root[data-layout=den] :is(#debtProgressDialog,#accountPicker).bd-popup { width:calc(100% - 28px); max-width:580px; max-height:calc(100dvh - 40px); overflow:hidden }
+:root[data-layout=den] #debtProgressDialog > .bd-popup-heading { position:relative; top:0; align-items:center; padding:20px; background:var(--popup-tint) }
+:root[data-layout=den] :is(#expandedAccountView,#forecastReportDialog,#rentBrowser) { border:1px solid var(--line); border-radius:22px; background:var(--card); color:var(--ink); box-shadow:0 24px 80px #071a3a55 }
+:root[data-layout=den] :is(#expandedAccountView,#forecastReportDialog,#rentBrowser)::backdrop { background:#061b36a8; backdrop-filter:blur(7px) }
+:root[data-layout=den] .expanded-view-heading { background:var(--den-income); padding:16px; border:1px solid var(--line); border-radius:14px; margin-bottom:16px }
+:root[data-layout=den] :is(#closeExpandedAccountView,#closeForecastReport) { padding:9px 14px; border:1px solid var(--line); border-radius:11px; background:var(--card); color:var(--ink); min-height:40px }
+:root[data-layout=den] #forecastReportDialog { background:var(--surface-inset); padding:22px }
+:root[data-layout=den] #forecastReportDialog .report-ledger-option { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px }
+:root[data-layout=den] #forecastReportDialog .report-document-icon { background:var(--den-summary); border:1px solid var(--line); border-radius:16px }
+@media(max-width:420px) {
+  :root[data-layout=den] dialog.bd-popup { width:calc(100% - 20px); max-height:calc(100dvh - 28px); border-radius:22px }
+  :root[data-layout=den] .bd-popup .bd-popup-heading { padding:16px; gap:10px }
+  :root[data-layout=den] #debtProgressDialog > .bd-popup-heading { padding:16px }
+  :root[data-layout=den] .bd-popup-icon { width:38px; height:42px; border-radius:12px }
+  :root[data-layout=den] .bd-popup .bd-popup-heading :is(h2,h3) { font-size:1.17rem }
+  :root[data-layout=den] .bd-popup .bd-popup-body { padding:14px; scrollbar-gutter:auto }
+  :root[data-layout=den] .bd-popup-body :is(.bd-popup-section,.debt-editor-section,.debt-detail-section,.debt-connect-choice,.color-picker-section),
+  :root[data-layout=den] .bd-popup .bd-detail-content > section,
+  :root[data-layout=den] .bd-popup .bd-detail-content > .bank-provider { padding:14px; margin-bottom:12px }
+  :root[data-layout=den] .bd-popup-body .form-pair { gap:9px }
+  :root[data-layout=den] .bd-popup-body :is(.bill-editor-actions,.account-order-actions),
+  :root[data-layout=den] .bd-popup #debtEditorForm .bill-editor-actions { bottom:-14px }
+}

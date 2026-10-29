@@ -29,7 +29,8 @@ export async function fixture(page,{goals=true,empty=false,unavailable=false,aut
 
 export async function menuGo(page, target) {
  await page.locator('#denOpen').click();
- if(['tools','settings','connections'].includes(target))await page.locator('#denMenu [data-den-go="den"]').click();
- await page.locator('#denMenu [data-den-go="'+target+'"]').first().click();
+ const destination=target==='tools'?'settings':target;
+ await page.locator('#denMenu [data-den-go="'+destination+'"]').first().click();
  await expect(page.locator('#denMenu')).not.toBeVisible();
+ if(target==='tools')await page.locator('#bdToolsButton').click();
 }

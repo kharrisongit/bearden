@@ -51,7 +51,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
     +group('Appearance','<div class="bd-mode-row">'+svg('sun')+'<div class="bd-mode-segment" role="group" aria-label="Color mode"><button type="button" data-bd-mode="light">Light</button><button type="button" data-bd-mode="dark">Dark</button><button type="button" data-bd-mode="auto">Auto</button></div></div><div class="bd-theme-swatches" role="group" aria-label="Color palette">'+[['','Standard blue','#0868ff'],['lavender','Lavender','#bca1f4'],['sunset','Sunset','#ff9650'],['rose','Rose','#f59aba'],['twilight','Twilight','linear-gradient(135deg,#121f50,#725cae)']].map(([value,name,color])=>'<button type="button" data-bd-palette="'+value+'" aria-label="'+name+' palette" title="'+name+'" style="--swatch:'+color+'"><span aria-hidden="true">✓</span></button>').join('')+'</div><div id="bdAllThemes"></div>','bdAppearance')
     +group('Household',row('Pay schedules','bills','data-den-go="income-edit"','Biweekly')+row('Shared contributions','people','data-bd-household','Set up')+row('Budget','chart','data-den-go="budget"','Edit'),'bdHousehold')
     +group('Connections',row('Plaid','target','data-bd-detail="plaid"','<span data-bd-status="classicBankStatus">Connect</span>')+row('Lunch Flow','stack','data-bd-detail="lunchflow"','<span data-bd-status="lunchflowStatus">Connect</span>')+row('Email accounts','mail','data-bd-detail="email"','<span data-bd-status="classicEmailStatus">Connect</span>')+row('Rent portal','overview','data-bd-detail="rent"','<span data-bd-status="rentStatus">Connect</span>'),'bdConnections','<button type="button" id="bdSyncAll">Sync all '+svg('refresh')+'</button>')
-    +group('Options','<div id="bdSwitchRows"></div>'+row('Debt payment timing','bills','data-bd-detail="timing"','<span id="bdTimingValue"></span>')+row('More preferences','settings','data-bd-detail="preferences"','','aria-label="More preferences, setup and layout"'),'bdOptions')
+    +group('Options','<div id="bdSwitchRows"></div>'+row('Debt payment timing','bills','data-bd-detail="timing"','<span id="bdTimingValue"></span>')+row('More preferences','settings','data-bd-detail="preferences"','','aria-label="More preferences, setup and layout"')+row('Tools','tools','id="bdToolsButton" data-den-go="tools"','Notes &amp; games'),'bdOptions')
     +'<p id="bdSearchEmpty" class="subtle" hidden>No settings match your search.</p>';
   const switchRows=[['savingsTrackerToggle','Savings tracker','savings'],['payoffControlsToggle','Slice & Squash','target'],['bonusControlsToggle','Bonus paychecks','gift']];
   for(const [id,label,glyph] of switchRows){
@@ -315,5 +315,51 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
   });
   // Lists are replaced as data arrives; observe only those replacement roots.
   for(const id of ['billAgenda','debtAccounts','scheduleOut','scheduleRestOut','savingsHeroContainer'])new MutationObserver(queueRefresh).observe($('#'+id),{childList:true});
+  // Give every editor the same Wallet shell. Move the original controls so
+  // delegated actions, form validation, draft protection and provider links survive.
+  function groupFields(formId,groups){
+    const form=$('#'+formId);if(!form)return;
+    const children=[...form.children];
+    const directChild=selector=>{let node=$(selector,form);while(node&&node.parentElement!==form)node=node.parentElement;return node;};
+    const boundaries=groups.map(([title,start,end])=>[title,directChild(start),directChild(end)]);
+    for(const [title,first,last] of boundaries){
+      if(!first||!last)continue;
+      const section=make('section','bd-popup-section',first.matches('h4')?'':'<h4>'+title+'</h4>');
+      first.before(section);children.slice(children.indexOf(first),children.indexOf(last)+1).forEach(node=>section.append(node));
+    }
+  }
+  groupFields('billEditorForm', [['Account','[name=name]','[name=billKind]'],['Payment schedule','#electricLinkOption','#billFundingNote'],['Connected sources','#billEmailLink','#billTransactionLink']]);
+  groupFields('creditEditorForm', [['Account','[name=name]','#creditLimitNote'],['Payment plan','[name=tracking]','[name=replaces]'],['Connected sources','#creditEmailLink','#creditTransactionLink']]);
+  groupFields('householdForm', [['Your accounts','[name=enabled]','#billsForecastAccount'],['Contributions','[name=personalAmount]','label:has([name=spouseRepeat]) + p'],['Shared bills','h4','#householdBillChoices']]);
+  const popupThemes={
+    debtProgressDialog:['Debt','debts'],debtHistoryDialog:['Debt','debts'],debtEditor:['Debt','debts'],creditEditor:['Debt','debts'],addDebtPaymentDialog:['Paycheck','debts'],
+    billEditor:['Bills','bills'],billShareDialog:['Bills','bills'],householdEditor:['Household','people'],
+    accountTypePicker:['Your wallet','stack'],accountPicker:['Income','income'],accountOrderEditor:['Your wallet','stack'],connectedAccountNameEditor:['Income','income'],
+    emailLinkPicker:['Connected sources','mail'],transactionLinkPicker:['Connected sources','stack'],transactionCategoryEditor:['Transactions','chart'],colorPickerDialog:['Appearance','sun'],
+  };
+  function stylePopup(dialog){
+    if(dialog.classList.contains('bd-popup')||['denMenu','expandedAccountView','rentBrowser','forecastReportDialog'].includes(dialog.id))return;
+    const heading=$(':scope > .card-heading, :scope > .bd-detail-heading',dialog);
+    const title=heading?.querySelector('h2,h3');if(!heading||!title)return;
+    const [category,glyph]=popupThemes[dialog.id]||(dialog.classList.contains('bd-detail-dialog')?[dialog.id?'Settings':'Bills',dialog.id?'settings':'bills']:['Your wallet','stack']);
+    dialog.classList.add('bd-popup');dialog.dataset.popupTone=['Debt','Bills'].includes(category)?'lilac':'blue';
+    heading.classList.add('bd-popup-heading');
+    if(!title.id)title.id=(dialog.id||'bdBillPopup-'+Math.random().toString(36).slice(2))+'-title';
+    dialog.setAttribute('aria-labelledby',title.id);
+    const titleGroup=make('div','bd-popup-title','<span class="bd-popup-eyebrow">'+category+'</span>');
+    title.before(titleGroup);titleGroup.append(title);heading.prepend(make('span','bd-popup-icon',svg(glyph)));
+    const close=$('button',heading);if(close){close.classList.add('bd-popup-close');if(!close.getAttribute('aria-label'))close.setAttribute('aria-label','Close '+title.textContent);close.innerHTML=icon('close');}
+    let body=$(':scope > .bd-detail-content, :scope > .bd-bill-detail-content',dialog);
+    if(!body){body=make('div','bd-popup-body');[...dialog.children].filter(node=>node!==heading).forEach(node=>body.append(node));dialog.append(body);}
+    body.classList.add('bd-popup-body');
+  }
+  $$('dialog').forEach(stylePopup);
+  new MutationObserver(records=>{
+    for(const record of records)for(const node of record.addedNodes){
+      if(node.nodeType!==1)continue;
+      if(node.matches('dialog'))stylePopup(node);
+      node.querySelectorAll('dialog').forEach(stylePopup);
+    }
+  }).observe(document.body,{childList:true,subtree:true});
   return {refresh(plan,next,upcoming,rows,allocations){buildTrackers();buildAccounts();buildPaychecks();updateProfile();updateIncome(plan,next,upcoming,rows,allocations);},openConnections(){go('settings');requestAnimationFrame(()=>$('#bdConnections').scrollIntoView({block:'start'}));}};
 };
