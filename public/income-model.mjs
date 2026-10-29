@@ -157,7 +157,7 @@ export function paydayEvents(plan,start,end,{billsOnly=false,debtMode='full',ret
   const n=Math.round((Date.parse(date+'T12:00Z')-Date.parse(s.startDate+'T12:00Z'))/86400000/14)+1;
   if(s.checkedPaychecks?.[n])continue;
   const row=rows.get(n),income=cents(row?row.takeHomeThisCheck+row.bonusAmount:(s.paycheckOverrides?.[n]??s.takeHome))+(row?0:cents(s.appliedBonuses?.[n]));
-  const budget=row?row.budgetLineItemsThisCheck:(s.budgetItems||[]).map(b=>({...b,amount:s.budgetItemOverrides?.[b.id]?.[n]??b.amount}));
+  const budget=row?row.budgetLineItemsThisCheck:(s.budgetItems||[]).map(b=>({...b,amount:s.budgetItemOverrides?.[b.id]?.[n]??(b.everyOtherCheck&&n>=(b.everyOtherFromPaycheck||1)&&(n<(b.everyOtherStartPaycheck||1)||(n-(b.everyOtherStartPaycheck||1))%2!==0)?0:b.amount)}));
   const extras=row?row.extrasThisCheck:(s.extraExpenses?.[n]||[]);
   let debtPayments=(row?.payments||[]).map(cents);
   if(debtMode==='none')debtPayments=[];

@@ -407,3 +407,15 @@ dialog::backdrop{touch-action:none}
 :root .income-card .calendar-scope>button[aria-pressed=true]{background:var(--accent-fill,var(--accent));color:var(--on-accent,#fff);border-color:var(--accent-fill,var(--accent));box-shadow:none}
 .calendar-scope>button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .calendar-key>[hidden]{display:none}
+
+/* Per-item paycheck cadence. */
+#incomeBudgetSlot .budget-item-settings{padding:4px 0 10px;border-bottom:1px solid var(--line)}
+#incomeBudgetSlot .budget-item-settings>.field-row{border-bottom:0}
+#incomeBudgetSlot .budget-cadence{display:flex;align-items:center;gap:9px;min-height:44px;margin:0;font-size:.8rem;color:var(--ink);cursor:pointer}
+#incomeBudgetSlot .budget-cadence input[type=checkbox]{width:18px;height:18px;max-width:18px;min-height:18px;flex:0 0 18px;margin:0;accent-color:var(--accent)}
+#incomeBudgetSlot .budget-cadence-start{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;font-size:.78rem;color:var(--muted);margin:0 0 6px}
+#incomeBudgetSlot .budget-cadence-start[hidden]{display:none}
+#incomeBudgetSlot .budget-cadence-start select{width:100%;min-width:0;min-height:44px;font-size:.8rem}
+
+.paycheck .paycheck-tax-button,#bdNextPaycheck .paycheck-tax-button{display:block;margin:0 0 8px auto;padding:6px 10px;min-height:40px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--accent);font:inherit;font-size:.75rem;cursor:pointer}
+.paycheck-tax-breakdown{margin:16px 0;font-size:.85rem}.paycheck-tax-breakdown>div{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:8px 0;border-bottom:1px solid var(--line)}.paycheck-tax-breakdown dt{min-width:0}.paycheck-tax-breakdown dd{margin:0;white-space:nowrap;font-variant-numeric:tabular-nums}.paycheck-tax-breakdown>div:first-child,.paycheck-tax-breakdown>div:nth-last-child(-n+2){font-weight:700}.paycheck-tax-entered{padding:12px;border-radius:10px;background:var(--accent-soft);font-size:.85rem;line-height:1.5}

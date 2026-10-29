@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import * as payments from '../public/debt-payments.mjs';
+import {paydayEvents} from '../public/income-model.mjs';
 
 const source=readFileSync('public/classic.js','utf8');
 const calculate=source.slice(source.indexOf('function calculate('),source.indexOf('\nfunction fmtDate('));
@@ -16,6 +17,31 @@ function plan({income=1000,cards=[{id:1,name:'Small',balance:1000,apr:0,min:50},
  vm.runInContext(calculate+'\n'+edits+'\ncalculate()',ctx);return ctx;
 }
 const card=balance=>({id:1,name:'Small',balance,apr:0,min:0});
+
+test('alternating budget reserves apply on the chosen paycheck and release cash on the other checks',()=>{
+ for(const start of [1,2]){
+  const item={id:1,label:'Allowance',amount:200,everyOtherCheck:true,everyOtherStartPaycheck:start,everyOtherFromPaycheck:1};
+  const p=plan({cards:[card(10000)],budgetItems:[item]});
+  const expected=start===1?[200,0,200,0]:[0,200,0,200];
+  assert.deepEqual(plain(p.result.schedule.slice(0,4).map(row=>row.budgetLineItemsThisCheck[0].amount)),expected);
+  assert.deepEqual(plain(p.result.schedule.slice(0,4).map(row=>row.payments[0])),expected.map(amount=>(1000-amount)/2));
+ }
+});
+
+test('alternating budget preserves earlier checks and explicit overrides, including zero',()=>{
+ const item={id:1,label:'Allowance',amount:200,everyOtherCheck:true,everyOtherStartPaycheck:4,everyOtherFromPaycheck:3};
+ const p=plan({cards:[card(10000)],budgetItems:[item],budgetItemOverrides:{1:{4:0,5:75}}});
+ assert.deepEqual(plain(p.result.schedule.slice(0,6).map(row=>row.budgetLineItemsThisCheck[0].amount)),[200,200,0,0,75,200]);
+ assert.equal(p.result.schedule[4].budgetLineItemsThisCheck[0].skipped,false);
+ const every=plan({cards:[card(10000)],budgetItems:[{...item,everyOtherCheck:false}]});
+ assert.ok(every.result.schedule.slice(0,6).every(row=>row.budgetLineItemsThisCheck[0].amount===200));
+});
+
+test('forecast fallback uses the same alternating budget across the year boundary and keeps overrides',()=>{
+ const state={startDate:'2026-12-18',takeHome:1000,budgetItems:[{id:1,label:'Allowance',amount:200,everyOtherCheck:true,everyOtherStartPaycheck:2,everyOtherFromPaycheck:1}],budgetItemOverrides:{1:{3:75}}};
+ const events=paydayEvents({state},'2026-12-18','2027-02-01');
+ assert.deepEqual(events.map(row=>[row.date,row.allocations]),[['2026-12-18',0],['2027-01-01',20000],['2027-01-15',7500],['2027-01-29',20000]]);
+});
 
 test('Burn reserves bills, budget, savings, expenses and every minimum before halving spare income',()=>{
  const p=plan({income:2000,appliedBonuses:{1:200},bills:[{id:'car',amount:50000}],budgetItems:[{id:1,label:'Budget',amount:400}],savingsGoals:[{id:1,name:'Savings',goal:1000,start:0,contribution:100}],extraExpenses:{1:[{id:1,amount:50}]}});

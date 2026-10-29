@@ -271,7 +271,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
       const takehome=make('section','bd-paycheck-section bd-takehome','<h4>Take-home pay</h4>'),budget=make('section','bd-paycheck-section bd-paycheck-budget','<h4>Budget &amp; bills</h4>'),savings=make('section','bd-paycheck-section bd-paycheck-savings','<h4>Savings</h4>');
       let stage='income';
       for(const n of children){
-        if(n.matches('.paycheck-income')){takehome.append(n);continue;}
+        if(n.matches('.paycheck-income,.paycheck-tax-button')){takehome.append(n);continue;}
         const action=n.getAttribute('data-bd-click')||'',isBonus=/Bonus/.test(action)||/bonus/.test(n.className);
         const saving=!!$('[data-bd-change^="updateSavingsContribution"]',n)||/after savings/i.test(n.textContent);
         if(saving)stage='savings';
@@ -292,7 +292,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
     if(!upcoming){card.innerHTML='<h3>Your next paycheck</h3><p class="subtle">Set up your pay schedule to build a plan.</p><button type="button" data-den-go="income-edit">Set up income '+chevron+'</button>';return;}
     const date=new Date(upcoming.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
     const rows=[['Take-home',upcoming.amount,'income','income'],...allocationRows.map(([label,amount])=>[label,-amount,label==='Bills'?'overview':label==='Savings'?'savings':label==='Debt'?'stack':'chart',label.toLowerCase()])];
-    const html='<h3>'+esc(date)+' paycheck</h3><div class="bd-paycheck-preview">'+rows.map(([label,amount,glyph,kind])=>'<button type="button" data-bd-paycheck-edit="'+kind+'" data-paycheck="'+(next?.paycheck||'')+'">'+svg(glyph)+'<span>'+label+'</span><strong>'+esc(money(amount))+'</strong>'+svg('edit')+'</button>').join('')+'</div><div class="bd-next-total"><span>Left to spend<strong>'+money(upcoming.amount-allocations)+'</strong></span><button type="button" data-den-go="plan">Open paycheck '+chevron+'</button></div>';
+    const html='<h3>'+esc(date)+' paycheck</h3>'+(next?'<button type="button" class="paycheck-tax-button" data-paycheck-taxes="'+next.paycheck+'" aria-haspopup="dialog" aria-controls="paycheckTaxDialog">Taxes &amp; withholding</button>':'')+'<div class="bd-paycheck-preview">'+rows.map(([label,amount,glyph,kind])=>'<button type="button" data-bd-paycheck-edit="'+kind+'" data-paycheck="'+(next?.paycheck||'')+'">'+svg(glyph)+'<span>'+label+'</span><strong>'+esc(money(amount))+'</strong>'+svg('edit')+'</button>').join('')+'</div><div class="bd-next-total"><span>Left to spend<strong>'+money(upcoming.amount-allocations)+'</strong></span><button type="button" data-den-go="plan">Open paycheck '+chevron+'</button></div>';
     if(card.innerHTML!==html)card.innerHTML=html;
     if(transactionToggle.getAttribute('aria-expanded')!=='true')transactionToggle.textContent='View all transactions';
     const selected=$('#personalSpendingAccount').value;

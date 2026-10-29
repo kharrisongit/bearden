@@ -19,6 +19,7 @@ let savingsGoalIdCounter = 0;
 let savingsGoals = [];
 
 let appliedBonuses = {};
+let bonusTaxEstimates = {};
 let bonusControlsEnabled=true;
 let payoffControlsEnabled=false;
 let showSavingsTracker=true;
@@ -117,14 +118,65 @@ function removeCard(id){
 }
 
 // ---- Budget items ----
+function upcomingBudgetPaycheck(){
+  const start = document.getElementById('startDate').value;
+  if (!start) return 1;
+  const now = new Date(), today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  let n = Math.max(1, Math.ceil((today - Date.parse(start+'T00:00:00Z')) / 86400000 / 14) + 1);
+  while (checkedPaychecks[n]) n++;
+  return n;
+}
+function budgetStartOptions(item){
+  const upcoming = upcomingBudgetPaycheck(), selected = item.everyOtherCheck ? item.everyOtherStartPaycheck || upcoming : upcoming;
+  const choices = [...new Set([selected, upcoming, upcoming+1])].sort((a,b)=>a-b);
+  const start = document.getElementById('startDate').value;
+  return choices.map(n=>{
+    const date = start ? new Date(start+'T12:00:00Z') : null;
+    if (date) date.setUTCDate(date.getUTCDate()+(n-1)*14);
+    const label = n===upcoming ? 'Upcoming paycheck' : n===upcoming+1 ? 'Following paycheck' : 'Saved start';
+    return `<option value="${n}" ${n===selected?'selected':''}>${label}${date?' · '+date.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}):' · Check '+n}</option>`;
+  }).join('');
+}
 function renderBudgetItems(){
   const container = document.getElementById('budgetItemsList');
   container.innerHTML = budgetItems.map(item => `
-    <div class="field-row">
+    <div class="budget-item-settings"><div class="field-row">
       <div class="field-name">${bdEscape(item.label)}<span class="remove" style="margin-left:6px;" data-bd-click="removeBudgetItem(${item.id})">Remove</span></div>
-      <input type="number" id="budget_${item.id}" value="${item.amount}" step="0.01">
-    </div>
+      <input type="number" id="budget_${item.id}" value="${item.amount}" step="0.01" aria-label="Amount for ${bdEscape(item.label)}">
+    </div><label class="budget-cadence"><input type="checkbox" id="budget_every_other_${item.id}" ${item.everyOtherCheck ? 'checked' : ''} aria-label="Every other paycheck for ${bdEscape(item.label)}" data-bd-change="setBudgetItemEveryOther(${item.id}, this.checked)"><span>Every other paycheck</span></label><label class="budget-cadence-start" id="budget_start_row_${item.id}" ${item.everyOtherCheck?'':'hidden'}>Start on<select id="budget_start_${item.id}" aria-label="Start every other paycheck for ${bdEscape(item.label)}" data-bd-change="setBudgetItemStart(${item.id}, this.value)">${budgetStartOptions(item)}</select></label></div>
   `).join('');
+}
+
+function preservePastBudgetSkips(item){
+  if (!item.everyOtherCheck) return;
+  const upcoming = upcomingBudgetPaycheck(), start = item.everyOtherStartPaycheck || 1;
+  for (let n = item.everyOtherFromPaycheck || 1; n < upcoming; n++) {
+    if (n < start || (n-start) % 2 !== 0) {
+      budgetItemOverrides[item.id] ||= {};
+      budgetItemOverrides[item.id][n] ??= 0;
+    }
+  }
+}
+function setBudgetItemEveryOther(id, checked){
+  const item = budgetItems.find(item => item.id === id);
+  if (!item) return;
+  preservePastBudgetSkips(item);
+  if (checked) document.getElementById(`budget_start_${id}`).innerHTML = budgetStartOptions(item);
+  item.everyOtherCheck = !!checked;
+  if (checked) {
+    item.everyOtherStartPaycheck = Number(document.getElementById(`budget_start_${id}`).value) || upcomingBudgetPaycheck();
+    item.everyOtherFromPaycheck = upcomingBudgetPaycheck();
+  }
+  document.getElementById(`budget_start_row_${id}`).hidden = !checked;
+  calculate();
+}
+function setBudgetItemStart(id, value){
+  const item = budgetItems.find(item => item.id === id), start = Number(value);
+  if (!item || !Number.isSafeInteger(start) || start < 1) return;
+  preservePastBudgetSkips(item);
+  item.everyOtherStartPaycheck = start;
+  item.everyOtherFromPaycheck = upcomingBudgetPaycheck();
+  calculate();
 }
 
 function addBudgetItem(){
@@ -223,17 +275,19 @@ function applyBonusToPaycheck(paycheckNum){
   const grossEl = document.getElementById(`bonusInlineAmount-${paycheckNum}`);
   const gross = Number(grossEl?.value);
   if (!Number.isFinite(gross) || gross <= 0) return;
-  let net;
-  try{net=window.BearDenTaxes.estimatePay(gross,window.BearDenTaxes.read(),{bonus:true}).net;}
+  let estimate;
+  try{estimate=window.BearDenTaxes.estimatePay(gross,window.BearDenTaxes.read(),{bonus:true});}
   catch(e){setStorageStatus(e.message);grossEl.setCustomValidity(e.message);grossEl.reportValidity();return;}
   grossEl.setCustomValidity('');
-  appliedBonuses[paycheckNum] = net;
+  appliedBonuses[paycheckNum] = estimate.net;
+  bonusTaxEstimates[paycheckNum] = estimate;
   bonusInputOpenForPaycheck = null;
   calculate();
 }
 
 function removeBonusFromPaycheck(paycheckNum){
   delete appliedBonuses[paycheckNum];
+  delete bonusTaxEstimates[paycheckNum];
   calculate();
 }
 
@@ -420,7 +474,7 @@ function gatherAppState(){
     cardIdCounter,
     budgetItems: budgetItems.map(item => {
       const el = document.getElementById(`budget_${item.id}`);
-      return { id: item.id, label: item.label, amount: el ? (parseFloat(el.value)||0) : item.amount, hint: item.hint, kind: item.kind };
+      return { id: item.id, label: item.label, amount: el ? (parseFloat(el.value)||0) : item.amount, hint: item.hint, kind: item.kind, everyOtherCheck: !!item.everyOtherCheck, everyOtherStartPaycheck: item.everyOtherStartPaycheck || 1, everyOtherFromPaycheck: item.everyOtherFromPaycheck || 1 };
     }),
     budgetItemIdCounter,
     budgetSetupVersion,
@@ -428,6 +482,7 @@ function gatherAppState(){
     hoursPerCheck: document.getElementById('hoursPerCheck').value,
     taxSettings: window.BearDenTaxes?.read(),
     appliedBonuses,
+    bonusTaxEstimates,
     bonusControlsEnabled,
     payoffControlsEnabled,
     showSavingsTracker,
@@ -503,6 +558,7 @@ async function loadAppState(){
     if (state.cards && state.cards.length) { cardsData = state.cards; cardIdCounter = state.cardIdCounter || cardIdCounter; }
     if (state.budgetItems) { budgetItems = state.budgetItems; budgetItemIdCounter = state.budgetItemIdCounter || budgetItemIdCounter; }
     if (state.appliedBonuses) appliedBonuses = state.appliedBonuses;
+    bonusTaxEstimates = state.bonusTaxEstimates || {};
     if (state.savingsGoals) { savingsGoals = state.savingsGoals; savingsGoalIdCounter = state.savingsGoalIdCounter || savingsGoalIdCounter; }
     if (state.paycheckOverrides) paycheckOverrides = state.paycheckOverrides;
     if (state.savingsContributionOverrides) savingsContributionOverrides = state.savingsContributionOverrides;
@@ -778,7 +834,7 @@ function calculate(isInitialLoad){
   const takeHome = parseFloat(document.getElementById('takeHome').value)||0;
   const budgetItemsSnapshot = budgetItems.map(item => {
     const el = document.getElementById(`budget_${item.id}`);
-    return { id: item.id, label: item.label, amount: el ? (parseFloat(el.value)||0) : item.amount };
+    return { id: item.id, label: item.label, amount: el ? (parseFloat(el.value)||0) : item.amount, everyOtherCheck: !!item.everyOtherCheck, everyOtherStartPaycheck: item.everyOtherStartPaycheck || 1, everyOtherFromPaycheck: item.everyOtherFromPaycheck || 1 };
   });
 
   function project(withoutPayoffActions=false){
@@ -837,9 +893,12 @@ function calculate(isInitialLoad){
     let expensesThisCheck = 0;
     const budgetLineItemsThisCheck = budgetItemsSnapshot.map(item => {
       const overrideMap = budgetItemOverrides[item.id] || {};
-      const amt = overrideMap[paycheck] !== undefined ? overrideMap[paycheck] : item.amount;
+      const isOverridden = overrideMap[paycheck] !== undefined;
+      const cadenceStart = item.everyOtherStartPaycheck || 1;
+      const skipped = item.everyOtherCheck && paycheck >= (item.everyOtherFromPaycheck || 1) && (paycheck < cadenceStart || (paycheck-cadenceStart) % 2 !== 0) && !isOverridden;
+      const amt = isOverridden ? overrideMap[paycheck] : skipped ? 0 : item.amount;
       expensesThisCheck += amt;
-      return { id: item.id, label: item.label, amount: amt, isOverridden: overrideMap[paycheck] !== undefined };
+      return { id: item.id, label: item.label, amount: amt, isOverridden, skipped };
     });
 
     const dateKey=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
@@ -1395,6 +1454,7 @@ document.addEventListener('click', (e) => {
 
 // Income tools share a single open panel, including transaction drilldowns.
 function setIncomePanel(id){
+ if(id==='budgetDropdown')for(const item of budgetItems)document.getElementById(`budget_start_${item.id}`).innerHTML=budgetStartOptions(item);
  for(const [panelId,buttonId,label] of [['incomeDropdown','incomeToggleBtn','Income'],['budgetDropdown','incomeBudgetToggleBtn','Budget'],['bankActivityCard','incomeTransactionsToggleBtn','Transactions']]){
   const panel=document.getElementById(panelId),button=document.getElementById(buttonId),open=panelId===id;
   panel.hidden=!open;
@@ -1974,6 +2034,7 @@ function resetCheckedPaychecks(){
   budgetItemOverrides = {};
   accountPaymentOverrides = {};
   appliedBonuses = {};
+  bonusTaxEstimates = {};
   extraExpenses = {};
   extraExpenseIdCounter = 0;
   bonusInputOpenForPaycheck = null;
@@ -2286,7 +2347,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
 
     const budgetLines = row.budgetLineItemsThisCheck.map(item => `
       <div class="check-summary-row editable">
-        <span>− ${bdEscape(item.label)}${item.isOverridden ? ' <span class="edited-tag">edited</span>' : ''}</span>
+        <span>− ${bdEscape(item.label)}${item.isOverridden ? ' <span class="edited-tag">edited</span>' : ''}${item.skipped ? '<small>Skipped this check</small>' : ''}</span>
         <span class="amount-input-wrap">$<input type="number" class="amount-input" value="${item.amount.toFixed(2)}" step="0.01" data-bd-change="updateBudgetItemAmount(${item.id}, ${row.paycheck}, this.value)"></span>
       </div>
     `).join('');
@@ -2369,6 +2430,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
           <span>Paycheck amount (after taxes)${row.isOverridden ? ' <span class="edited-tag">edited</span>' : ''}</span>
           <span class="amount-input-wrap">$<input type="number" class="amount-input" value="${row.takeHomeThisCheck.toFixed(2)}" step="0.01" data-bd-change="updatePaycheckAmount(${row.paycheck}, this.value)"></span>
         </div>
+        <button type="button" class="paycheck-tax-button" data-paycheck-taxes="${row.paycheck}" aria-haspopup="dialog" aria-controls="paycheckTaxDialog">Taxes &amp; withholding</button>
         ${row.bonusAmount > 0 ? `
         <div class="check-summary-row bonus-row"><span>🎁 + Bonus (after taxes)</span><span>${money(row.bonusAmount)}</span></div>
         ${bonusControlsEnabled?`<div style="text-align:right;margin:2px 0 4px;"><span class="remove" data-bd-click="removeBonusFromPaycheck(${row.paycheck})">Remove bonus</span></div>`:''}
@@ -6810,7 +6872,7 @@ window.classicReady=(async function init(){
   await window.BearDen.ready;
   window.BearDenDebtPayments=await import('./debt-payments.mjs?v=creditor-themes2');
   window.BearDenCarDebt=await import('./car-debt.mjs?v=car-debt1');
-  window.BearDenTaxes=await import('./tax-ui.mjs?v=tracker-401k1');window.BearDenTaxes.mount();
+  window.BearDenTaxes=await import('./tax-ui.mjs?v=paycheck-details1');window.BearDenTaxes.mount();
   applyThemeButtonIcon(); // reflect whatever the early <head> script already applied
   applyThemeBackground(document.documentElement.getAttribute('data-theme') === 'dark');
   applyHolidayMenuState();
@@ -6841,7 +6903,6 @@ window.classicReady=(async function init(){
     for(const item of removed)delete budgetItemOverrides[item.id];
     budgetSetupVersion=2;
   }
-  renderBudgetItems();
   if (savedState) {
     ['takeHome','startDate','hourlyRate','hoursPerCheck'].forEach(id => {
       if (savedState[id] !== undefined && document.getElementById(id)) {
@@ -6853,6 +6914,7 @@ window.classicReady=(async function init(){
     updateIncomeEstimateDisplay();
     updatePayoffMethodExplain();
   }
+  renderBudgetItems();
   calculate(true);
   window.BearDen.loaded=true;
 })();
