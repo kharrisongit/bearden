@@ -13,7 +13,7 @@ const selected={cost:0,reserve:0};
 const card=document.createElement('section');
 card.className='income-card statement-entry';card.id='statementInsightsCard';
 card.innerHTML='<div class="card-heading"><div><span class="chart-eyebrow">Plan for the expensive months</span><h3>Statement insights</h3></div><button type="button" id="openStatementInsights" aria-haspopup="dialog" disabled>Analyze statement</button></div><p class="subtle">Turn a year of utility bills into a monthly budget and a seasonal buffer.</p><div id="savedStatementReports"></div><p id="statementCardStatus" class="subtle" role="status"></p>';
-$('billListCard').before(card);
+$('billsForecastCard').after(card);
 const dialog=document.createElement('dialog');dialog.id='statementInsightsDialog';dialog.className='statement-dialog';dialog.setAttribute('aria-labelledby','statementTitle');
 dialog.innerHTML=`<header class="statement-heading"><div><span class="chart-eyebrow">BEARDEN / BILLS</span><h2 id="statementTitle">Statement insights</h2></div><button type="button" id="closeStatementInsights" aria-label="Close statement insights">Close</button></header>
 <div class="statement-body bd-popup-body">
