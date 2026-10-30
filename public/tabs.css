@@ -212,6 +212,17 @@ dialog[open]{max-height:85dvh;overflow-y:auto;overscroll-behavior:contain;-webki
 dialog::backdrop{touch-action:none}
 .celebration-overlay{overflow-y:auto;overscroll-behavior:contain}
 /* All popup shells scroll vertically; horizontal gestures must not pan the form. */
+.linked-bank-history{margin:20px 0;padding-top:18px;border-top:1px solid var(--line)}
+.linked-bank-history h4{margin:0 0 12px;font-size:.95rem;color:var(--ink)}
+.bank-history-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:.85rem}
+.bank-history-summary strong{font-size:1.1rem;color:var(--accent);white-space:nowrap}
+.bank-history-list{list-style:none;margin:12px 0 0;padding:0;max-height:340px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y}
+.bank-history-list li{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:13px 0;border-bottom:1px solid var(--line);font-size:.8rem}
+.bank-history-list li:last-child{border-bottom:0}
+.bank-history-list li>div{min-width:0;overflow-wrap:anywhere}
+.bank-history-list time{display:block;font-weight:650;color:var(--ink);margin-bottom:5px}
+.bank-history-list li span,.bank-history-list small{display:block;color:var(--muted);font-size:.73rem;line-height:1.5}
+.bank-history-list li>strong{flex-shrink:0;font-variant-numeric:tabular-nums;color:var(--ink)}
 :root dialog[open],.celebration-overlay{overflow-x:hidden!important;overscroll-behavior-x:none;touch-action:pan-y}
 dialog :is(form,fieldset,.bd-popup-body,.bd-detail-content,.bd-bill-detail-content){min-width:0;max-width:100%;box-sizing:border-box;overflow-wrap:anywhere}
 dialog :is(input,select,textarea){min-width:0;max-width:100%;box-sizing:border-box}

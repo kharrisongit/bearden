@@ -1,8 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments} from '../public/transaction-links.mjs';
-import {reviewBankActivity,transactionKey} from '../public/bank-activity.mjs';
+import {reviewBankActivity,transactionKey,accountPaymentHistory} from '../public/bank-activity.mjs';
 const transaction=(overrides={})=>({transaction_id:'t1',itemId:'bank',account_id:'checking',name:'Auto Lender REF 1234',date:'2026-10-24',amount:300,currency:'USD',pending:false,...overrides});
+test('account details include all linked history without the activity date window or duplicate transactions',()=>{
+ const t=transaction(),old=transaction({transaction_id:'old',date:'2025-02-24'}),link=paymentLink(t);
+ const history=accountPaymentHistory([t,t,old,transaction({transaction_id:'future',date:'2026-11-01'}),transaction({transaction_id:'pending',pending:true})],'debt:1',{}, {'debt:1':link},'2026-10-25');
+ assert.deepEqual(history.map(t=>t.transaction_id),['t1','old']);
+});
+test('legacy tracked bills recover old payments using the saved bank/account/merchant rule only',()=>{
+ const t=transaction(),rules={[transactionKey(t)]:{id:'car',choice:'bill'}};
+ const history=accountPaymentHistory([t,t,transaction({transaction_id:'old',date:'2025-01-24'}),transaction({transaction_id:'other',account_id:'other'}),transaction({transaction_id:'pending',pending:true}),transaction({transaction_id:'refund',amount:-300})],'bill:car',rules,{},'2026-10-25');
+ assert.deepEqual(history.map(t=>t.transaction_id),['t1','old']);
+ assert.deepEqual(accountPaymentHistory([t],'bill:missing',rules,{},'2026-10-25'),[]);
+});
+test('history respects explicit amount restrictions and never takes unassigned shared or other-account payments',()=>{
+ const t=transaction(),rules={[transactionKey(t)]:{id:'car',choice:'bill'}},link=paymentLink(t);
+ assert.deepEqual(accountPaymentHistory([t],'bill:car',rules,{'debt:1':link},'2026-10-25'),[]);
+ assert.deepEqual(accountPaymentHistory([t],'bill:car',rules,{'bill:car':{...link,amount:45000}},'2026-10-25'),[]);
+ const links={'debt:1':{...link,sharedMerchant:true},'debt:2':{...link,sharedMerchant:true,paymentIds:['t1']}};
+ assert.deepEqual(accountPaymentHistory([t],'debt:1',{},links,'2026-10-25'),[]);
+ assert.deepEqual(accountPaymentHistory([t],'debt:2',{},links,'2026-10-25').map(t=>t.transaction_id),['t1']);
+});
 test('merchant matching handles punctuation and reference changes, but not broad name or account matches',()=>{
  const link=paymentLink(transaction());assert.ok(matchesPayment(transaction({name:'AUTO LENDER ref: 5678'}),link));assert.ok(matchesPayment(transaction({name:'Auto-Lender'}),link));
  for(const change of [{name:'Other Auto Lender'},{name:'Auto Lender 2'},{account_id:'other'},{itemId:'another bank'},{pending:true},{currency:'CAD'},{amount:-300},{name:'Auto Lender reversal'}])assert.equal(matchesPayment(transaction(change),link),false);

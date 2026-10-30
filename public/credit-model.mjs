@@ -25,7 +25,7 @@ export function creditCapacity({card=null,account=null,enteredLimit=null,balance
 export function cardPayments(card,transactions=[]){
  const payments=transactions.filter(t=>t.itemId===card.itemId&&t.account_id===card.accountId&&!t.pending&&t.currency===card.currency&&t.amount<0&&!/refund|reversal|cashback|cash back|reward/i.test(t.name||'')&&(/LOAN_PAYMENTS_CREDIT_CARD_PAYMENT/.test(t.category||'')||/\bpayment\b/i.test(t.name||''))).map(t=>({id:t.transaction_id,date:t.date,amount:Math.round(-t.amount*100),name:t.name,source:'transaction'}));
  if(card.lastPayment>0&&card.lastPaymentDate&&!payments.some(p=>p.date===card.lastPaymentDate&&p.amount===card.lastPayment))payments.push({id:'issuer-'+card.lastPaymentDate,date:card.lastPaymentDate,amount:card.lastPayment,name:'Last payment reported by issuer',source:'issuer'});
- return payments.sort((a,b)=>b.date.localeCompare(a.date)).slice(0,50);
+ return payments.sort((a,b)=>b.date.localeCompare(a.date));
 }
 export function creditBills(cards,preferences={}){
  return cards.flatMap(card=>{

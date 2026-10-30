@@ -1,8 +1,18 @@
 import {categorizeTransaction} from './transaction-categories.mjs?v=auto-categories1';
 import {transactionAccountId} from './transaction-links.mjs?v=plaid-restore1';
 import {day} from './engine.mjs';
-import {matchesPayment,matchingPayments,paymentOwner,paymentTargets} from './transaction-links.mjs';
+import {matchesPayment,matchingPayments,paymentOwner,paymentTargets,postedPayment} from './transaction-links.mjs';
 export const transactionKey=t=>JSON.stringify([t.itemId,t.account_id,String(t.name||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()]);
+// Details use every available posted payment, independently of the 30-day
+// activity view or selected bill month. Explicit links/assignments take priority.
+export function accountPaymentHistory(transactions,target,rules={},links={},today=new Date().toISOString().slice(0,10)){
+ if(links[target])return matchingPayments(transactions,links[target],today,links,target);
+ const keys=new Set(Object.entries(rules).filter(([,rule])=>rule.choice==='bill'&&'bill:'+rule.id===target).map(([key])=>key)),seen=new Set();
+ return (transactions||[]).filter(t=>{
+  if(!postedPayment(t)||!t.date||t.date>today||!keys.has(transactionKey(t))||paymentTargets(t,links).length||seen.has(t.transaction_id))return false;
+  seen.add(t.transaction_id);return true;
+ }).sort((a,b)=>b.date.localeCompare(a.date)||String(a.transaction_id).localeCompare(String(b.transaction_id)));
+}
 const normalize=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 export function classifyBankTransaction(t,preferences={}){
  if(t.pending||t.currency!=='USD'||!Number.isFinite(t.amount)||t.amount<=0)return {kind:'excluded'};

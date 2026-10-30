@@ -4,6 +4,10 @@ import {normalizeCreditCards,cardPayments,creditBills} from '../public/credit-mo
 import {creditLinkOptions,syncCredit,publicCredit} from '../credit.mjs';
 import {trackerDebtBills,billEvents,cashForecast,paydayEvents} from '../public/income-model.mjs';
 const item={id:'bank',name:'ELGA',token:'secret',liabilities:true};
+test('card payment records retain all available transactions beyond fifty payments',()=>{
+ const rows=Array.from({length:65},(_,i)=>({transaction_id:'payment-'+i,itemId:'bank',account_id:'visa',name:'Card payment',date:'2026-09-01',amount:-10,currency:'USD',pending:false}));
+ assert.equal(cardPayments({itemId:'bank',accountId:'visa',currency:'USD'},rows).length,65);
+});
 const response={accounts:[{account_id:'visa',name:'Visa',mask:'1234',type:'credit',balances:{current:861.21,available:4138.79,limit:5000,iso_currency_code:'USD'}}],liabilities:{credit:[{account_id:'visa',minimum_payment_amount:35,next_payment_due_date:'2026-11-05',last_payment_amount:100,last_payment_date:'2026-10-20',last_statement_balance:900,last_statement_issue_date:'2026-10-10',aprs:[{apr_type:'purchase_apr',apr_percentage:24.99}]}]}};
 test('card details preserve unknown versus zero, current debt and multiple APRs',()=>{
  const [card]=normalizeCreditCards(response,item,[],'2026-10-25T10:00:00Z');assert.equal(card.balance,86121);assert.equal(card.minimum,3500);assert.equal(card.limit,500000);assert.equal(card.aprs[0].rate,24.99);assert.equal(card.lastPayment,10000);assert.equal(card.id,'credit-visa');
