@@ -73,21 +73,40 @@
       +'</nav></div>';
     document.body.append(menu);
     let scrollBeforeMenu = 0, previousOverflow = '';
-    let walletAnimation = null, menuClosing = null;
-    const walletRest = {opacity:1,transform:'translateY(0) scale(1)'};
-    const walletFolded = {opacity:0,transform:'translateY(36px) scale(.94)'};
+    let walletAnimations = [], menuClosing = null;
+    const walletCards=[...menu.querySelectorAll('.den-wallet-card')];
+    const cardRest={transform:'perspective(1000px) translate3d(0,0,0) rotateX(0deg) scale(1)'};
     const reduceWalletMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function stopWalletAnimations(){
+      walletAnimations.forEach(animation=>animation.cancel());walletAnimations=[];
+      menu.classList.remove('den-wallet-moving');walletCards.forEach(card=>card.style.removeProperty('z-index'));
+    }
+    function foldedCards(){
+      // Gather the real layout before animating, including the two-column layout.
+      const rects=walletCards.map(card=>card.getBoundingClientRect()),anchor=rects[0];
+      return rects.map((rect,index)=>({transform:'perspective(1000px) translate3d('+
+        (anchor.x+anchor.width/2-rect.x-rect.width/2)+'px,'+(anchor.bottom-rect.bottom+index*8)+
+        'px,0) rotateX(-14deg) scale(.94)'}));
+    }
+    function layerWalletCards(){
+      menu.classList.add('den-wallet-moving');
+      walletCards.forEach((card,index)=>card.style.zIndex=String(walletCards.length-index));
+    }
     function closeMenu() {
       if(menuClosing)return menuClosing;
       if(!menu.open)return Promise.resolve();
-      const current=getComputedStyle(menu),from={opacity:current.opacity,transform:current.transform};
-      walletAnimation?.cancel();
+      const from={opacity:getComputedStyle(menu).opacity};
+      const cardFrames=walletCards.map(card=>({transform:getComputedStyle(card).transform}));
+      stopWalletAnimations();
       if(reduceWalletMotion()){menu.close();return Promise.resolve();}
-      menu.classList.add('den-menu-closing');
-      walletAnimation=menu.animate([from,walletFolded],{duration:180,easing:'cubic-bezier(.4,0,1,1)',fill:'forwards'});
-      menuClosing=walletAnimation.finished.catch(()=>{}).then(()=>{
+      const folded=foldedCards();layerWalletCards();menu.classList.add('den-menu-closing');
+      // The bottom cards return first; fade the sheet only after they restack.
+      walletAnimations=[menu.animate([from,{opacity:0}],{delay:620,duration:220,easing:'ease-in',fill:'both'}),
+        ...walletCards.map((card,index)=>card.animate([cardFrames[index],folded[index]],{
+          delay:(walletCards.length-1-index)*60,duration:420,easing:'cubic-bezier(.4,0,.2,1)',fill:'both'}))];
+      menuClosing=Promise.all(walletAnimations.map(animation=>animation.finished.catch(()=>{}))).then(()=>{
         if(menu.open)menu.close();
-        walletAnimation?.cancel();menu.classList.remove('den-menu-closing');
+        stopWalletAnimations();menu.classList.remove('den-menu-closing');
       }).finally(()=>{menuClosing=null;});
       return menuClosing;
     }
@@ -96,10 +115,17 @@
       menu.scrollTop=0;
       scrollBeforeMenu = scrollY; previousOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden'; root.classList.add('den-menu-open');
-      const dockBox=$('#denOpen').getBoundingClientRect();
-      menu.style.transformOrigin=(dockBox.x+dockBox.width/2)+'px '+(dockBox.y+dockBox.height/2)+'px';
       $('#denOpen').setAttribute('aria-expanded','true'); menu.showModal();
-      if(!reduceWalletMotion())walletAnimation=menu.animate([walletFolded,walletRest],{duration:260,easing:'cubic-bezier(.16,1,.3,1)'});
+      if(!reduceWalletMotion()){
+        const folded=foldedCards();layerWalletCards();
+        const opening=[menu.animate([{opacity:0},{opacity:1}],{duration:180,easing:'ease-out'}),
+          ...walletCards.map((card,index)=>card.animate([folded[index],cardRest],{
+            delay:140+index*90,duration:600,easing:'cubic-bezier(.22,.75,.25,1)',fill:'both'}))];
+        walletAnimations=opening;
+        Promise.all(opening.map(animation=>animation.finished.catch(()=>{}))).then(()=>{
+          if(walletAnimations===opening)stopWalletAnimations();
+        });
+      }
       menu.querySelector('[data-den-go="overview"]').focus({preventScroll:true});
     };
     $('#denClose').onclick = closeMenu;

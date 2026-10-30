@@ -41,8 +41,9 @@
 :where(:root[data-layout=den]) .den-menu-open #denDock { visibility:hidden }
 :where(:root[data-layout=den]) #denMenu { max-width:none; max-height:none; width:100%; height:100dvh; inset:0; padding:24px 20px calc(20px + env(safe-area-inset-bottom)); margin:0; border:0; background:var(--paper); color:var(--ink); overflow:auto; box-sizing:border-box; border-radius:0 }
 :where(:root[data-layout=den]) #denMenu::backdrop { background:#15273e9c; backdrop-filter:blur(8px) }
-:root[data-layout=den] #denMenu[open]::backdrop { animation:den-wallet-backdrop-in 260ms ease-out both }
-:root[data-layout=den] #denMenu.den-menu-closing::backdrop { animation:den-wallet-backdrop-out 180ms ease-in both }
+:root[data-layout=den] #denMenu[open]::backdrop { animation:den-wallet-backdrop-in 380ms ease-out both }
+:root[data-layout=den] #denMenu.den-menu-closing::backdrop { animation:den-wallet-backdrop-out 220ms 620ms ease-in both }
+:root[data-layout=den] #denMenu.den-wallet-moving .den-wallet-card { transform-origin:50% 100%; will-change:transform; backface-visibility:hidden }
 @keyframes den-wallet-backdrop-in { from { opacity:0 } to { opacity:1 } }
 @keyframes den-wallet-backdrop-out { from { opacity:1 } to { opacity:0 } }
 @media(prefers-reduced-motion:reduce) { :root[data-layout=den] #denMenu[open]::backdrop { animation:none } }

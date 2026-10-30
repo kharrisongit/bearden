@@ -76,8 +76,15 @@ test('Wallet motion handles closing mid-animation and preserves destination focu
  await fixture(page);const errors=[];page.on('pageerror',e=>errors.push(e.message));
  for(const reducedMotion of ['no-preference','reduce']){
   await page.emulateMedia({reducedMotion});
-  const animated=await page.evaluate(()=>{document.querySelector('#denOpen').click();return document.querySelector('#denMenu').getAnimations().some(a=>a.playState==='running');});
-  expect(animated).toBe(reducedMotion==='no-preference');
+  const motion=await page.evaluate(()=>{
+   document.querySelector('#denOpen').click();
+   return {animated:document.querySelector('#denMenu').getAnimations().some(a=>a.playState==='running'),cards:[...document.querySelectorAll('.den-wallet-card')].map(card=>card.getAnimations().map(animation=>animation.effect.getTiming()))};
+  });
+  expect(motion.animated).toBe(reducedMotion==='no-preference');
+  if(reducedMotion==='no-preference'){
+   expect(motion.cards).toHaveLength(6);
+   for(let i=0;i<motion.cards.length;i++){expect(motion.cards[i][0].duration).toBeGreaterThanOrEqual(500);if(i)expect(motion.cards[i][0].delay).toBeGreaterThan(motion.cards[i-1][0].delay);}
+  }else expect(motion.cards.flat()).toHaveLength(0);
   await page.evaluate(()=>{document.querySelector('#denClose').click();document.querySelector('#denClose').click();});
   await expect(page.locator('#denMenu')).toBeHidden();await expect(page.locator('#denOpen')).toBeFocused();
   expect(await page.evaluate(()=>document.body.style.overflow)).not.toBe('hidden');
