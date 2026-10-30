@@ -37,9 +37,9 @@ document.addEventListener('DOMContentLoaded',()=>{
     const selected=swatches.find(button=>button.dataset.colorSchemeChoice===current);
     for(const button of swatches)button.setAttribute('aria-pressed',String(button===selected));
     for(const button of dialog.querySelectorAll('[data-color-mode]'))button.setAttribute('aria-pressed',String((button.dataset.colorMode==='dark')===dark));
-    document.getElementById('resetColorScheme').setAttribute('aria-pressed',String(!selected&&!holiday));
-    opener.classList.toggle('active',!!selected||!!holiday);
-    status.textContent=(selected?selected.dataset.colorName:dialog.querySelector('[data-holiday-choice][aria-pressed="true"]')?.dataset.colorName||'Standard colors')+' · '+(dark?'Dark':'Light')+' mode'+(remembered?'':'. Applied, but this browser could not remember the preference.');
+    document.getElementById('resetColorScheme').setAttribute('aria-pressed',String(!current&&!holiday));
+    opener.classList.toggle('active',!!current||!!holiday);
+    status.textContent=(current==='custom'?'Custom theme':selected?selected.dataset.colorName:dialog.querySelector('[data-holiday-choice][aria-pressed="true"]')?.dataset.colorName||'Standard colors')+' · '+(dark?'Dark':'Light')+' mode'+(remembered?'':'. Applied, but this browser could not remember the preference.');
   }
   function select(value){
     if(value&&!swatches.some(button=>button.dataset.colorSchemeChoice===value))return;
@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     document.getElementById('holidayMenu')?.classList.remove('open');
     sync();if(!dialog.open)dialog.showModal();
     dialog.setAttribute('closedby','closerequest');
-    (dialog.querySelector('.color-swatch[aria-pressed="true"]')||swatches[0])?.focus({preventScroll:true});
+    (root.dataset.colorScheme==='custom'?document.getElementById('themeColorField'):dialog.querySelector('.color-swatch[aria-pressed="true"]')||swatches[0])?.focus({preventScroll:true});
   });
   dialog.addEventListener('click',event=>{
     const choice=event.target.closest('[data-color-scheme-choice]');
@@ -72,9 +72,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   dialog.addEventListener('cancel',event=>{event.preventDefault();dialog.close();});
   dialog.addEventListener('close',()=>document.getElementById('holidayToggleBtn')?.focus({preventScroll:true}));
   new MutationObserver(sync).observe(root,{attributes:true,attributeFilter:['data-theme','data-color-scheme','data-holiday']});
+  window.addEventListener('bearden-custom-theme',event=>{remembered=event.detail?.remembered!==false;sync();});
   window.addEventListener('storage',event=>{
     if(event.key!=='bearden:classic:color-scheme')return;
-    const valid=swatches.some(button=>button.dataset.colorSchemeChoice===event.newValue);
+    const valid=event.newValue==='custom'||swatches.some(button=>button.dataset.colorSchemeChoice===event.newValue);
     if(valid)root.setAttribute('data-color-scheme',event.newValue);else root.removeAttribute('data-color-scheme');
   });
   sync();

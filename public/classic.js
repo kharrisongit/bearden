@@ -767,11 +767,14 @@ function calcGrossPay(rate, hours){
   return rate * Math.min(hours, 80) + rate * 1.5 * Math.max(0, hours - 80);
 }
 
-function updateIncomeEstimateDisplay(){
+function updateIncomeEstimateDisplay(apply=false){
  const rate=Number(document.getElementById('hourlyRate').value)||0,hours=Number(document.getElementById('hoursPerCheck').value)||0,gross=calcGrossPay(rate,hours),box=document.getElementById('incomeEstimate');let estimate=null,error='';
  try{estimate=window.BearDenTaxes?.estimatePay(gross,window.BearDenTaxes.read());}catch(e){error=e.message;}
  box.style.display=gross>0?'block':'none';
- document.getElementById('useIncomeEstimate').disabled=!(estimate&&estimate.net>0);
+ if(apply){
+  document.getElementById('takeHome').value=estimate&&gross>0&&rate>0&&hours>0?estimate.net.toFixed(2):'';
+  document.getElementById('incomeEditorStatus').textContent='';
+ }
  box.innerHTML=gross>0?`Gross: <strong>${money(gross)}</strong>${estimate?` · Estimated take-home: <strong>${money(estimate.net)}</strong><div class="tax-breakdown"><span>Federal <b>${money(estimate.federal)}</b></span><span>Michigan <b>${money(estimate.state)}</b></span><span>Social Security <b>${money(estimate.socialSecurity)}</b></span><span>Medicare <b>${money(estimate.medicare)}</b></span><span>401(k) deduction <b>${money(estimate.retirement)}</b></span><span>Benefits / other deductions <b>${money(estimate.benefits-estimate.retirement+estimate.local)}</b></span></div>`:'<p>'+bdEscape(error||'Choose your state and filing status below.')+'</p>'}`:'';
 }
 function prepareIncomeForSave(){
@@ -1458,7 +1461,12 @@ function setIncomePanel(id){
  for(const [panelId,buttonId,label] of [['incomeDropdown','incomeToggleBtn','Income'],['budgetDropdown','incomeBudgetToggleBtn','Budget'],['bankActivityCard','incomeTransactionsToggleBtn','Transactions']]){
   const panel=document.getElementById(panelId),button=document.getElementById(buttonId),open=panelId===id;
   panel.hidden=!open;
-  if(panelId!=='bankActivityCard'){
+  const dialog=panel.closest('dialog[data-income-editor]');
+  if(dialog){
+   panel.classList.toggle('open',open);panel.style.display=open?'block':'none';panel.style.maxHeight='none';
+   if(open&&!dialog.open)dialog.showModal();
+   if(!open&&dialog.open)dialog.close();
+  }else if(panelId!=='bankActivityCard'){
    if(open)openSlidingDropdown(panel);
    else{clearTimeout(heroSlideHideTimers[panelId]);clearTimeout(heroSlideAutoTimers[panelId]);panel.classList.remove('open');panel.style.display='none';panel.style.maxHeight='0px';}
   }
@@ -6872,7 +6880,7 @@ window.classicReady=(async function init(){
   await window.BearDen.ready;
   window.BearDenDebtPayments=await import('./debt-payments.mjs?v=creditor-themes2');
   window.BearDenCarDebt=await import('./car-debt.mjs?v=car-debt1');
-  window.BearDenTaxes=await import('./tax-ui.mjs?v=paycheck-details1');window.BearDenTaxes.mount();
+  window.BearDenTaxes=await import('./tax-ui.mjs?v=household-theme1');window.BearDenTaxes.mount();
   applyThemeButtonIcon(); // reflect whatever the early <head> script already applied
   applyThemeBackground(document.documentElement.getAttribute('data-theme') === 'dark');
   applyHolidayMenuState();

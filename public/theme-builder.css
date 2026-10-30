@@ -1,0 +1,41 @@
+#colorPickerDialog .theme-builder-tabs { display:flex; gap:4px; padding:5px; margin:16px 0 20px; background:var(--card); border:1px solid var(--line); border-radius:14px }
+#colorPickerDialog .theme-builder-tabs button { flex:1; min-width:0; min-height:44px; padding:8px 5px; border:0; background:transparent; color:var(--ink); font-size:.78rem; border-radius:9px }
+#colorPickerDialog .theme-builder-tabs button[aria-selected=true] { background:var(--accent-fill); color:var(--on-accent) }
+#colorPickerDialog .theme-panel[hidden] { display:none }
+#colorPickerDialog .theme-panel h4 { margin:0 0 6px; font-size:1rem; color:var(--ink) }
+#colorPickerDialog .theme-panel > p { margin:0 0 16px }
+#colorPickerDialog .theme-preset-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px }
+#colorPickerDialog .theme-preset-grid button { min-height:66px; flex-direction:row; justify-content:flex-start; gap:10px; text-align:left }
+#colorPickerDialog .theme-gradient-list { display:grid; grid-template-columns:1fr; gap:10px }
+#colorPickerDialog .theme-gradient-list button { display:flex; flex-direction:row; justify-content:flex-start; gap:16px; text-align:left; width:100%; min-height:68px }
+#colorPickerDialog .theme-gradient-list .color-swatch-dot { flex:0 0 88px; width:88px; height:42px; border-radius:9px }
+#colorPickerDialog .theme-holidays { margin:20px 0 }
+#colorPickerDialog .theme-color-targets { display:flex; gap:6px; margin-bottom:16px }
+#colorPickerDialog .theme-color-targets button { display:flex; flex:1; min-width:0; flex-direction:column; align-items:center; gap:8px; padding:10px 4px; font-size:.78rem }
+#colorPickerDialog .theme-color-targets button[aria-pressed=true] { outline:2px solid var(--accent); outline-offset:1px; background:var(--accent-soft); color:var(--ink) }
+#colorPickerDialog .theme-color-targets i { display:block; width:26px; height:26px; border-radius:50%; border:1px solid var(--line) }
+#colorPickerDialog .theme-color-field { position:relative; height:190px; border-radius:14px; border:1px solid var(--line); background:linear-gradient(to top,#000,transparent),linear-gradient(to right,#fff,transparent),hsl(var(--hue) 100% 50%); touch-action:none; cursor:crosshair }
+#colorPickerDialog .theme-color-field:focus-visible { outline:3px solid var(--accent); outline-offset:4px }
+#themeColorMarker { position:absolute; width:20px; height:20px; box-sizing:border-box; border:3px solid white; border-radius:50%; box-shadow:0 0 0 1px #0008,0 2px 4px #0006; transform:translate(-50%,-50%); pointer-events:none }
+#colorPickerDialog #themeFieldHelp { font-size:.7rem; margin:10px 0 12px }
+#colorPickerDialog .theme-range-label { display:flex; justify-content:space-between; align-items:center; margin:10px 0 0; color:var(--ink); font-size:.8rem }
+#colorPickerDialog input[type=range] { display:block; box-sizing:border-box; width:100%; min-width:0; min-height:44px; margin:0; padding:0; accent-color:var(--accent); background:transparent }
+#colorPickerDialog .theme-hue { appearance:none; border:0; border-radius:12px; background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00) center/100% 14px no-repeat!important }
+#colorPickerDialog .theme-hue::-webkit-slider-thumb { appearance:none; width:26px; height:26px; background:var(--card); border:3px solid var(--ink); border-radius:50%; box-shadow:0 1px 4px #0004 }
+#colorPickerDialog .theme-hue::-moz-range-thumb { width:22px; height:22px; background:var(--card); border:3px solid var(--ink); border-radius:50% }
+#colorPickerDialog .theme-color-values { display:grid; grid-template-columns:minmax(0,1fr) 95px; gap:16px; margin-bottom:12px }
+#colorPickerDialog .theme-color-values label { margin:0; font-size:.78rem }
+#colorPickerDialog #themeNativeColor { height:46px; min-height:46px; padding:5px; cursor:pointer }
+#colorPickerDialog .theme-fine-tune { margin-bottom:18px }
+#colorPickerDialog .theme-preview { display:grid; grid-template-columns:1fr auto; gap:12px; padding:20px; border:1px solid var(--line); border-radius:16px; margin:16px 0 }
+#colorPickerDialog .theme-preview small { grid-column:1/-1; font-size:.72rem }
+#colorPickerDialog .theme-preview strong { grid-column:1/-1; font-size:1.5rem; letter-spacing:-.04em }
+#colorPickerDialog .theme-preview-accent { color:var(--preview-accent); align-self:center; font-size:.78rem; font-weight:700 }
+#colorPickerDialog .theme-preview-button { padding:12px; border-radius:10px; background:var(--preview-button); color:var(--preview-on-button); font-size:.78rem; font-weight:700 }
+#colorPickerDialog #applyCustomTheme { width:100%; background:var(--accent-fill); color:var(--on-accent); min-height:46px }
+/* Keep custom action and accent colors independent, including Wallet controls
+   that have their own default blue treatment. Semantic warning colors stay intact. */
+:root[data-color-scheme=custom] :is(.account-view-tabs button[aria-selected=true],.bd-mode-segment button[aria-pressed=true],.den-card-actions button:last-child,.den-summary-method select) { background:var(--custom-button)!important; color:var(--custom-on-button)!important; border-color:var(--custom-button)!important }
+:root[data-color-scheme=custom] .den-paid-ring { background:conic-gradient(var(--custom-accent) var(--paid,0%),var(--line) 0) }
+:root[data-color-scheme=custom] .den-summary-progress progress { accent-color:var(--custom-accent) }
+:root[data-color-scheme=custom] .bd-switch-row input:checked { background:var(--custom-accent); border-color:var(--custom-accent) }

@@ -813,3 +813,35 @@
 :root[data-layout=den] :is(.bd-list-options,.bd-forecast-details,.bd-chart-explore) > summary > svg { display:none }
 :root[data-layout=den] .bd-list-total { margin:16px 0 20px; padding:16px; border:1px solid var(--line); border-radius:16px; background:var(--card); box-shadow:var(--den-elevation) }
 @media(prefers-reduced-motion:reduce) { :root[data-layout=den] details > summary::after { transition:none } }
+
+/* Household editors keep the original fields and saving behavior in a modal. */
+:root[data-layout=den] dialog[data-income-editor] .setup-panel-wrap { padding:0; margin:0; background:none; border:0; box-shadow:none; overflow:visible; max-height:none!important; transition:none }
+:root[data-layout=den] dialog[data-income-editor] .howto-title { display:none }
+:root[data-layout=den] dialog[data-income-editor=incomeDropdown] .field-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(100px,40%); gap:12px; align-items:center; padding:12px 0; border-bottom:1px solid var(--line) }
+:root[data-layout=den] dialog[data-income-editor] .field-row .field-name { margin:0; font-size:.85rem; color:var(--ink); min-width:0 }
+:root[data-layout=den] dialog[data-income-editor] .field-name small { display:block; color:var(--muted); font-size:.7rem; font-weight:400; line-height:1.5; margin-top:4px }
+:root[data-layout=den] dialog[data-income-editor] .field-row input { width:100%!important; margin:0 }
+:root[data-layout=den] dialog[data-income-editor] :is(.retirement-controls,.income-estimate-options,.household-setup) { padding:16px; border:1px solid var(--line); border-radius:14px; background:var(--card); margin:16px 0 }
+:root[data-layout=den] dialog[data-income-editor] .income-take-home { margin-top:16px; padding:18px 0; border-top:1px solid var(--line); border-bottom:0 }
+:root[data-layout=den] dialog[data-income-editor] .income-take-home input { font-size:1.25rem; font-weight:750 }
+:root[data-layout=den] dialog[data-income-editor] .editor-save-action { width:100%; min-height:48px; margin:12px 0 0; background:var(--accent-fill); color:var(--on-accent); border-color:var(--accent-fill) }
+:root[data-layout=den] dialog[data-income-editor] .income-estimate { padding:14px; border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--ink); font-size:.8rem; line-height:1.6 }
+:root[data-layout=den] dialog[data-income-editor] .tax-breakdown { display:grid; grid-template-columns:1fr; gap:5px; margin-top:10px }
+:root[data-layout=den] dialog[data-income-editor] .tax-breakdown span { display:flex; justify-content:space-between; gap:10px }
+:root[data-layout=den] :is(.bd-status.is-connected,.connection-state[data-connected=true],.bd-account-actions .account-connection) { animation:bd-connected-pulse 3s ease-in-out infinite }
+@keyframes bd-connected-pulse { 0%,100% { box-shadow:0 0 0 3px #24a46c12; opacity:1 } 50% { box-shadow:0 0 0 5px #24a46c24; opacity:.85 } }
+@media (prefers-reduced-motion:reduce) { :root[data-layout=den] :is(.bd-status.is-connected,.connection-state[data-connected=true],.bd-account-actions .account-connection) { animation:none } }
+
+:root[data-layout=den] dialog :is(#incomeDropdown,#incomeBudgetSlot) input:not([type=checkbox]) { max-width:100%; width:100%; box-sizing:border-box }
+:root[data-layout=den] dialog #incomeDropdown .field-row:has(#startDate) { grid-template-columns:1fr }
+:root[data-layout=den] dialog #incomeDropdown #startDate { text-align:left }
+
+:root[data-layout=den] dialog #incomeDropdown .income-editor-result { position:sticky; bottom:-20px; z-index:2; margin:16px 0 -20px; padding:0 0 18px; border-top:1px solid var(--line); background:var(--surface-inset); box-shadow:0 -8px 16px color-mix(in srgb,var(--ink) 6%,transparent) }
+:root[data-layout=den] dialog #incomeDropdown .income-take-home { border:0; margin:0; padding:14px 0 0 }
+:root[data-layout=den] dialog #incomeDropdown .income-take-home input { max-width:100% }
+:root[data-layout=den] dialog #incomeDropdown .income-estimate { margin-bottom:20px }
+:root[data-layout=den] dialog #incomeDropdown .income-editor-result p:empty { display:none }
+:root[data-layout=den] #bdDetail-income .bd-popup-body { scroll-padding:12px 0 170px }
+:root[data-layout=den] dialog #incomeBudgetSlot .field-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(90px,42%); align-items:center }
+:root[data-layout=den] dialog #incomeBudgetSlot .field-name { overflow-wrap:anywhere }
+:root[data-layout=den] dialog #incomeBudgetSlot .field-name .remove { display:block; margin:5px 0 0!important; font-size:.7rem }

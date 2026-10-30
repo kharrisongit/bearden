@@ -31,7 +31,7 @@ async function openFixture(page, theme) {
 }
 
 for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark']) {
-  test(`${width}px ${theme}: 401(k) saves, estimates once, and retains manual take-home`, async ({ page }) => {
+  test(`${width}px ${theme}: 401(k) updates take-home live and retains a saved manual override`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -56,8 +56,6 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark']) {
     await expect(page.locator('#incomeEstimate')).toContainText('$1,514.35');
     await page.locator('#tax-retirementType').selectOption('roth');
     await expect(page.locator('#incomeEstimate')).toContainText('$1,485.85');
-    await expect(page.locator('#takeHome')).toHaveValue('1500');
-    await page.locator('#useIncomeEstimate').click();
     await expect(page.locator('#takeHome')).toHaveValue('1485.85');
     await page.evaluate(() => window.flushBearDenState());
     expect(await page.evaluate(() => window.getDebtPlan().schedule[0].takeHomeThisCheck)).toBe(1485.85);

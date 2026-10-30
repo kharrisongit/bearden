@@ -109,12 +109,13 @@
     }
     function go(destination) {
       navigating = menu.open; closeMenu();
-      const tab = {overview:'debt',plan:'debt',savings:'debt',forecast:'bills',budget:'income','income-edit':'income',connections:'settings'}[destination] || destination;
+      const tab = {overview:'debt',plan:'debt',savings:'debt',forecast:'bills',budget:'settings','income-edit':'settings',connections:'settings'}[destination] || destination;
       window.selectBearTab(tab);
       if(destination==='connections'){const search=$('#bdSettingsSearch');search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));}
       if(destination === 'forecast')$('#accounts-nav-calendar').click();
       if(destination === 'income-edit' && $('#incomeToggleBtn').getAttribute('aria-expanded')!=='true')$('#incomeToggleBtn').click();
       if(destination === 'budget' && $('#incomeBudgetToggleBtn').getAttribute('aria-expanded')!=='true')$('#incomeBudgetToggleBtn').click();
+      if(destination==='income-edit'||destination==='budget')return;
       const targets = {overview:'.den-intro',plan:'#schedulePlanSection',savings:'#savingsHeroContainer',forecast:'#billsForecastCard',budget:'#incomeBudgetSlot','income-edit':'#incomeDropdown',connections:'#bdConnections'};
       requestAnimationFrame(() => {
         if(destination==='savings' && $('#savingsHeroContainer').hidden){window.selectBearTab('settings');focusSection($('#savingsTrackerToggle'));}

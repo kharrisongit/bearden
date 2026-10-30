@@ -5,7 +5,7 @@ test('settings is a compact hub with profile, working search and the original de
  await page.setViewportSize({width:390,height:844});await fixture(page);await menuGo(page,'settings');
  await expect(page.locator('#bdAccountEmail')).toHaveText('you@example.com');
  await expect(page.locator('#bdSettingsHub .bd-setting-group')).toHaveCount(4);
- await expect(page.locator('#tab-settings [data-den-go=budget]')).toHaveCount(0);
+ await expect(page.locator('#bdHousehold [data-den-go=budget]')).toBeVisible();
  await expect(page.locator('#classicLogin')).toBeHidden();
  const row=await page.locator('#bdHousehold .bd-setting-row').first().boundingBox();expect(row.height).toBeLessThan(50);
  await page.locator('#bdSettingsSearch').fill('contributions');

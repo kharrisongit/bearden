@@ -78,8 +78,9 @@ test('new header cards use live totals and retain the bill, debt, and income edi
  await menuGo(page,'income');
  await expect(page.locator('#incomeSummary .income-total')).toHaveText('$1,284.62');
  await expect(page.locator('#tab-income .den-income-payday')).toContainText('$1,845.00');
- await page.locator('#incomeToggleBtn').click();await expect(page.locator('#incomeDropdown')).toBeVisible();
- await page.locator('#incomeBudgetToggleBtn').click();await expect(page.locator('#budgetDropdown')).toBeVisible();
+ await menuGo(page,'settings');
+ await page.locator('#bdHousehold [data-den-go="income-edit"]').click();await expect(page.locator('#incomeDropdown')).toBeVisible();await page.locator('#bdDetail-income .bd-popup-close').click();
+ await page.locator('#bdHousehold [data-den-go="budget"]').click();await expect(page.locator('#budgetDropdown')).toBeVisible();await page.locator('#bdDetail-budget .bd-popup-close').click();
  await menuGo(page,'bills');
  await expect(page.locator('#denBillsPaidCount')).toHaveText(await page.locator('#billTrackerPaidCount').textContent());
  await expect(page.locator('#billAgenda .den-date-stamp').first()).toBeVisible();
@@ -121,7 +122,7 @@ test('existing color and holiday choices work with Wallet and preserve the finan
  const before=await page.evaluate(()=>window.getDebtPlan().state);
  await menuGo(page,'settings');
  await page.locator('#openColorPicker').click();
- await page.locator('[data-color-scheme-choice="sunrise"]').click();
+ await page.locator('[data-theme-tab=gradients]').click();await page.locator('[data-color-scheme-choice="sunrise"]').click();
  await page.locator('#closeColorPicker').click();await menuGo(page,'overview');
  await expect(page.locator('html')).toHaveAttribute('data-color-scheme','sunrise');
  await page.screenshot({path:'test-results/wallet-bright-theme.png'});

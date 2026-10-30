@@ -49,9 +49,9 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
   settingsHub.innerHTML='<div class="bd-profile"><div class="bd-profile-avatar" data-bd-initials>BD</div><div class="bd-profile-info"><strong>Your account</strong><span id="bdAccountEmail">On this device</span><small id="bdBackupStatus">'+svg('cloud')+'<span>Local plan</span></small></div><div class="bd-profile-actions"><span class="bd-status" id="bdAccountBadge">Local</span><button type="button" data-bd-detail="account">Manage account '+chevron+'</button></div></div>'
     +'<label class="bd-settings-search">'+svg('search')+'<input type="search" id="bdSettingsSearch" placeholder="Find a setting" aria-label="Find a setting"></label>'
     +group('Appearance','<div class="bd-mode-row">'+svg('sun')+'<div class="bd-mode-segment" role="group" aria-label="Color mode"><button type="button" data-bd-mode="light">Light</button><button type="button" data-bd-mode="dark">Dark</button><button type="button" data-bd-mode="auto">Auto</button></div></div><div class="bd-theme-swatches" role="group" aria-label="Color palette">'+[['','Standard blue','#0868ff'],['lavender','Lavender','#bca1f4'],['sunset','Sunset','#ff9650'],['rose','Rose','#f59aba'],['twilight','Twilight','linear-gradient(135deg,#121f50,#725cae)']].map(([value,name,color])=>'<button type="button" data-bd-palette="'+value+'" aria-label="'+name+' palette" title="'+name+'" style="--swatch:'+color+'"><span aria-hidden="true">✓</span></button>').join('')+'</div><div id="bdAllThemes"></div>','bdAppearance')
-    +group('Household',row('Pay schedules','bills','data-den-go="income-edit"','Biweekly')+row('Shared contributions','people','data-bd-household','Set up'),'bdHousehold')
+    +group('Household',row('Income','income','data-den-go="income-edit"','Pay & withholding')+row('Budget','chart','data-den-go="budget"','Per paycheck')+row('Debt payment timing','bills','data-bd-detail="timing"','<span id="bdTimingValue"></span>')+row('Shared contributions','people','data-bd-household','Set up'),'bdHousehold')
     +group('Connections',row('Plaid','target','data-bd-detail="plaid"','<span data-bd-status="classicBankStatus">Connect</span>')+row('Lunch Flow','stack','data-bd-detail="lunchflow"','<span data-bd-status="lunchflowStatus">Connect</span>')+row('Email accounts','mail','data-bd-detail="email"','<span data-bd-status="classicEmailStatus">Connect</span>')+row('Rent portal','overview','data-bd-detail="rent"','<span data-bd-status="rentStatus">Connect</span>'),'bdConnections','<button type="button" id="bdSyncAll">Sync all '+svg('refresh')+'</button>')
-    +group('Options','<div id="bdSwitchRows"></div>'+row('Debt payment timing','bills','data-bd-detail="timing"','<span id="bdTimingValue"></span>')+row('More preferences','settings','data-bd-detail="preferences"','','aria-label="More preferences, setup and layout"')+row('Tools','tools','id="bdToolsButton" data-den-go="tools"','Notes &amp; games'),'bdOptions')
+    +group('Options','<div id="bdSwitchRows"></div>'+row('More preferences','settings','data-bd-detail="preferences"','','aria-label="More preferences, setup and layout"')+row('Tools','tools','id="bdToolsButton" data-den-go="tools"','Notes &amp; games'),'bdOptions')
     +'<p id="bdSearchEmpty" class="subtle" hidden>No settings match your search.</p>';
   const switchRows=[['sharedBillsToggle','Use shared bills account','people'],['carPaymentsInDebtToggle','Include car in debt','car'],['savingsTrackerToggle','Savings tracker','savings'],['payoffControlsToggle','Slice & Squash','target'],['bonusControlsToggle','Bonus paychecks','gift']];
   for(const [id,label,glyph] of switchRows){
@@ -63,7 +63,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
   $('#bdOptions').append($('#featureSettingsStatus'));
   for(const [source,keys] of [['#featureSettingsStatus',['timing','preferences']],['#connectionMessage',['account','plaid','lunchflow','email','rent','balances']]])new MutationObserver(()=>{for(const key of keys){const dialog=dialogs.get(key);if(dialog?.open)$('.bd-detail-feedback',dialog).textContent=$(source).textContent;}}).observe($(source),{subtree:true,childList:true,characterData:true});
   $('#colorPickerDialog').addEventListener('close',()=>$('#openColorPicker').focus({preventScroll:true}));
-  const allThemes=$('#openColorPicker');allThemes.textContent='All themes & holidays '+String.fromCharCode(8594);$('#bdAllThemes').append(allThemes);
+  const allThemes=$('#openColorPicker');allThemes.textContent='Customize theme '+String.fromCharCode(8594);$('#bdAllThemes').append(allThemes);
   detail('preferences','More preferences',[tracker,$('#denDesignSettings')]);
   // Original controls remain available in their detail views. Their explanatory
   // text belongs with the control rather than on the compact hub.
@@ -136,10 +136,6 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
   for(const tab of ['income','bills','debts','settings','tools']){
     const header=$('#tab-'+tab+' .tab-intro');if(!header)continue;
     const h2=$('h2',header);header.replaceChildren(h2);header.classList.add('bd-page-heading');header.classList.remove('connection-heading');
-    if(tab==='income'){
-      const actions=make('div','bd-heading-actions');actions.append(setupButton,budgetButton);header.append(actions);
-      $('#incomeToggleBtn').textContent='Setup';
-    }
     if(tab==='bills'||tab==='debts'){
       const list=$('#'+(tab==='bills'?'billListCard':'debtListCard'));
       const add=$('[data-account-kind]',list);if(add){add.classList.add('bd-add-account');header.append(add);}
@@ -160,12 +156,18 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
   }
   // Income: balance / next paycheck / forecast / recent transactions / spending.
   const income=$('#tab-income'),bank=$('.bank-card',income),bankWrap=bank.parentElement;
-  const editorHost=make('div','bd-income-editors');editorHost.append($('#incomeDropdown'),$('#incomeBudgetSlot'));
-  bankWrap.after(editorHost);
+  const editorControls=make('div','');editorControls.hidden=true;editorControls.append(setupButton,budgetButton);settingsPage.append(editorControls);
+  for(const [key,title,node,panelId] of [['income','Income editor',$('#incomeDropdown'),'incomeDropdown'],['budget','Budget editor',$('#incomeBudgetSlot'),'budgetDropdown']]){
+    const dialog=detail(key,title,[node]);dialog.dataset.incomeEditor=panelId;
+    dialog.addEventListener('close',()=>{
+      window.setIncomePanel?.(null);
+      $('#bdHousehold [data-den-go="'+(key==='income'?'income-edit':'budget')+'"]').focus({preventScroll:true});
+    });
+  }
   const activity=$('#bankActivityCard');
   // The old header was detached above; its refresh control remains a real control.
   if(refreshButton)bank.append(refreshButton);
-  const paycheck=make('section','bd-next-paycheck income-card');paycheck.id='bdNextPaycheck';editorHost.after(paycheck);
+  const paycheck=make('section','bd-next-paycheck income-card');paycheck.id='bdNextPaycheck';bankWrap.after(paycheck);
   const forecast=$('#personalForecastCard');paycheck.after(forecast);$('h3',forecast).textContent='Personal forecast';
   const forecastDetails=make('details','bd-forecast-details','<summary>Forecast details &amp; planned activity '+chevron+'</summary>');
   // Keep chart interaction on the overview; put the full ledger and scenario

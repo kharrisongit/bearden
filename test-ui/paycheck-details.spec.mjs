@@ -2,13 +2,14 @@ import {test,expect} from '@playwright/test';
 import {fixture,menuGo} from './wallet.fixture.mjs';
 
 const budgetAmounts=page=>page.evaluate(()=>window.getDebtPlan().schedule.slice(0,4).map(row=>row.budgetLineItemsThisCheck.find(item=>item.id===1).amount));
-async function openBudget(page){await menuGo(page,'income');await page.locator('#incomeBudgetToggleBtn').click();}
+async function openBudget(page){await menuGo(page,'settings');await page.locator('#bdHousehold [data-den-go=budget]').click();}
 async function setIncome(page){
- await menuGo(page,'income');await page.locator('#incomeToggleBtn').click();
+ await menuGo(page,'settings');await page.locator('#bdHousehold [data-den-go="income-edit"]').click();
  await page.locator('#hourlyRate').fill('25');await page.locator('#hoursPerCheck').fill('80');
  await page.locator('#incomeDropdown summary').filter({hasText:'State & withholding'}).click();
  await page.locator('#tax-state').selectOption('MI');await page.locator('#tax-filing').selectOption('joint');
  await page.locator('#tax-retirement').fill('200');
+ await page.locator('#takeHome').fill('1845');
  await page.getByRole('button',{name:'Save income',exact:true}).click();
  await expect(page.locator('#incomeDropdown')).toBeHidden();
 }
@@ -44,7 +45,7 @@ test('budget start follows the upcoming date after reload and leaves past checks
  await page.reload();await page.evaluate(()=>window.classicReady);await openBudget(page);
  await expect(start).toHaveValue('4');expect(await budgetAmounts(page)).toEqual([100,100,0,100]);
  await page.clock.setFixedTime(new Date('2026-11-25T12:00:00Z'));
- await page.locator('#incomeBudgetToggleBtn').click();await page.locator('#incomeBudgetToggleBtn').click();
+ await page.locator('#bdDetail-budget .bd-popup-close').click();await page.locator('#bdHousehold [data-den-go=budget]').click();
  await expect(start).toHaveValue('4');await expect(start).toContainText('Saved start · Nov 13, 2026');
  await start.selectOption('6');
  expect(await page.evaluate(()=>window.getDebtPlan().schedule.slice(0,6).map(row=>row.budgetLineItemsThisCheck.find(item=>item.id===1).amount))).toEqual([100,100,0,100,0,100]);
