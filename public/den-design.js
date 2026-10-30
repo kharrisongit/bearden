@@ -130,7 +130,8 @@
     }
     async function go(destination) {
       if(menuClosing)return;
-      navigating = menu.open; await closeMenu();
+      navigating = menu.open;
+      if(menu.open)await closeMenu();
       const tab = {overview:'debt',plan:'debt',savings:'debt',forecast:'bills',budget:'settings','income-edit':'settings',connections:'settings'}[destination] || destination;
       window.selectBearTab(tab);
       if(destination==='connections'){const search=$('#bdSettingsSearch');search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));}
