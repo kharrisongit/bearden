@@ -75,22 +75,24 @@
     let scrollBeforeMenu = 0, previousOverflow = '';
     let walletAnimations = [], menuClosing = null;
     const walletCards=[...menu.querySelectorAll('.den-wallet-card')];
+    // Match the resting overlap order throughout the motion, with lower cards
+    // in front. Never swap layers when the animation finishes.
+    walletCards.forEach((card,index)=>card.style.zIndex=String(index+1));
     const cardRest={transform:'perspective(1000px) translate3d(0,0,0) rotateX(0deg) scale(1)'};
     const reduceWalletMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
     function stopWalletAnimations(){
       walletAnimations.forEach(animation=>animation.cancel());walletAnimations=[];
-      menu.classList.remove('den-wallet-moving');walletCards.forEach(card=>card.style.removeProperty('z-index'));
+      menu.classList.remove('den-wallet-moving');
     }
     function foldedCards(){
       // Gather the real layout before animating, including the two-column layout.
-      const rects=walletCards.map(card=>card.getBoundingClientRect()),anchor=rects[0];
+      const rects=walletCards.map(card=>card.getBoundingClientRect()),anchor=rects.at(-1);
       return rects.map((rect,index)=>({transform:'perspective(1000px) translate3d('+
-        (anchor.x+anchor.width/2-rect.x-rect.width/2)+'px,'+(anchor.bottom-rect.bottom+index*8)+
+        (anchor.x+anchor.width/2-rect.x-rect.width/2)+'px,'+(anchor.bottom-rect.bottom-(walletCards.length-1-index)*8)+
         'px,0) rotateX(-14deg) scale(.94)'}));
     }
     function layerWalletCards(){
       menu.classList.add('den-wallet-moving');
-      walletCards.forEach((card,index)=>card.style.zIndex=String(walletCards.length-index));
     }
     function closeMenu() {
       if(menuClosing)return menuClosing;
@@ -100,10 +102,10 @@
       stopWalletAnimations();
       if(reduceWalletMotion()){menu.close();return Promise.resolve();}
       const folded=foldedCards();layerWalletCards();menu.classList.add('den-menu-closing');
-      // The bottom cards return first; fade the sheet only after they restack.
-      walletAnimations=[menu.animate([from,{opacity:0}],{delay:620,duration:220,easing:'ease-in',fill:'both'}),
+      // Upper cards tuck down first, reversing the bottom-to-top opening.
+      walletAnimations=[menu.animate([from,{opacity:0}],{delay:520,duration:200,easing:'ease-in',fill:'both'}),
         ...walletCards.map((card,index)=>card.animate([cardFrames[index],folded[index]],{
-          delay:(walletCards.length-1-index)*60,duration:420,easing:'cubic-bezier(.4,0,.2,1)',fill:'both'}))];
+          delay:index*50,duration:360,easing:'cubic-bezier(.4,0,.2,1)',fill:'both'}))];
       menuClosing=Promise.all(walletAnimations.map(animation=>animation.finished.catch(()=>{}))).then(()=>{
         if(menu.open)menu.close();
         stopWalletAnimations();menu.classList.remove('den-menu-closing');
@@ -120,7 +122,7 @@
         const folded=foldedCards();layerWalletCards();
         const opening=[menu.animate([{opacity:0},{opacity:1}],{duration:180,easing:'ease-out'}),
           ...walletCards.map((card,index)=>card.animate([folded[index],cardRest],{
-            delay:140+index*90,duration:600,easing:'cubic-bezier(.22,.75,.25,1)',fill:'both'}))];
+            delay:120+(walletCards.length-1-index)*75,duration:500,easing:'cubic-bezier(.22,.75,.25,1)',fill:'both'}))];
         walletAnimations=opening;
         Promise.all(opening.map(animation=>animation.finished.catch(()=>{}))).then(()=>{
           if(walletAnimations===opening)stopWalletAnimations();

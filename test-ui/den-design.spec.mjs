@@ -83,7 +83,7 @@ test('Wallet motion handles closing mid-animation and preserves destination focu
   expect(motion.animated).toBe(reducedMotion==='no-preference');
   if(reducedMotion==='no-preference'){
    expect(motion.cards).toHaveLength(6);
-   for(let i=0;i<motion.cards.length;i++){expect(motion.cards[i][0].duration).toBeGreaterThanOrEqual(500);if(i)expect(motion.cards[i][0].delay).toBeGreaterThan(motion.cards[i-1][0].delay);}
+   for(let i=0;i<motion.cards.length;i++){expect(motion.cards[i][0].duration).toBeGreaterThanOrEqual(500);if(i)expect(motion.cards[i][0].delay).toBeLessThan(motion.cards[i-1][0].delay);}
   }else expect(motion.cards.flat()).toHaveLength(0);
   await page.evaluate(()=>{document.querySelector('#denClose').click();document.querySelector('#denClose').click();});
   await expect(page.locator('#denMenu')).toBeHidden();await expect(page.locator('#denOpen')).toBeFocused();
