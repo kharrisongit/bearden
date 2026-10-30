@@ -73,16 +73,37 @@
       +'</nav></div>';
     document.body.append(menu);
     let scrollBeforeMenu = 0, previousOverflow = '';
-    function closeMenu() { if(menu.open)menu.close(); }
+    let walletAnimation = null, menuClosing = null;
+    const walletRest = {opacity:1,transform:'translateY(0) scale(1)'};
+    const walletFolded = {opacity:0,transform:'translateY(36px) scale(.94)'};
+    const reduceWalletMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function closeMenu() {
+      if(menuClosing)return menuClosing;
+      if(!menu.open)return Promise.resolve();
+      const current=getComputedStyle(menu),from={opacity:current.opacity,transform:current.transform};
+      walletAnimation?.cancel();
+      if(reduceWalletMotion()){menu.close();return Promise.resolve();}
+      menu.classList.add('den-menu-closing');
+      walletAnimation=menu.animate([from,walletFolded],{duration:180,easing:'cubic-bezier(.4,0,1,1)',fill:'forwards'});
+      menuClosing=walletAnimation.finished.catch(()=>{}).then(()=>{
+        if(menu.open)menu.close();
+        walletAnimation?.cancel();menu.classList.remove('den-menu-closing');
+      }).finally(()=>{menuClosing=null;});
+      return menuClosing;
+    }
     $('#denOpen').onclick = () => {
       if(menu.open)return;
       menu.scrollTop=0;
       scrollBeforeMenu = scrollY; previousOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden'; root.classList.add('den-menu-open');
+      const dockBox=$('#denOpen').getBoundingClientRect();
+      menu.style.transformOrigin=(dockBox.x+dockBox.width/2)+'px '+(dockBox.y+dockBox.height/2)+'px';
       $('#denOpen').setAttribute('aria-expanded','true'); menu.showModal();
+      if(!reduceWalletMotion())walletAnimation=menu.animate([walletFolded,walletRest],{duration:260,easing:'cubic-bezier(.16,1,.3,1)'});
       menu.querySelector('[data-den-go="overview"]').focus({preventScroll:true});
     };
     $('#denClose').onclick = closeMenu;
+    menu.addEventListener('cancel',event=>{event.preventDefault();closeMenu();});
     menu.addEventListener('keydown', event => {
       // The shared editor guard disables native Escape; navigation has no draft to discard.
       if(event.key==='Escape'){event.preventDefault();closeMenu();}
@@ -107,8 +128,9 @@
       element.setAttribute('tabindex','-1');
       element.focus({preventScroll:true}); element.scrollIntoView({block:'start',behavior:'instant'});
     }
-    function go(destination) {
-      navigating = menu.open; closeMenu();
+    async function go(destination) {
+      if(menuClosing)return;
+      navigating = menu.open; await closeMenu();
       const tab = {overview:'debt',plan:'debt',savings:'debt',forecast:'bills',budget:'settings','income-edit':'settings',connections:'settings'}[destination] || destination;
       window.selectBearTab(tab);
       if(destination==='connections'){const search=$('#bdSettingsSearch');search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));}

@@ -63,12 +63,29 @@ test('hidden savings shortcut opens its visibility control and empty states rema
 });
 
 test('Wallet keyboard focus stays inside the menu, Escape closes, and short screens scroll',async({page})=>{
+ await page.emulateMedia({reducedMotion:'no-preference'});
  await page.setViewportSize({width:390,height:480});await fixture(page);
  await page.locator('#denOpen').click();
  for(let i=0;i<12;i++){await page.keyboard.press('Tab');expect(await page.evaluate(()=>document.querySelector('#denMenu').contains(document.activeElement))).toBe(true);}
  await page.locator('#denClose').click();await expect(page.locator('#denMenu')).toBeHidden();
  await page.setViewportSize({width:1280,height:844});await page.locator('#denOpen').click();
  await page.keyboard.press('Escape');await expect(page.locator('#denMenu')).toBeHidden();
+});
+
+test('Wallet motion handles closing mid-animation and preserves destination focus',async({page})=>{
+ await fixture(page);const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ for(const reducedMotion of ['no-preference','reduce']){
+  await page.emulateMedia({reducedMotion});
+  const animated=await page.evaluate(()=>{document.querySelector('#denOpen').click();return document.querySelector('#denMenu').getAnimations().some(a=>a.playState==='running');});
+  expect(animated).toBe(reducedMotion==='no-preference');
+  await page.evaluate(()=>{document.querySelector('#denClose').click();document.querySelector('#denClose').click();});
+  await expect(page.locator('#denMenu')).toBeHidden();await expect(page.locator('#denOpen')).toBeFocused();
+  expect(await page.evaluate(()=>document.body.style.overflow)).not.toBe('hidden');
+  await page.evaluate(()=>{document.querySelector('#denOpen').click();document.querySelector('#denMenu [data-den-go=income]').click();});
+  await expect(page.locator('#denMenu')).toBeHidden();await expect(page.locator('#tab-income h2')).toBeFocused();
+  await expect(page.locator('#denOpen')).toHaveAttribute('aria-expanded','false');
+ }
+ expect(errors).toEqual([]);
 });
 
 
