@@ -59,7 +59,27 @@
 (()=>{
  const root=document.documentElement;
  const popupSelector='dialog[open],#celebrationOverlay.show';
- let position=null;
+ let position=null,viewportFrame;
+ function fitKeyboardViewport(){
+  const viewport=window.visualViewport;
+  const keyboard=viewport&&viewport.scale===1&&innerHeight-viewport.height>80;
+  root.style.setProperty('--popup-view-top',(viewport?.offsetTop||0)+'px');
+  root.style.setProperty('--popup-view-height',(viewport?.height||innerHeight)+'px');
+  for(const dialog of document.querySelectorAll('dialog'))dialog.toggleAttribute('data-keyboard-viewport',!!keyboard&&dialog.open);
+  cancelAnimationFrame(viewportFrame);
+  viewportFrame=requestAnimationFrame(()=>{
+   const input=document.activeElement,dialog=input?.closest('dialog[open]');
+   if(!keyboard||!dialog||!input.matches('input,select,textarea'))return;
+   const scroller=input.closest('.bd-popup-body')||dialog,field=input.getBoundingClientRect(),bounds=scroller.getBoundingClientRect();
+   // Only adjust the vertical axis; scrollIntoView can pan a narrow iPhone form.
+   if(field.top<bounds.top+12)scroller.scrollTop-=bounds.top+12-field.top;
+   else if(field.bottom>bounds.bottom-12)scroller.scrollTop+=field.bottom-bounds.bottom+12;
+  });
+ }
+ window.visualViewport?.addEventListener('resize',fitKeyboardViewport);
+ window.visualViewport?.addEventListener('scroll',fitKeyboardViewport);
+ window.addEventListener('resize',fitKeyboardViewport);
+ document.addEventListener('focusin',fitKeyboardViewport);
  function lock(){
   if(position)return;
   position={x:window.scrollX,y:window.scrollY};
@@ -68,6 +88,7 @@
   root.classList.add('popup-scroll-locked');
  }
  function sync(){
+  fitKeyboardViewport();
   if(document.querySelector(popupSelector)){lock();return;}
   if(!position)return;
   const saved=position;position=null;

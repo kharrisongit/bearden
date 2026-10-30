@@ -767,21 +767,39 @@ function calcGrossPay(rate, hours){
   return rate * Math.min(hours, 80) + rate * 1.5 * Math.max(0, hours - 80);
 }
 
+function incomePayEstimate(){
+ const rate=Number(document.getElementById('hourlyRate').value),hours=Number(document.getElementById('hoursPerCheck').value);
+ if(!(rate>0))throw Error('Enter your hourly rate to calculate take-home pay.');
+ if(!(hours>0))throw Error('Enter your hours per paycheck to calculate take-home pay.');
+ return window.BearDenTaxes.estimatePay(calcGrossPay(rate,hours),window.BearDenTaxes.read());
+}
 function updateIncomeEstimateDisplay(apply=false){
  const rate=Number(document.getElementById('hourlyRate').value)||0,hours=Number(document.getElementById('hoursPerCheck').value)||0,gross=calcGrossPay(rate,hours),box=document.getElementById('incomeEstimate');let estimate=null,error='';
- try{estimate=window.BearDenTaxes?.estimatePay(gross,window.BearDenTaxes.read());}catch(e){error=e.message;}
- box.style.display=gross>0?'block':'none';
+ try{estimate=incomePayEstimate();}catch(e){error=e.message;}
+ // A partially typed rate (or temporarily empty hours) is not a deduction error.
+ // Keep the real validation for completed inputs and Save.
+ if(error==='Paycheck deductions cannot exceed gross pay.'){
+  if(['hourlyRate','hoursPerCheck'].includes(document.activeElement?.id))error='Finish entering your hourly rate and hours to update take-home pay.';
+  else{
+   const settings=window.BearDenTaxes.read(),deductions=['health','retirement','afterTax'].reduce((sum,key)=>sum+(Number(settings[key])||0),0);
+   error=`Paycheck deductions (${money(deductions)}) exceed gross pay (${money(gross)}). Check your hours, 401(k), health benefits and other paycheck deductions.`;
+  }
+ }
+ box.style.display='block';
  if(apply){
   document.getElementById('takeHome').value=estimate&&gross>0&&rate>0&&hours>0?estimate.net.toFixed(2):'';
   document.getElementById('incomeEditorStatus').textContent='';
  }
- box.innerHTML=gross>0?`Gross: <strong>${money(gross)}</strong>${estimate?` · Estimated take-home: <strong>${money(estimate.net)}</strong><div class="tax-breakdown"><span>Federal <b>${money(estimate.federal)}</b></span><span>Michigan <b>${money(estimate.state)}</b></span><span>Social Security <b>${money(estimate.socialSecurity)}</b></span><span>Medicare <b>${money(estimate.medicare)}</b></span><span>401(k) deduction <b>${money(estimate.retirement)}</b></span><span>Benefits / other deductions <b>${money(estimate.benefits-estimate.retirement+estimate.local)}</b></span></div>`:'<p>'+bdEscape(error||'Choose your state and filing status below.')+'</p>'}`:'';
+ box.innerHTML=(gross>0?`Gross: <strong>${money(gross)}</strong>`:'')+(estimate?` · Estimated take-home: <strong>${money(estimate.net)}</strong><div class="tax-breakdown"><span>Federal <b>${money(estimate.federal)}</b></span><span>Michigan <b>${money(estimate.state)}</b></span><span>Social Security <b>${money(estimate.socialSecurity)}</b></span><span>Medicare <b>${money(estimate.medicare)}</b></span><span>401(k) deduction <b>${money(estimate.retirement)}</b></span><span>Benefits / other deductions <b>${money(estimate.benefits-estimate.retirement+estimate.local)}</b></span></div>`:'<p>'+bdEscape(error)+'</p>');
 }
+document.getElementById('takeHome').addEventListener('change',()=>{
+ if(!(Number(document.getElementById('takeHome').value)>0))updateIncomeEstimateDisplay(true);
+});
+for(const id of ['hourlyRate','hoursPerCheck'])document.getElementById(id).addEventListener('blur',()=>updateIncomeEstimateDisplay());
 function prepareIncomeForSave(){
  const takeHome=document.getElementById('takeHome');
- if(!takeHome.value.trim()){
-  const gross=calcGrossPay(Number(document.getElementById('hourlyRate').value)||0,Number(document.getElementById('hoursPerCheck').value)||0);
-  const estimate=window.BearDenTaxes.estimatePay(gross,window.BearDenTaxes.read());
+ if(!(Number(takeHome.value)>0)){
+  const estimate=incomePayEstimate();
   if(estimate.net>0)takeHome.value=estimate.net.toFixed(2);
  }
  if(!(Number(takeHome.value)>0)||!document.getElementById('startDate').value)throw Error('Enter your first paycheck date and take-home pay, or add your hourly rate and hours for an estimate.');
@@ -1457,6 +1475,15 @@ document.addEventListener('click', (e) => {
 
 // Income tools share a single open panel, including transaction drilldowns.
 function setIncomePanel(id){
+ if(id==='incomeDropdown'){
+  const hours=document.getElementById('hoursPerCheck');
+  // Show the existing biweekly default as an actual editable value, not a
+  // placeholder that looks filled but is calculated as zero.
+  if(!hours.value.trim())hours.value='80';
+  const tax=window.BearDenTaxes.read();
+  if(!tax.state||!tax.filing)document.querySelector('.income-estimate-options').open=true;
+  updateIncomeEstimateDisplay(!(Number(document.getElementById('takeHome').value)>0));
+ }
  if(id==='budgetDropdown')for(const item of budgetItems)document.getElementById(`budget_start_${item.id}`).innerHTML=budgetStartOptions(item);
  for(const [panelId,buttonId,label] of [['incomeDropdown','incomeToggleBtn','Income'],['budgetDropdown','incomeBudgetToggleBtn','Budget'],['bankActivityCard','incomeTransactionsToggleBtn','Transactions']]){
   const panel=document.getElementById(panelId),button=document.getElementById(buttonId),open=panelId===id;

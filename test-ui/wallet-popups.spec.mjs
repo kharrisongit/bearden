@@ -8,14 +8,15 @@ for(const [width,theme] of [[320,'light'],[390,'dark'],[1280,'light']])test(`Wal
  expect(ids.length).toBeGreaterThan(20);
  for(const id of ids){
   const popup=page.locator('#'+id);await popup.evaluate(node=>node.showModal());
-  await expect(popup.locator('.bd-popup-close')).toBeVisible();
+  const close=popup.locator('.bd-popup-close,form[method=dialog] button[type=submit]').first();
+  await expect(close).toBeVisible();
   expect(await popup.evaluate(node=>{
    const rect=node.getBoundingClientRect(),body=node.querySelector('.bd-popup-body');
    return rect.left>=0&&rect.right<=innerWidth&&rect.top>=0&&rect.bottom<=innerHeight&&body.scrollWidth<=body.clientWidth+1&&!!document.getElementById(node.getAttribute('aria-labelledby'));
   }),id).toBe(true);
   await popup.locator('.bd-popup-body').evaluate(node=>node.scrollTop=node.scrollHeight);
-  await expect(popup.locator('.bd-popup-close')).toBeInViewport();
-  await popup.locator('.bd-popup-close').click();await expect(popup).toBeHidden();
+  await expect(close).toBeInViewport();
+  await close.click();await expect(popup).toBeHidden();
  }
  expect(errors).toEqual([]);
 });

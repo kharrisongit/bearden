@@ -211,6 +211,13 @@ html.popup-scroll-locked{overflow:hidden;overscroll-behavior:none}
 dialog[open]{max-height:85dvh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 dialog::backdrop{touch-action:none}
 .celebration-overlay{overflow-y:auto;overscroll-behavior:contain}
+/* All popup shells scroll vertically; horizontal gestures must not pan the form. */
+:root dialog[open],.celebration-overlay{overflow-x:hidden!important;overscroll-behavior-x:none;touch-action:pan-y}
+dialog :is(form,fieldset,.bd-popup-body,.bd-detail-content,.bd-bill-detail-content){min-width:0;max-width:100%;box-sizing:border-box;overflow-wrap:anywhere}
+dialog :is(input,select,textarea){min-width:0;max-width:100%;box-sizing:border-box}
+/* Safari's keyboard shrinks the visual viewport, not the layout viewport. */
+:root dialog[data-keyboard-viewport][open]{position:fixed;top:calc(var(--popup-view-top) + 8px);bottom:auto;margin-top:0;max-height:calc(var(--popup-view-height) - 16px)!important}
+:root dialog[data-keyboard-viewport] .bd-popup-body{min-height:0}
 
 /* Match summary text to the shared card surface in both light and dark themes. */
 .account-total-card{background:var(--card);border-color:var(--line);color:var(--ink)}

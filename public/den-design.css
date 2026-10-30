@@ -612,7 +612,7 @@
 :root[data-layout=den] .bd-popup .bd-popup-heading :is(h2,h3) { margin:0; color:var(--ink); font-size:1.3rem; font-weight:800; line-height:1.15; letter-spacing:-.045em; overflow-wrap:anywhere }
 :root[data-layout=den] .bd-popup .bd-popup-close { display:grid; place-items:center; width:36px; height:36px; min-height:36px; margin:0; padding:8px; flex-shrink:0; border:1px solid var(--line); border-radius:50%; background:var(--card); color:var(--ink); box-shadow:none }
 :root[data-layout=den] .bd-popup-close svg { width:19px; height:19px }
-:root[data-layout=den] .bd-popup .bd-popup-body { min-height:0; padding:20px; overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+:root[data-layout=den] .bd-popup .bd-popup-body { min-height:0; min-width:0; max-width:100%; box-sizing:border-box; padding:20px; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; touch-action:pan-y; scrollbar-gutter:stable; }
 :root[data-layout=den] .bd-popup-body > :first-child { margin-top:0 }
 :root[data-layout=den] .bd-popup-body > :last-child { margin-bottom:0 }
 :root[data-layout=den] .bd-popup-body :is(p,.subtle) { color:var(--muted); font-size:.78rem; line-height:1.55; overflow-wrap:anywhere }
@@ -842,12 +842,12 @@
 :root[data-layout=den] dialog #incomeDropdown .field-row:has(#startDate) { grid-template-columns:1fr }
 :root[data-layout=den] dialog #incomeDropdown #startDate { text-align:left }
 
-:root[data-layout=den] dialog #incomeDropdown .income-editor-result { position:sticky; bottom:-20px; z-index:2; margin:16px 0 -20px; padding:0 0 18px; border-top:1px solid var(--line); background:var(--surface-inset); box-shadow:0 -8px 16px color-mix(in srgb,var(--ink) 6%,transparent) }
+:root[data-layout=den] dialog #incomeDropdown .income-editor-result { position:static; margin:16px 0 0; padding:0; border-top:1px solid var(--line) }
 :root[data-layout=den] dialog #incomeDropdown .income-take-home { border:0; margin:0; padding:14px 0 0 }
 :root[data-layout=den] dialog #incomeDropdown .income-take-home input { max-width:100% }
 :root[data-layout=den] dialog #incomeDropdown .income-estimate { margin-bottom:20px }
 :root[data-layout=den] dialog #incomeDropdown .income-editor-result p:empty { display:none }
-:root[data-layout=den] #bdDetail-income .bd-popup-body { scroll-padding:12px 0 170px }
+:root[data-layout=den] #bdDetail-income .bd-popup-body { scroll-padding:12px }
 :root[data-layout=den] dialog #incomeBudgetSlot .field-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(90px,42%); align-items:center }
 :root[data-layout=den] dialog #incomeBudgetSlot .field-name { overflow-wrap:anywhere }
 :root[data-layout=den] dialog #incomeBudgetSlot .field-name .remove { display:block; margin:5px 0 0!important; font-size:.7rem }

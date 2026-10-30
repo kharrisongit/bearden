@@ -9,7 +9,7 @@ for(const width of [320,390,1280])for(const mode of ['light','dark'])test(`${wid
  await page.locator('#bdHousehold [data-den-go="income-edit"]').click();
  const dialog=page.locator('#bdDetail-income');await expect(dialog).toBeVisible();await expect(dialog.locator('button.editor-save-action')).toHaveCount(1);await expect(page.locator('#useIncomeEstimate')).toHaveCount(0);
  await page.locator('#hourlyRate').fill('25');await page.locator('#hoursPerCheck').fill('80');
- await page.locator('.income-estimate-options > summary').click();await page.locator('#tax-state').selectOption('MI');await page.locator('#tax-filing').selectOption('joint');
+ await expect(page.locator('#tax-state')).toBeVisible();await page.locator('#tax-state').selectOption('MI');await page.locator('#tax-filing').selectOption('joint');
  await expect(page.locator('#takeHome')).toHaveValue('1685.85');
  await page.locator('#tax-retirement').fill('200');await expect(page.locator('#takeHome')).toHaveValue('1514.35');
  await page.locator('#tax-retirementType').selectOption('roth');await expect(page.locator('#takeHome')).toHaveValue('1485.85');
