@@ -1,7 +1,7 @@
 'use strict';
 window.BearDen=(()=>{
  const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),money=n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n/100);
- const keys=new Set(['app-state','notes','runnerHighScore','crushHighScore','questBestWave','catchSave','theme','holiday','linked-bills','income-planner','onboarding']);
+ const keys=new Set(['app-state','notes','runnerHighScore','crushHighScore','questBestWave','catchSave','theme','holiday','linked-bills','income-planner','onboarding','statement-reports']);
  let config={},values={},revision=0,legacy=null,queue=Promise.resolve(),blocked=false,rentLoginUrl=null,requestQueue=Promise.resolve();
  const bridge={loaded:false,storage:{},ready:null};
  const accountHidden=id=>{try{return JSON.parse(values['income-planner']||'{}').hiddenConnectedAccounts?.[id]===true;}catch{return false;}};
