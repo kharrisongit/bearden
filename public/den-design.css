@@ -839,8 +839,13 @@
 @media (prefers-reduced-motion:reduce) { :root[data-layout=den] :is(.bd-status.is-connected,.connection-state[data-connected=true],.bd-account-actions .account-connection) { animation:none } }
 
 :root[data-layout=den] dialog :is(#incomeDropdown,#incomeBudgetSlot) input:not([type=checkbox]) { max-width:100%; width:100%; box-sizing:border-box }
-:root[data-layout=den] dialog #incomeDropdown .field-row:has(#startDate) { grid-template-columns:1fr }
+:root[data-layout=den] dialog #incomeDropdown .field-row:has(#startDate) { grid-template-columns:minmax(0,1fr); min-width:0 }
 :root[data-layout=den] dialog #incomeDropdown #startDate { text-align:left }
+/* iOS's native date button can contribute an intrinsic minimum wider than the
+   form. Size the control itself while retaining its native date picker. */
+:root[data-layout=den] dialog input[type=date] { -webkit-appearance:none; appearance:none; display:block; min-inline-size:0; inline-size:100%; max-inline-size:100%; box-sizing:border-box }
+:root[data-layout=den] dialog input[type=date]::-webkit-date-and-time-value { min-width:0; text-align:left }
+:root[data-layout=den] dialog input[type=date]::-webkit-datetime-edit { min-width:0; padding:0 }
 
 :root[data-layout=den] dialog #incomeDropdown .income-editor-result { position:static; margin:16px 0 0; padding:0; border-top:1px solid var(--line) }
 :root[data-layout=den] dialog #incomeDropdown .income-take-home { border:0; margin:0; padding:14px 0 0 }
