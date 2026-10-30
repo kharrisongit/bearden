@@ -11,3 +11,12 @@ Retrieved 2026-10-29 from the companies’ public websites. Brand artwork is use
 - Spectrum: https://www.spectrum.com/icons/spectrum.svg
 - Sun Communities: https://assets.milestoneinternet.com/sun-communities-inc/website-assets/favicon.png
 - Affirm: https://cdn-assets.affirm.com/images/icon-03-mono_blk.png
+
+Added 2026-10-30:
+
+- Apple: the Apple mark from https://www.apple.com/ (global navigation SVG; surrounding navigation space removed from the viewBox).
+- Esurance: https://images.esurance.com/icn-esurance-logo-250x150.png (original PNG inside an SVG viewport that removes transparent outer padding).
+- Buick: https://www.buick.com/content/dam/buick/na/us/en/site-resources/favicon.svg
+- GMC: https://www.gmc.com/content/dam/gmc/na/us/english/index/01-images/GMC-Logo-306x54.png
+
+Vehicle names take priority over lender names. Matching includes Buick / Encore GX, GMC / Terrain, compact linked loan names, and the requested existing “Kurtis’ Car” / “Richard’s Car” labels. Linked loan names are considered only for car-payment cards. Rent and home-insurance category icons are unchanged.

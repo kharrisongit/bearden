@@ -209,7 +209,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
       const original=[...card.children];
       const head=make('div','bd-account-head'),identity=make('div','bd-account-identity');
       identity.append(make('span','bd-account-icon',svg(accountGlyph(name))),h4);head.append(identity);
-      const brand=window.BearDenBrands?.find(name);
+      const brand=window.BearDenBrands?.find(name,card.dataset.vehicleName);
       if(brand){identity.dataset.brand=brand.key;const mark=$('.bd-account-icon',identity);mark.classList.add('bd-brand-logo');const image=document.createElement('img');image.src=brand.src;image.alt=brand.label+' logo';image.width=48;image.height=40;mark.replaceChildren(image);}
       if(date){date.removeAttribute('aria-hidden');const due=new Date(date.dateTime+'T12:00:00');date.classList.toggle('is-near',!date.classList.contains('is-paid')&&due-new Date()<14*86400000);head.append(date);}
       const edit=tools?.querySelector('.account-edit'),details=tools?.querySelector('[data-show-debt-details]');
