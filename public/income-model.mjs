@@ -222,9 +222,11 @@ export function billEvents(legacy,planner,linked,start,end){
    if(carPayoff&&date>=carPayoff.asOf&&(date>carPayoff.payoffDate||date===carPayoff.payoffDate&&carPayoff.finalPayment===0))continue;
    const key=bill.id+':'+date;
    if((bill.billKind==='rent'&&[...paid,...(legacy?.paid||[])].some(k=>rentPaidKey(k,bill)===key))||paid.has(key)||legacy?.paid?.includes(key)||(bill.gmailConfirmed&&[...paid,...(legacy?.paid||[])].some(k=>k.startsWith(bill.id+':'+date.slice(0,7)))))continue;
+   const reservation=planner.paymentReservations?.[key];
+   if(reservation===0)continue;
    const covered=Boolean(linked[bill.id])||bill.paidByCard||bill.source==='tracker-debt'||(bill.source==='plaid-credit'?bill.covered:(overrides[bill.id]??(bill.source!=='gmail'&&bill.source!=='manual'&&bill.source!=='bank-estimate'&&bill.source!=='bank-tracked')));
    const shared=sharedBill(bill,planner);
-   out.push({...rentOccurrence(bill,date),...(carPayoff&&date===carPayoff.payoffDate?{amount:carPayoff.finalPayment}:{}),date,key,type:'bill',covered:shared?false:covered,shared,overdue:date<start,emailConfirmed:!!bill.emailConfirmed&&date===(bill.emailDueDate||bill.date)});
+   out.push({...rentOccurrence(bill,date),...(carPayoff&&date===carPayoff.payoffDate?{amount:carPayoff.finalPayment}:{}),...(Number.isSafeInteger(reservation)?{amount:reservation}:{}),date,key,type:'bill',covered:shared?false:covered,shared,overdue:date<start,emailConfirmed:!!bill.emailConfirmed&&date===(bill.emailDueDate||bill.date)});
   }
  }
  return out.sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name));

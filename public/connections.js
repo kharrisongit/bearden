@@ -102,6 +102,12 @@ window.BearDen=(()=>{
   if(next!==planner){values['income-planner']=JSON.stringify(next);try{await persist();}catch(e){values['income-planner']=before;throw e;}}
  }
  async function refresh(){await queue;legacy=await api('/api/state');await reconcileAccountReferences();renderConnections();}
+ let checkingPaymentEvidence=false;
+ bridge.refreshPaymentEvidence=async()=>{
+  if(!config.authenticated||blocked||checkingPaymentEvidence)return;
+  checkingPaymentEvidence=true;
+  try{await refresh();}catch{/* Retain the last known evidence until the next successful sync. */}finally{checkingPaymentEvidence=false;}
+ };
  function renderConnections(){
   $('#accountMode').textContent=config.authenticated?'You are signed in with '+(config.email||'your BearDen')+' account. Your budget, accounts, and income update to the cloud securely via your account.':'Not signed in. Tracker changes are saved on this device.';
   $('#classicLogin').hidden=!!config.authenticated||!config.googleConfigured;$('#classicMicrosoftLogin').hidden=!!config.authenticated||!config.microsoftConfigured;$('#microsoftSetupStatus').hidden=!!config.authenticated||!!config.microsoftConfigured;$('#classicGmail').disabled=!config.googleConfigured;$('#classicOutlook').disabled=!config.microsoftConfigured;$('#classicOutlook').title=config.microsoftConfigured?'':'Microsoft inbox connections are being set up.';$('#classicLogout').hidden=!config.authenticated;$('#classicSync').hidden=!config.authenticated;document.querySelectorAll('[data-refresh-bank],[data-refresh-debts]').forEach(b=>b.hidden=!config.authenticated);$('#privateConnections').hidden=!config.authenticated;$('#rentTrackingOption').hidden=!config.authenticated;

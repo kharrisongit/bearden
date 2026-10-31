@@ -17,14 +17,14 @@ test('manual bill email update preserves identity and recurrence without changin
  const bill={id:'power',name:'Home power',amount:10000,date:'2026-11-01',repeat:'monthly',source:'manual'},m=mail({subject:'Your bill',text:'Amount due: $125.50 Due date: 11/05/2026'});
  const result=emailBillUpdate(bill,[m],{'bill:power':emailLink(m)});assert.equal(result.amount,12550);assert.equal(result.date,'2026-11-05');assert.equal(result.repeat,'monthly');assert.equal(result.id,'power');assert.equal(bill.amount,10000);
 });
-test('no-Plaid payments remain pending for exactly 48 hours, then show estimated posting',()=>{
+test('unconnected payments stay awaiting real confirmation after 48 hours',()=>{
  const m=mail(),link=emailLink(m),received=Date.parse(m.receivedAt),state=now=>emailAccountStatus([m],link,{now});
- assert.equal(state(received+48*3600000-1).payments[0].status,'pending');assert.equal(state(received+48*3600000).payments[0].status,'posted');assert.equal(state(received+48*3600000).payments[0].estimated,true);assert.equal(state(received+48*3600000).pending,0);
+ assert.equal(state(received+48*3600000-1).payments[0].status,'pending');assert.equal(state(received+48*3600000).payments[0].status,'pending');assert.equal(state(received+48*3600000).payments[0].confirmed,false);assert.equal(state(received+48*3600000).payments[0].paymentMade,true);assert.equal(state(received+48*3600000).pending,10000);
 });
-test('a scheduled future payment starts the two-day estimate on its payment date',()=>{
+test('a scheduled future payment never becomes paid from elapsed time alone',()=>{
  const m=mail({subject:'Payment scheduled',text:'Payment amount: $100.00 Scheduled for: November 10, 2026. Due date: November 5, 2026.'});assert.equal(m.paymentDate,'2026-11-10');
  assert.equal(emailAccountStatus([m],emailLink(m),{now:Date.parse('2026-11-11T23:59Z')}).payments[0].status,'pending');
- assert.equal(emailAccountStatus([m],emailLink(m),{now:Date.parse('2026-11-12T00:00Z')}).payments[0].estimated,true);
+ assert.equal(emailAccountStatus([m],emailLink(m),{now:Date.parse('2026-11-12T00:00Z')}).payments[0].paymentMade,false);
 });
 test('Plaid-linked payments never use the timer and wait for a matching posted payment',()=>{
  const m=mail(),link=emailLink(m),options={now:Date.parse('2026-10-29T12:00Z'),hasPlaid:true};
@@ -65,9 +65,9 @@ test('a completed receipt confirms payment even before Plaid posts the withdrawa
  assert.equal(emailAccountStatus([pending,receipt],link,options).payments[0].status,'posted');
  const posted=emailAccountStatus([pending,receipt],link,{...options,bankPayments:[{id:'bank',amount:10000,date:'2026-10-26'}]}).payments[0];assert.equal(posted.status,'posted');assert.equal(posted.estimated,false);assert.equal(posted.estimated,false);
 });
-test('duplicate processing emails do not restart the no-Plaid two-day timer',()=>{
+test('duplicate processing emails retain one payment awaiting real confirmation',()=>{
  const first=mail(),reminder=mail({id:'g:2',subject:'Payment processing',receivedAt:'2026-10-26T18:00:00Z'});
- const result=emailAccountStatus([first,reminder],emailLink(first),{now:Date.parse('2026-10-27T12:00:00Z')});assert.equal(result.payments.length,1);assert.equal(result.payments[0].status,'posted');assert.equal(result.payments[0].estimated,true);assert.equal(result.payments[0].postedDate,'2026-10-27');
+ const result=emailAccountStatus([first,reminder],emailLink(first),{now:Date.parse('2026-10-27T12:00:00Z')});assert.equal(result.payments.length,1);assert.equal(result.payments[0].status,'pending');assert.equal(result.payments[0].confirmed,false);assert.equal(result.payments[0].paymentMade,true);assert.equal(result.payments[0].postedDate,null);
 });
 
 test('selected electric bill replaces a bank estimate even with newer incomplete notices and survives a trimmed email cache',()=>{

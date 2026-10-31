@@ -24,12 +24,21 @@ export function parseAccountEmail({id,mailboxId,from='',subject='',text='',recei
  };
  let paymentStatus=statusFor(subject);
  if(!paymentStatus&&!/\b(statement|bill|invoice|balance|amount due|minimum due)\b/i.test(subject))paymentStatus=statusFor(text.slice(0,1800));
+ if(!paymentStatus&&/\bpayment receipt\b/i.test(subject))paymentStatus='pending';
  // A generic confirmation subject may describe either scheduling or completion.
  if(/\bpayment\s+(?:confirmation|receipt)\b/i.test(subject)&&!statusFor(subject.replace(/\bpayment\s+(?:confirmation|receipt)\b/ig,'')))paymentStatus=statusFor(text.slice(0,1800))||paymentStatus;
+ // Preserve the distinction between a submitted/processing receipt and a
+ // future autopay schedule. Keep failure and negative notices authoritative.
+ const stageText=subject+'\n'+text.slice(0,1800);
+ const paymentStage=!paymentStatus?null:paymentStatus==='failed'?'failed':paymentStatus==='posted'?'submitted':
+  /\bschedul(?:ed|ing)\b|\bnot (?:yet )?received\b|\bhas not been received\b/i.test(subject)||/\b(?:payment|autopay)\b[\s\S]{0,45}\b(?:is |has been )?scheduled\b|\bpayment has not been received\b/i.test(text.slice(0,500))?'scheduled':
+  /\bpayment receipt\b|\bsubmitted\b|\bprocessing\b|\binitiated\b/i.test(subject)?'submitted':
+  /\b(?:once|when|if)\s+(?:your\s+)?payment\b/i.test(text.slice(0,500))?'unknown':
+  /\bsubmitted\b|\bprocessing\b|\binitiated\b/i.test(stageText)?'submitted':'unknown';
  let paymentAmount=uniqueAmount(content,/(?:payment\s+(?:of|amount)|amount\s+(?:paid|received))\s*(?:is\s*)?:?\s*\$\s*([\d,]+(?:\.\d{2})?)(?!\d|\.\d)/gi);
  if(paymentStatus&&paymentAmount===null)paymentAmount=uniqueAmount(content,/\$\s*([\d,]+(?:\.\d{2})?)(?!\d|\.\d)/g);
  const dueDate=parseBill(content,{referenceDate:receivedAt}).date;
  const paymentDates=[...new Set([...content.matchAll(/\b(?:payment date|scheduled for|payment scheduled on|payment received on|payment posted on)\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})/gi)].map(m=>parseBill('Due date: '+m[1]).date).filter(Boolean))];
  const paymentDate=paymentStatus&&paymentDates.length===1?paymentDates[0]:null;
- return {id,mailboxId,sender,senderName:(from.includes('<')?from.split('<')[0].trim().replace(/^"|"$/g,''):sender).slice(0,150),subject:subject.slice(0,200),receivedAt,accountLast4,reference,amount,minimum,balance,dueDate,creditLimit,apr,paymentStatus,paymentAmount,paymentDate};
+ return {id,mailboxId,sender,senderName:(from.includes('<')?from.split('<')[0].trim().replace(/^"|"$/g,''):sender).slice(0,150),subject:subject.slice(0,200),receivedAt,accountLast4,reference,amount,minimum,balance,dueDate,creditLimit,apr,paymentStatus,paymentStage,paymentAmount,paymentDate};
 }

@@ -37,7 +37,7 @@ async function readMailboxEmail(account,sourceId,{request,headers}){
 export async function scanMailbox(c,account,{request,googleToken,microsoftToken,query=null,limit=3,watches=[]}){
  account.lastSyncAttempt=Date.now();
  const headers=await mailboxToken(account,{googleToken,microsoftToken});
- if(account.signature!=='all-bills-v7'){account.signature='all-bills-v7';delete account.backlog;delete account.page;account.seen=[];}
+ if(account.signature!=='all-bills-v8'){account.signature='all-bills-v8';delete account.backlog;delete account.page;account.seen=[];}
  const senders=safeSenders(watches),seenIds=new Set(account.seen||[]),watchSignature=senders.slice().sort().join(',');
  if(account.watchSignature!==undefined&&account.watchSignature!==watchSignature){delete account.page;delete account.backlog;delete account.freshAttempt;}account.watchSignature=watchSignature;
  async function list(pageToken){

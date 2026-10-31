@@ -14,14 +14,15 @@ test('completed receipts pay every bill category across the month boundary, with
   assert.deepEqual(rows.map(r=>[r.key,r.paid,r.paidDate]),[['bill:2026-11-01',true,'2026-10-31']]);
  }
 });
-test('split payments add up; duplicates and pending or returned payments cannot fill the gap',()=>{
+test('split payments add up; duplicates and scheduled or returned payments cannot fill the gap',()=>{
  const first=receipt({text:'Payment amount: $60.00 Confirmation number FIRST1'}),second=receipt({id:'m:second',text:'Payment amount: $40.00 Confirmation number SECOND2'});
  assert.equal(statuses([event()],[first])[0].remaining,4000);
  assert.equal(statuses([event()],[first,second])[0].paid,true);
  assert.equal(statuses([event()],[first,{...first,id:'duplicate'}])[0].paid,false);
  const failed={...second,id:'returned',paymentStatus:'failed',receivedAt:'2026-10-31T15:00:00Z'};
  assert.equal(statuses([event()],[first,second,failed])[0].paid,false);
- for(const subject of ['Payment scheduled','Payment processing','Payment failed','Payment will be processed'])assert.deepEqual(statuses([event()],[receipt({subject})]),[]);
+ assert.deepEqual(statuses([event()],[receipt({subject:'Payment scheduled'})]),[]);
+ assert.equal(statuses([event()],[receipt({subject:'Payment failed'})])[0].paid,false);
 });
 test('explicit due dates, dates near midnight, and future payments stay in the correct cycle',()=>{
  const m=receipt({text:'Payment amount: $100.00 Due date: November 1, 2026.',receivedAt:'2026-10-31T02:00:00Z'});
