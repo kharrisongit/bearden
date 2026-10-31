@@ -17,13 +17,15 @@ export function parseAccountEmail({id,mailboxId,from='',subject='',text='',recei
  // a payment receipt. Confirmation without a settlement verb remains pending.
  const statusFor=value=>{
   if(/\bpayment\b[\s\S]{0,60}\b(failed|declined|returned|reversed|cancelled|canceled|not successful)\b|\b(?:unable|could not|cannot)\s+to\s+process\s+(?:your\s+)?payment\b|\bpayment\b[\s\S]{0,25}\bcould not be processed\b/i.test(value))return 'failed';
-  if(/\bpayment\b[\s\S]{0,35}\b(?:will be|is being|not yet)\s+(?:received|posted|processed|completed)\b/i.test(value))return 'pending';
-  if(/\bpayment\b[\s\S]{0,35}\b(posted|received|processed|completed|successful)\b|\bthank you for (?:your )?payment\b/i.test(value))return 'posted';
+  if(/\bpayment\b[\s\S]{0,35}\b(?:will be|is being|not yet|has not been)\s+(?:received|posted|processed|completed)\b|\b(?:once|when|if)\s+(?:your\s+)?payment\b/i.test(value))return 'pending';
+  if(/\bpayment\b[\s\S]{0,35}\b(posted|received|processed|completed|successful)\b|\bthank you for (?:your )?payment\b|\b(?:we(?:'ve| have)?\s+)?(?:received|processed)\s+your\s+payment\b/i.test(value))return 'posted';
   if(/\bpayment\b[\s\S]{0,45}\b(submitted|scheduled|processing|pending|initiated|confirmation)\b|\b(?:submitted|scheduled)\s+(?:your\s+)?payment\b/i.test(value))return 'pending';
   return null;
  };
  let paymentStatus=statusFor(subject);
  if(!paymentStatus&&!/\b(statement|bill|invoice|balance|amount due|minimum due)\b/i.test(subject))paymentStatus=statusFor(text.slice(0,1800));
+ // A generic confirmation subject may describe either scheduling or completion.
+ if(/\bpayment\s+(?:confirmation|receipt)\b/i.test(subject)&&!statusFor(subject.replace(/\bpayment\s+(?:confirmation|receipt)\b/ig,'')))paymentStatus=statusFor(text.slice(0,1800))||paymentStatus;
  let paymentAmount=uniqueAmount(content,/(?:payment\s+(?:of|amount)|amount\s+(?:paid|received))\s*(?:is\s*)?:?\s*\$\s*([\d,]+(?:\.\d{2})?)(?!\d|\.\d)/gi);
  if(paymentStatus&&paymentAmount===null)paymentAmount=uniqueAmount(content,/\$\s*([\d,]+(?:\.\d{2})?)(?!\d|\.\d)/g);
  const dueDate=parseBill(content,{referenceDate:receivedAt}).date;

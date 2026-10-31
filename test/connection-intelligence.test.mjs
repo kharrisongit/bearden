@@ -56,7 +56,7 @@ test('linked senders are mailbox-scoped and fresh mail gets scanned despite an o
  const values={'income-planner':JSON.stringify({emailLinks:{a:{mailboxId:'m',sender:'bank@example.com'},b:{mailboxId:'other',sender:'other@example.com'},c:{mailboxId:'m',sender:'bad) OR any'}}})};
  assert.deepEqual(mailboxWatches({state:{values}},'m'),['bank@example.com']);
  assert.match(new URL(microsoftMessagesUrl(null,3,null,['bank@example.com','bad OR from:all'])).searchParams.get('$search'),/from:bank@example.com/);
- const account={id:'m',signature:'all-bills-v6',refreshToken:'r',backlog:['old'],page:'next',seen:[],freshAttempt:now-7*3600000},c={},calls=[];
+ const account={id:'m',signature:'all-bills-v7',refreshToken:'r',backlog:['old'],page:'next',seen:[],freshAttempt:now-7*3600000},c={},calls=[];
  await scanMailbox(c,account,{watches:['bank@example.com'],limit:1,googleToken:async()=>({access_token:'t'}),request:async url=>{calls.push(url);if(url.includes('messages?')){assert.match(new URL(url).searchParams.get('q'),/from:bank@example.com/);return {messages:[{id:'new'}]};}return {internalDate:String(now),payload:{headers:[{name:'From',value:'bank@example.com'},{name:'Subject',value:'Payment due'}],mimeType:'text/plain',body:{data:Buffer.from('Minimum payment: $25.00 Due date: November 15, 2026.').toString('base64url')}}};}});
  assert.equal(c.gmailMessages[0].id,'m:new');assert.deepEqual(account.backlog,['old']);assert.equal(account.page,'next');assert.equal(calls.length,2);
 });

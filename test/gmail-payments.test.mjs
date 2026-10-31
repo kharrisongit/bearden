@@ -55,15 +55,15 @@ test('future processing and unsuccessful payment notices are not mistaken for co
  for(const subject of ['Your payment was not successful','Your payment could not be processed'])assert.equal(mail({subject}).paymentStatus,'failed');
  const invoice=mail({subject:'Invoice ready',text:'Amount due: $50.00 Due date: 11/05/2026. A receipt is sent when your payment is received.'});assert.equal(invoice.paymentStatus,null);
 });
-test('regular bills never show pending or use a two-day timer; a bank payment records them immediately',()=>{
+test('regular bills retain pending notices without a two-day timer; a bank payment records them immediately',()=>{
  const m=mail(),link=emailLink(m),now=Date.parse('2026-10-30');
- assert.equal(emailAccountStatus([m],link,{now,creditCard:false}).payments.length,0);
+ assert.equal(emailAccountStatus([m],link,{now,creditCard:false}).payments[0].status,'pending');
  const result=emailAccountStatus([m],link,{now,creditCard:false,hasPlaid:true,bankPayments:[{id:'bank',amount:10000,date:'2026-10-25'}]});assert.equal(result.payments.length,1);assert.equal(result.payments[0].status,'posted');assert.equal(result.payments[0].estimated,false);assert.equal(result.pending,0);
 });
-test('with Plaid, even an email receipt waits for posted bank activity and keeps the original submission date',()=>{
+test('a completed receipt confirms payment even before Plaid posts the withdrawal',()=>{
  const pending=mail(),receipt=mail({id:'g:2',subject:'Payment received',receivedAt:'2026-10-29T12:00:00Z'}),link=emailLink(pending),options={now:Date.parse('2026-10-30'),hasPlaid:true};
- assert.equal(emailAccountStatus([pending,receipt],link,options).payments[0].status,'pending');
- const posted=emailAccountStatus([pending,receipt],link,{...options,bankPayments:[{id:'bank',amount:10000,date:'2026-10-26'}]}).payments[0];assert.equal(posted.status,'posted');assert.equal(posted.postedDate,'2026-10-26');assert.equal(posted.estimated,false);
+ assert.equal(emailAccountStatus([pending,receipt],link,options).payments[0].status,'posted');
+ const posted=emailAccountStatus([pending,receipt],link,{...options,bankPayments:[{id:'bank',amount:10000,date:'2026-10-26'}]}).payments[0];assert.equal(posted.status,'posted');assert.equal(posted.estimated,false);assert.equal(posted.estimated,false);
 });
 test('duplicate processing emails do not restart the no-Plaid two-day timer',()=>{
  const first=mail(),reminder=mail({id:'g:2',subject:'Payment processing',receivedAt:'2026-10-26T18:00:00Z'});
