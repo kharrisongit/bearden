@@ -449,6 +449,7 @@ const APP_STATE_KEY = 'app-state';
 let saveDebounceTimer = null;
 let saveInFlight = false;
 let saveQueuedAgain = false;
+let saveRetryTimer = null;
 
 function setStorageStatus(msg){
   const el = document.getElementById('storageStatus');
@@ -515,34 +516,57 @@ function queueSaveAppState(delayMs){
   saveDebounceTimer = setTimeout(performSaveAppState, delayMs || 500);
 }
 
+function showAutosaveFailure(error){
+  const blocked=error?.status===401||(error?.status===409&&error?.code!=='SYNC_BUSY')||/saving is blocked|reload before editing/i.test(error?.message||'');
+  window.showBearToast?.(blocked
+    ? 'Changes have not saved. Your session or saved data changed. Reload before editing again.'
+    : 'Changes have not saved. Check your connection and retry.', {
+    id:'autosave-error',kind:'error',persistent:true,actionLabel:blocked?'Reload':'Retry',
+    onAction:async()=>{
+      if(blocked){
+        if(confirm('Reload your saved data? Unsaved changes on this screen will be lost.'))location.reload();
+        return;
+      }
+      clearTimeout(saveRetryTimer);
+      if(await performSaveAppState(true))window.showBearToast?.('Changes saved');
+    }
+  });
+}
+
 async function performSaveAppState(retrying){
   if (saveInFlight) { saveQueuedAgain = true; return; }
   saveInFlight = true;
-  let shouldRetry = false;
+  let shouldRetry = false, saveFailed = false;
   try {
     const state = gatherAppState();
     const result = await storage.set(APP_STATE_KEY, JSON.stringify(state), false);
-    setStorageStatus(result ? `Saved ${new Date().toLocaleTimeString()}` : 'Save returned null');
-    if (!result) console.error('storage.set(app-state) returned null/falsy', result);
+    if (!result) throw Error('The save did not complete.');
+    setStorageStatus(`Saved ${new Date().toLocaleTimeString()}`);
+    clearTimeout(saveRetryTimer);
+    window.dismissBearToast?.('autosave-error');
   } catch (e) {
+    saveFailed = true;
     console.error('storage.set(app-state) threw', e);
     if (!retrying) {
       setStorageStatus('Save hiccup, retrying…');
       shouldRetry = true;
     } else {
       setStorageStatus('Save FAILED: ' + (e && e.message ? e.message : e));
+      showAutosaveFailure(e);
     }
   } finally {
     saveInFlight = false;
   }
   if (shouldRetry) {
-    setTimeout(() => performSaveAppState(true), 1200);
-    return;
+    clearTimeout(saveRetryTimer);
+    saveRetryTimer=setTimeout(() => performSaveAppState(true), 1200);
+    return false;
   }
   if (saveQueuedAgain) {
     saveQueuedAgain = false;
-    performSaveAppState();
+    return performSaveAppState(true);
   }
+  return !shouldRetry && !saveFailed;
 }
 
 async function loadAppState(){
@@ -2018,6 +2042,7 @@ function dismissCelebration(){
 }
 
 function toggleChecked(paycheckNum, checked){
+  if(!!checkedPaychecks[paycheckNum]===checked)return;
   window.debtPaymentHistory??={};
   const row=lastSchedule.find(r=>r.paycheck===paycheckNum);
   if(checked&&row)window.debtPaymentHistory[paycheckNum]=Object.fromEntries(cardsData.map((c,i)=>[c.id,row.payments[i]]));
@@ -2029,6 +2054,14 @@ function toggleChecked(paycheckNum, checked){
   window.dispatchEvent(new Event('bearden-plan-changed'));
   performSaveAppState(); // Persist completion before the celebration or leaving animation.
   if (checked) {
+    window.showBearToast?.('Paycheck '+paycheckNum+' plan marked complete. No payments were sent.',{
+      id:'paycheck-complete',persistent:true,actionLabel:'Undo',onAction:()=>{
+        if(!checkedPaychecks[paycheckNum])return;
+        if(celebratingPaycheckNum===paycheckNum)dismissCelebration();
+        toggleChecked(paycheckNum,false);
+        window.showBearToast?.('Paycheck '+paycheckNum+' completion undone');
+      }
+    });
     const payoff = paycheckCompletesAPayoff(paycheckNum);
     const savings = paycheckCompletesASavingsGoal(paycheckNum);
     if (payoff.any || savings.any) {
@@ -2279,6 +2312,23 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
   const out = document.getElementById('scheduleOut');
   const restOut = document.getElementById('scheduleRestOut');
   const expandBtn = document.getElementById('scheduleExpandBtn');
+  let completedBtn=document.getElementById('completedPaychecksBtn');
+  if(!completedBtn){
+    completedBtn=document.createElement('button');completedBtn.id='completedPaychecksBtn';completedBtn.type='button';
+    completedBtn.className='schedule-expand-btn';completedBtn.setAttribute('aria-controls','scheduleRestOut');
+    completedBtn.onclick=()=>{
+      const reveal=()=>{
+        if(!scheduleExpanded)return;
+        const first=document.querySelector('#scheduleRestOut input[type=checkbox]:checked');
+        first?.closest('.paycheck')?.scrollIntoView({block:'start',behavior:'smooth'});
+        first?.focus({preventScroll:true});
+      };
+      if(!scheduleExpanded){toggleScheduleExpanded();setTimeout(reveal,HERO_SLIDE_TRANSITION_MS);}
+      else reveal();
+    };expandBtn.before(completedBtn);
+  }
+  const completedCount=schedule.filter(row=>checkedPaychecks[row.paycheck]).length;
+  completedBtn.hidden=completedCount===0;completedBtn.textContent='Completed paychecks ('+completedCount+')';
   out.innerHTML = '';
   restOut.innerHTML = '';
 
@@ -2456,10 +2506,11 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
       ${milestoneBanner}
       <div class="paycheck-head">
         <span class="checkbox-wrap">
-          <input type="checkbox" id="chk-${row.paycheck}" ${isChecked ? 'checked' : ''} data-bd-change="toggleChecked(${row.paycheck}, this.checked)">
+          <input type="checkbox" id="chk-${row.paycheck}" aria-describedby="check-help-${row.paycheck}" ${isChecked ? 'checked' : ''} data-bd-change="toggleChecked(${row.paycheck}, this.checked)">
           <span class="date">Paycheck ${row.paycheck} — ${fmtDate(row.date)}${row.isBonus ? '<span class=\"bonus-tag\">Bonus</span>' : ''}</span>
         </span>
       </div>
+      <p class="paycheck-completion-help" id="check-help-${row.paycheck}"><label for="chk-${row.paycheck}">Mark this paycheck’s plan complete</label><small>Records the planned payments and interest as completed. BearDen does not send payments. Uncheck to undo.</small></p>
       <div class="check-summary">
         <div class="check-summary-row editable paycheck-income">
           <span>Paycheck amount (after taxes)${row.isOverridden ? ' <span class="edited-tag">edited</span>' : ''}</span>
@@ -6996,7 +7047,7 @@ window.saveDebtAccount=async function(data){
  if(!card){cardIdCounter=Math.max(cardIdCounter,...cardsData.map(c=>Number(c.id)||0))+1;card={id:cardIdCounter};cardsData.push(card);}
  Object.assign(card,{name,balance,apr,dueDate,...payment,lastPositiveMonthlyMinimum,debtKind:['credit-card','car-loan','loan','other'].includes(data.debtKind)?data.debtKind:'other'});
  const syncInputs=()=>cardsData.forEach(c=>{for(const [prefix,key]of [['bal','balance'],['apr','apr'],['monthlyMin','monthlyMinimum']]){const input=document.getElementById(prefix+'_'+c.id);if(input)input.value=prefix==='monthlyMin'?window.BearDenDebtPayments.monthlyMinimum(c):c[key];}});
- try{syncInputs();calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));setStorageStatus('Saved');return card.id;}
+ try{syncInputs();calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));clearTimeout(saveRetryTimer);window.dismissBearToast?.('autosave-error');setStorageStatus('Saved');return card.id;}
  catch(e){cardsData=oldCards;cardIdCounter=oldCounter;syncInputs();calculate();clearTimeout(saveDebounceTimer);throw e;}
 };
 
@@ -7004,7 +7055,7 @@ window.applyIncomePreset=async function(preset){
  await window.classicReady;
  if(!Number.isFinite(preset.hourlyRate)||preset.hourlyRate<0||!Number.isFinite(preset.hoursPerCheck)||preset.hoursPerCheck<0||!Number.isSafeInteger(preset.amount)||preset.amount<=0)throw Error('Income preset is unavailable.');
  const fields=['hourlyRate','hoursPerCheck','takeHome'],before=fields.map(id=>document.getElementById(id).value),values=[preset.hourlyRate,preset.hoursPerCheck,(preset.amount/100).toFixed(2)];
- try{fields.forEach((id,i)=>document.getElementById(id).value=values[i]);updateIncomeEstimateDisplay();calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));setStorageStatus('Income saved');window.showBearToast?.('Income saved');}
+ try{fields.forEach((id,i)=>document.getElementById(id).value=values[i]);updateIncomeEstimateDisplay();calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));clearTimeout(saveRetryTimer);window.dismissBearToast?.('autosave-error');setStorageStatus('Income saved');window.showBearToast?.('Income saved');}
  catch(e){fields.forEach((id,i)=>document.getElementById(id).value=before[i]);updateIncomeEstimateDisplay();calculate();clearTimeout(saveDebounceTimer);throw e;}
 };
 
@@ -7014,7 +7065,7 @@ window.showDebtAccountHistory=function(id){
  document.getElementById('debtHistoryDialog').showModal();
 };
 
-window.flushBearDenState=async()=>{clearTimeout(saveDebounceTimer);calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));};
+window.flushBearDenState=async()=>{clearTimeout(saveDebounceTimer);calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));clearTimeout(saveRetryTimer);window.dismissBearToast?.('autosave-error');};
 
 function renderPaycheckBillsBalance(details){
  const box=details.querySelector('.paycheck-shared-balances'),balance=window.sharedBillsForPaycheck?.(details.dataset.paycheckDate);
@@ -7038,21 +7089,21 @@ window.setPaycheckBills=(signature,resolve,sharedForecast)=>{
 document.getElementById('savingsTrackerToggle').onchange=async e=>{
  const before=showSavingsTracker;showSavingsTracker=e.target.checked;e.target.disabled=true;
  document.getElementById('savingsHeroContainer').hidden=!showSavingsTracker;
- try{clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('featureSettingsStatus').textContent='Savings Tracker preference saved.';window.showBearToast?.('Preference saved');}
+ try{clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));clearTimeout(saveRetryTimer);window.dismissBearToast?.('autosave-error');document.getElementById('featureSettingsStatus').textContent='Savings Tracker preference saved.';window.showBearToast?.('Preference saved');}
  catch(error){showSavingsTracker=before;e.target.checked=before;document.getElementById('savingsHeroContainer').hidden=!before;document.getElementById('featureSettingsStatus').textContent=error.message;}
  finally{e.target.disabled=false;}
 };
 
 document.getElementById('payoffControlsToggle').onchange=async e=>{
  const before=payoffControlsEnabled;payoffControlsEnabled=e.target.checked;e.target.disabled=true;
- try{calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('featureSettingsStatus').textContent='Slice / Squash preference saved.';window.showBearToast?.('Preference saved');}
+ try{calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));clearTimeout(saveRetryTimer);window.dismissBearToast?.('autosave-error');document.getElementById('featureSettingsStatus').textContent='Slice / Squash preference saved.';window.showBearToast?.('Preference saved');}
  catch(error){payoffControlsEnabled=before;e.target.checked=before;calculate();clearTimeout(saveDebounceTimer);document.getElementById('featureSettingsStatus').textContent=error.message;}
  finally{e.target.disabled=false;}
 };
 
 document.getElementById('bonusControlsToggle').onchange=async e=>{
  const before=bonusControlsEnabled;bonusControlsEnabled=e.target.checked;bonusInputOpenForPaycheck=null;e.target.disabled=true;
- try{calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('featureSettingsStatus').textContent='Bonus preference saved.';window.showBearToast?.('Preference saved');}
+ try{calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));clearTimeout(saveRetryTimer);window.dismissBearToast?.('autosave-error');document.getElementById('featureSettingsStatus').textContent='Bonus preference saved.';window.showBearToast?.('Preference saved');}
  catch(error){bonusControlsEnabled=before;e.target.checked=before;calculate();clearTimeout(saveDebounceTimer);document.getElementById('featureSettingsStatus').textContent=error.message;}
  finally{e.target.disabled=false;}
 };
@@ -7119,6 +7170,6 @@ document.getElementById('addDebtPaymentForm').onsubmit=async event=>{
   for(const [i,c]of cardsData.entries()){accountPaymentOverrides[c.id]??={};accountPaymentOverrides[c.id][row.paycheck]=i===index?payment:row.payments[i];}
   delete paycheckSlices[row.paycheck];delete paycheckSquashes[row.paycheck];calculate();clearTimeout(saveDebounceTimer);
   if(lastSchedule.find(r=>r.paycheck===row.paycheck)?.cashAfterDebt<-.005)throw Error('Not enough money remains on this paycheck. Lower the extra payment or adjust your budget.');
-  await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));document.getElementById('addDebtPaymentDialog').close();
+  await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));clearTimeout(saveRetryTimer);window.dismissBearToast?.('autosave-error');document.getElementById('addDebtPaymentDialog').close();
  }catch(error){accountPaymentOverrides=before;paycheckSlices=slices;paycheckSquashes=squashes;calculate();clearTimeout(saveDebounceTimer);status.textContent=error.message;}finally{button.disabled=false;}
 };

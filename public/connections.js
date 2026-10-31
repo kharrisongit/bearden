@@ -47,7 +47,23 @@ window.BearDen=(()=>{
  new MutationObserver(updateNotice).observe(notice,{childList:true,characterData:true,subtree:true});
  dismissNotice.onclick=()=>{if(syncNoticeActive)syncNoticeDismissed=true;notice.textContent='';updateNotice();};
  function message(t){notice.textContent=t;updateNotice();}
- function syncMessage(t){if(!syncNoticeDismissed)message(t);}
+ function clearRefreshReadouts(){
+  message('');document.querySelectorAll('.bank-refresh-status').forEach(node=>node.textContent='');
+ }
+ function beginRefreshNotice(){syncNoticeDismissed=false;clearRefreshReadouts();syncMessage('Refreshing connections…');}
+ function syncMessage(t){const concise=/^Checking (email|rent)…$/.test(t)?t:'Refreshing connections…';if(!syncNoticeDismissed)window.showBearToast?.(concise,{id:'connection-refresh',persistent:true,dismissible:true,onDismiss:()=>{syncNoticeDismissed=true;}});}
+ function finishRefreshNotice(results,{error:failed=false}={}){
+  clearRefreshReadouts();
+  const list=Array.isArray(results)?results:[String(results||'')];
+  const errors=failed||results?.needsAttention||list.some(text=>/fail|error|could not|couldn.t|unable|reconnect|sign.in|needs? attention|unavailable|refused|unreadable|invalid|empty response|too large|not supply|no accounts|verify this|partial history|different currency|kept/i.test(text));
+  const cached=results?.cached||list.some(text=>/showing saved|checked.*minutes ago|checked recently/i.test(text));
+  const waiting=results?.pending||list.some(text=>/pending|preparing|loading|try again|cooldown|rate.limit|limiting requests|not refreshed|still.*process/i.test(text));
+  const empty=list.length===1&&list[0]==='No bank connections to refresh.';
+  // Never bury a failed refresh in a long, success-looking account-by-account log.
+  const text=failed?'Could not refresh connections. Check your connection or sign-in and try again.':errors?'Some connections need attention. Check their details in Settings.':waiting?'Refresh finished. Some updates are still pending.':cached?'Recently checked. Showing saved balances.':empty?'No bank connections to refresh.':'Connections refreshed.';
+  if(syncNoticeDismissed&&!errors&&!waiting)return;
+  window.showBearToast?.(text,{id:'connection-refresh',kind:errors?'error':'info',persistent:errors||waiting,dismissible:true,duration:4000,...(errors||waiting||empty?{actionLabel:'Settings',onAction:()=>{window.dismissBearToast?.('connection-refresh');window.selectBearTab?.('settings');}}:{})});
+ }
  async function request(path,body){let r;
   for(let attempt=0;;attempt++){
    r=await fetch(path,{method:body===undefined?'GET':'POST',headers:{...(body===undefined?{}:{'Content-Type':'application/json'}),...(config.accountId?{'X-BearDen-Account':config.accountId}:{})},body:body===undefined?undefined:JSON.stringify(body)});let d;try{d=await r.json();}catch{throw Error('Could not read the server response.');}if(!r.ok){
@@ -243,11 +259,11 @@ window.BearDen=(()=>{
    await queue;await refresh();const items=[...(legacy?.connections?.items||[])];
    for(const [index,item] of items.entries()){
     report('Refreshing '+item.name+' ('+(index+1)+' of '+items.length+')…');
-    try{await queue;let result=await api(creditDetails?'/api/cards/refresh':'/api/bank/refresh',{itemId:item.id});result=await finishBankHistory(result,report);results.push(item.name+': '+(result.status||'No refresh status returned.'));}catch(error){results.push(item.name+': Refresh failed — '+error.message);}
+    try{await queue;let result=await api(creditDetails?'/api/cards/refresh':'/api/bank/refresh',{itemId:item.id});result=await finishBankHistory(result,report);results.push(item.name+': '+(result.status||'No refresh status returned.'));results.needsAttention||=!result.status||!!(result.balanceError||result.balanceWarning);results.pending||=!!(result.transactionsPending||result.transactionsLoading);}catch(error){results.needsAttention=true;results.push(item.name+': Refresh failed — '+error.message);}
     await refresh();
    }
 
-   if(includeLunchflow&&legacy?.connections?.lunchflow){report('Refreshing Lunch Flow…');try{const r=await finishLunchflow(await api('/api/lunchflow/refresh',{}),report);results.push(r.status);}catch(e){results.push('Lunch Flow: '+e.message);}await refresh();}
+   if(includeLunchflow&&legacy?.connections?.lunchflow){report('Refreshing Lunch Flow…');try{const r=await finishLunchflow(await api('/api/lunchflow/refresh',{}),report);results.push(r.status);results.needsAttention||=!!r.needsAttention;results.pending||=!!r.pending;results.cached||=!!r.cached;}catch(e){results.needsAttention=true;results.push('Lunch Flow: '+e.message);}await refresh();}
    return results.length?results:['No bank connections to refresh.'];
   }finally{refreshingBank=false;buttons.forEach(b=>{if(b.id==='classicSync'&&syncNoticeActive)return;b.disabled=false;b.removeAttribute('aria-busy');});}
  }
@@ -257,23 +273,23 @@ window.BearDen=(()=>{
   try{
    const results=await refreshEveryBank(report,{creditDetails:true});if(!results)return;
    button.disabled=true;button.setAttribute('aria-busy','true');
-   if(legacy?.connections?.emailConnected||legacy?.connections?.gmail||legacy?.connections?.gmailAccounts?.length){report('Checking email…');try{await bridge.searchGmail('');results.push('Email checked.');}catch(error){results.push('Email: '+error.message);}}
+   if(legacy?.connections?.emailConnected||legacy?.connections?.gmail||legacy?.connections?.gmailAccounts?.length){report('Checking email…');try{await bridge.searchGmail('');results.push('Email checked.');}catch(error){results.needsAttention=true;results.push('Email: '+error.message);}}
    report(results.join(' · '));
   }catch(error){report(error.message);}finally{button.disabled=false;button.removeAttribute('aria-busy');}
  };
  $('#refreshPlaid').onclick=run(async()=>{const report=text=>$('#plaidConfigStatus').textContent=text;const results=await refreshEveryBank(report,{includeLunchflow:false});if(results)report(results.join(' · '));});
  $('#classicSync').onclick=run(async()=>{
-  syncNoticeDismissed=false;syncNoticeActive=true;syncMessage('Syncing connections…');
+  syncNoticeActive=true;beginRefreshNotice();
   try{
   const results=await refreshEveryBank(syncMessage);if(!results)return;
-  if(legacy?.connections?.emailConnected||legacy?.connections?.gmail){syncMessage('Checking email…');try{const result=await bridge.searchGmail('');results.push(...(result.mailAccounts||[]).map(a=>(a.email||'Email')+': '+a.status));}catch(error){results.push('Email: '+error.message);}await refresh();}
-  if(legacy?.connections?.sun?.connected&&legacy.connections.sun.enabled!==false){syncMessage('Checking rent…');try{const result=await api('/api/rent/refresh',{});results.push(result.status||'Rent checked.');}catch(error){results.push('Rent: '+error.message);}await refresh();}
-  syncMessage(results.join(' · '));
-  }catch(error){syncMessage(error.message);}finally{syncNoticeActive=false;$('#classicSync').removeAttribute('aria-busy');}
+  if(legacy?.connections?.emailConnected||legacy?.connections?.gmail){syncMessage('Checking email…');try{const result=await bridge.searchGmail('');results.push(...(result.mailAccounts||[]).map(a=>(a.email||'Email')+': '+a.status));}catch(error){results.needsAttention=true;results.push('Email: '+error.message);}await refresh();}
+  if(legacy?.connections?.sun?.connected&&legacy.connections.sun.enabled!==false){syncMessage('Checking rent…');try{const result=await api('/api/rent/refresh',{});results.push(result.status||'Rent checked.');}catch(error){results.needsAttention=true;results.push('Rent: '+error.message);}await refresh();}
+  finishRefreshNotice(results);
+  }catch(error){finishRefreshNotice(error.message,{error:true});}finally{syncNoticeActive=false;$('#classicSync').removeAttribute('aria-busy');}
  });
  document.querySelectorAll('[data-refresh-bank]').forEach(button=>button.onclick=async()=>{
-  const statuses=document.querySelectorAll('.bank-refresh-status'),report=text=>statuses.forEach(s=>s.textContent=text);
-  try{const results=await refreshEveryBank(report);if(results)report(results.join(' · '));}catch(error){report(error.message);}
+  if(refreshingBank)return;beginRefreshNotice();
+  try{const results=await refreshEveryBank(syncMessage);if(results)finishRefreshNotice(results);}catch(error){finishRefreshNotice(error.message,{error:true});}
  });
  $('#classicBank').onclick=run(()=>connectBank());$('#classicGmail').onclick=()=>{if(requireLogin())location.href='/auth/google?gmail=1&account='+encodeURIComponent(config.accountId);};
  $('#classicOutlook').onclick=()=>{if(requireLogin()&&config.microsoftConfigured)location.href='/auth/microsoft?mail=1&account='+encodeURIComponent(config.accountId);};

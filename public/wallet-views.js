@@ -264,7 +264,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
       const title=make('div','bd-paycheck-title','<small>Paycheck '+esc(number)+'</small><strong>'+esc(date.textContent.split('—').slice(1).join('—').trim())+'</strong>');
       head.replaceChildren(check,title,make('span','bd-paycheck-status',check.checked?'Completed':'Planned'));
       const collapse=make('button','bd-paycheck-collapse',chevron);collapse.type='button';collapse.setAttribute('aria-label','Collapse paycheck '+number);head.append(collapse);
-      check.setAttribute('aria-label','Mark paycheck '+number+' complete');
+      check.setAttribute('aria-label','Mark paycheck '+number+' plan complete');
       const body=make('div','bd-paycheck-body');[...card.children].filter(n=>n!==head).forEach(n=>body.append(n));card.append(body);
       body.hidden=collapsed.has(number);collapse.setAttribute('aria-expanded',String(!body.hidden));
       collapse.onclick=()=>{body.hidden=!body.hidden;body.hidden?collapsed.add(number):collapsed.delete(number);collapse.setAttribute('aria-expanded',String(!body.hidden));collapse.setAttribute('aria-label',(body.hidden?'Expand':'Collapse')+' paycheck '+number);};

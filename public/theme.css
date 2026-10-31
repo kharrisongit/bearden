@@ -2409,3 +2409,18 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 .color-swatch[data-color-scheme-choice="electricbloom"]{--swatch:linear-gradient(135deg,#c394ff,#84cfff,#5fe6d4);}
 .color-picker-section[aria-labelledby="brightGradientTitle"] .color-swatch{flex-direction:column;justify-content:center;min-height:86px;padding:10px 6px;gap:7px}
 .color-picker-section[aria-labelledby="brightGradientTitle"] .color-swatch-dot{width:52px;height:30px;border-radius:9px}
+
+/* Compact actionable notices; ordinary save confirmations stay unobtrusive. */
+#bearToast{display:flex;align-items:center;gap:10px;pointer-events:auto;text-align:left}
+#bearToast .bear-toast-message{min-width:0;flex:1}
+#bearToast button{flex:none;min-height:32px;padding:5px 9px;border:1px solid var(--line);border-radius:7px;background:var(--surface-subtle);color:var(--ink);font:inherit;cursor:pointer}
+#bearToast .bear-toast-dismiss{font-size:20px;line-height:1;padding:4px 8px}
+#bearToast[data-kind=error]{border-color:var(--danger,#b44444)}
+@media(max-width:380px){#bearToast{gap:6px;padding:9px 10px;font-size:.78rem}}
+
+.account-balance-status{display:block;font-size:.73rem;line-height:1.4;font-weight:400;color:var(--muted);white-space:normal;overflow-wrap:anywhere}
+.income-account-balance>span{min-width:0}
+#billTrackerAccountName{white-space:normal;overflow-wrap:anywhere}
+.paycheck-completion-help{margin:4px 0 12px;font-size:.8rem;line-height:1.45}
+.paycheck-completion-help label{display:block;font-weight:600;cursor:pointer}
+.paycheck-completion-help small{display:block;color:var(--muted)}

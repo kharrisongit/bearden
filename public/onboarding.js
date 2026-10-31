@@ -10,8 +10,18 @@
  function render(){
   restore();content.replaceChildren();$('#setupTitle').textContent=titles[step];$('#setupDescription').textContent=descriptions[step];$('#setupProgress').textContent=`Step ${step+1} of ${titles.length}`;$('#setupProgressBar').value=step+1;$('#setupBack').disabled=step===0;$('#setupNext').textContent=step===6?'Finish & open BearDen':step===0&&!window.BearDen.config?.authenticated?'Continue on this device':'Continue';$('#setupError').textContent='';
   if(step===0){const signed=window.BearDen.config?.authenticated;content.innerHTML=`<div class="setup-welcome"><span class="setup-emblem" aria-hidden="true">B<span>•</span></span><h3>Your money, in one place.</h3><p>${signed?'Signed in as <strong>'+escape(window.BearDen.config.email)+'</strong>. Your budget and connections are private to this login.':'Sign in with the Google or Microsoft account you want to use for your budget. BearDen restores this account’s saved data whenever you return.'}</p>${signed?'':(window.BearDen.config?.googleConfigured?'<a class="setup-primary" href="/auth/google">Sign in with Google</a>':'')+(window.BearDen.config?.microsoftConfigured?'<a class="setup-primary" href="/auth/microsoft">Sign in with Microsoft (Hotmail / Outlook)</a>':'<p class="subtle">Microsoft sign-in is being set up.</p>')}<p class="subtle">You can add different Email inboxes for bill tracking in the next step. This does not switch your BearDen account.</p></div>`;}
-  if(step===1)move($('#classicGmail').closest('section'));
-  if(step===2)move($('#bankConnections'));
+  if(step===1||step===2){
+   if(!window.BearDen.config?.authenticated){
+    content.innerHTML='<p class="subtle">Sign in to connect '+(step===1?'bill inboxes':'bank accounts')+'. You can also skip this step and enter your amounts manually.</p><button type="button" class="setup-primary" id="setupSignIn">Back to sign in</button>';
+    $('#setupSignIn').onclick=()=>action(async()=>{await saveStep();step=0;await persist();render();});
+    $('#setupNext').textContent='Skip for now';
+   }else if(step===1)move($('#gmailSection'));
+   else{
+    // Wallet settings house each provider in its own dialog. Move the real
+    // controls, not the now-empty legacy bank container, and restore them later.
+    move($('#plaidSection'));move($('#lunchflowSection'));
+   }
+  }
   if(step===3){move($('#incomeDropdown'));$('#incomeDropdown .income-estimate-options').open=true;}
   if(step===4)move($('#incomeBudgetSlot'));
   if(step===5){content.innerHTML='<button type="button" class="setup-primary" data-add-account>Add a bill or debt</button><p class="subtle">Use Recurring bill for fixed car payments. Add each car separately. If a bill is already part of your paycheck budget, mark it as covered to avoid counting it twice.</p>';move($('#billListCard'));move($('#debtListCard'));}
@@ -19,7 +29,7 @@
   wizard.scrollTop=0;$('#setupTitle').focus();
  }
  function close(){restore();wizard.hidden=true;active=false;document.querySelector('.wrap').inert=false;$('.bottom-tabs').inert=false;document.body.classList.remove('setup-active');window.selectBearTab('income');}
- async function open(start=0){await window.classicReady;step=Math.max(0,Math.min(6,start));active=true;wizard.hidden=false;document.querySelector('.wrap').inert=true;$('.bottom-tabs').inert=true;document.body.classList.add('setup-active');render();try{await persist();}catch(e){$('#setupError').textContent=e.message;}}
+ async function open(start=0){await window.classicReady;$('#openGuidedSetup')?.closest('dialog[open]')?.close();step=Math.max(0,Math.min(6,start));active=true;wizard.hidden=false;document.querySelector('.wrap').inert=true;$('.bottom-tabs').inert=true;document.body.classList.add('setup-active');render();try{await persist();}catch(e){$('#setupError').textContent=e.message;}}
  async function saveStep(){await window.flushBearDenState();}
  async function action(fn){if(busy)return;busy=true;wizard.querySelectorAll('.setup-footer button').forEach(b=>b.disabled=true);try{await fn();}catch(e){$('#setupError').textContent=e.message;}finally{busy=false;wizard.querySelectorAll('.setup-footer button').forEach(b=>b.disabled=false);$('#setupBack').disabled=step===0;}}
  content.addEventListener('input',()=>$('#setupError').textContent='');

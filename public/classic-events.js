@@ -18,20 +18,42 @@
   toast.style.setProperty('--toast-left',((viewport?.offsetLeft||0)+(viewport?.width||innerWidth)/2)+'px');
   toast.style.setProperty('--toast-width',Math.max(0,(viewport?.width||innerWidth)-32)+'px');
  }
- window.showBearToast=message=>{
+ let currentId=null,currentOptions={};
+ function hideToast(notify=false){
+  if(!toast)return;
+  clearTimeout(fadeTimer);clearTimeout(hideTimer);cancelAnimationFrame(frame);
+  toast.classList.remove('is-visible');
+  if(typeof toast.hidePopover==='function'&&toast.matches(':popover-open'))toast.hidePopover();
+  toast.hidden=true;
+  const callback=currentOptions.onDismiss;currentId=null;currentOptions={};
+  if(notify)callback?.();
+ }
+ window.dismissBearToast=id=>{if(id===undefined||currentId===id)hideToast();};
+ window.showBearToast=(message,options={})=>{
   if(!message)return;
+  // A background success must not obscure an unresolved saving error.
+  if(toast&&!toast.hidden&&currentOptions.persistent&&currentOptions.kind==='error'&&currentId!==options.id&&(currentId==='autosave-error'||options.kind!=='error'))return;
   if(!toast){
    toast=document.createElement('div');toast.id='bearToast';toast.hidden=true;
    toast.setAttribute('role','status');toast.setAttribute('aria-live','polite');toast.setAttribute('aria-atomic','true');
    if(typeof toast.showPopover==='function')toast.setAttribute('popover','manual');
   }
   clearTimeout(fadeTimer);clearTimeout(hideTimer);cancelAnimationFrame(frame);
-  toast.textContent='';toast.hidden=false;place();position();
-  frame=requestAnimationFrame(()=>{toast.textContent=String(message);toast.classList.add('is-visible');});
-  fadeTimer=setTimeout(()=>{
-   toast.classList.remove('is-visible');
-   hideTimer=setTimeout(()=>{if(typeof toast.hidePopover==='function'&&toast.matches(':popover-open'))toast.hidePopover();toast.hidden=true;toast.textContent='';},220);
-  },2800);
+  currentId=options.id||null;currentOptions=options;
+  toast.replaceChildren();toast.dataset.kind=options.kind||'info';
+  const text=document.createElement('span');text.className='bear-toast-message';text.textContent=String(message);toast.append(text);
+  if(options.actionLabel&&typeof options.onAction==='function'){
+   const action=document.createElement('button');action.type='button';action.className='bear-toast-action';action.textContent=options.actionLabel;
+   action.onclick=async()=>{action.disabled=true;try{await options.onAction();}catch(error){text.textContent=error.message||'Could not complete that action. Try again.';}finally{action.disabled=false;}};toast.append(action);
+  }
+  if(options.dismissible||options.persistent){
+   const dismiss=document.createElement('button');dismiss.type='button';dismiss.className='bear-toast-dismiss';dismiss.setAttribute('aria-label','Dismiss notification');dismiss.textContent='×';dismiss.onclick=()=>hideToast(true);toast.append(dismiss);
+  }
+  toast.hidden=false;place();position();
+  frame=requestAnimationFrame(()=>toast.classList.add('is-visible'));
+  if(!options.persistent)fadeTimer=setTimeout(()=>{
+   toast.classList.remove('is-visible');hideTimer=setTimeout(()=>hideToast(),220);
+  },options.duration||2800);
  };
  // Keep the live region inside the active dialog and above its top layer.
  new MutationObserver(place).observe(document.body,{subtree:true,attributes:true,attributeFilter:['open']});

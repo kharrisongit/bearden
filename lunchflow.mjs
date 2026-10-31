@@ -43,10 +43,10 @@ export async function syncLunchflow(c,readAccounts,saveAccounts,fetcher=fetch){
  const s=c.lunchflow;if(!s)throw Error('Connect Lunch Flow first.');
  const now=Date.now(),at=new Date(now).toISOString();let accounts=await readAccounts();
  if(!s.pending){
-  if(s.lastAttempt&&now-s.lastAttempt<300000)return {status:'Lunch Flow was checked less than five minutes ago. Showing saved readings.',pending:false};
+  if(s.lastAttempt&&now-s.lastAttempt<300000)return {status:'Lunch Flow was checked less than five minutes ago. Showing saved readings.',pending:false,cached:true};
   s.lastAttempt=now;s.nextSync=now+6*3600000;
   try{s.pending=await discover(s.apiKey,fetcher);s.total=s.pending.length;s.completed=0;s.issues=[];s.needsDiscovery=true;}
-  catch(error){s.status=error.message+' Saved balances and history are kept.';return {status:s.status,pending:false};}
+  catch(error){s.status=error.message+' Saved balances and history are kept.';return {status:s.status,pending:false,needsAttention:true};}
  }
  s.lastAttempt=now;
  if(s.needsDiscovery){
@@ -89,5 +89,5 @@ export async function syncLunchflow(c,readAccounts,saveAccounts,fetcher=fetch){
  s.status=pending?'Lunch Flow: '+s.completed+' of '+s.total+' accounts refreshed.':s.total?'Lunch Flow refreshed '+s.total+' account(s).':'Lunch Flow returned no accounts. Enable accounts under Account Access in your REST API destination.';
  if(s.issues.length)s.status+=' '+[...new Set(s.issues)].slice(0,8).join(' ');
  if(pending)s.nextSync=now;else{delete s.pending;s.nextSync=now+(s.issues.length?6*3600000:day);}
- return {status:s.status,pending};
+ return {status:s.status,pending,needsAttention:s.issues.length>0||s.total===0};
 }

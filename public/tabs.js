@@ -161,11 +161,27 @@
  $('#dismissPaymentUndo').onclick=dismissPaymentUndo;
  const connectedAccountName=a=>a?(planner.accountNames?.[a.id]||a.name):'';
  const accountShown=id=>!planner.hiddenConnectedAccounts?.[id];
+ function accountBalanceStatus(account,now=Date.now()){
+  if(!account)return '';
+  const stamp=Date.parse(account.balanceUpdated||''),known=Number.isFinite(stamp),unavailable=account.balanceUnavailable||account.providerUnavailable||account.accountMissing||!Number.isFinite(account.balance);
+  const stale=account.balanceStale||(known&&now-stamp>2*86400000),source=({plaid:'Plaid',lunchflow:'Lunch Flow',simplefin:'SimpleFIN'})[account.source]||'Bank';
+  const date=known?new Date(stamp).toLocaleString():'';
+  const timing=known?(account.balanceDateUnknown?'Retrieved ':'Updated ')+date:'Balance update time unknown';
+  return source+' · '+(unavailable?'Balance unavailable · ':stale?'Last known balance · ':'')+timing+(account.balanceDateUnknown?' · Bank balance time not supplied':'')+(unavailable||stale?' · Refresh in Settings':'');
+ }
+ function forecastRisk(forecast,today){
+  if(forecast.opening===null)return null;
+  const first=forecast.opening<0?{date:today,balance:forecast.opening,opening:true}:forecast.rows.find(row=>row.balance!==null&&row.balance<0);
+  if(!first)return null;
+  const lowest=forecast.opening===forecast.low?today:forecast.rows.find(row=>row.balance===forecast.low)?.date||first.date;
+  return {first,lowest,low:forecast.low,end:forecast.end};
+ }
+
  function renderBillTracker(billPlan,paymentsPlanner,accounts,today){
   const summary=model.billTrackerSummary(billPlan,paymentsPlanner,linked,today,{transactions:bankTransactions()});
   const accountId=planner.household.billsAccountId,account=accounts.find(a=>a.id===accountId&&(a.currency||'USD')==='USD'&&!['credit','loan'].includes(a.type));
-  $('#billTrackerBalance').textContent=account&&!account.balanceUnavailable&&Number.isFinite(account.balance)?money(account.balance):accountId?'Unavailable':'—';
-  $('#billTrackerAccountName').textContent=account?connectedAccountName(account):accountId?'Bills account unavailable':'';
+  $('#billTrackerBalance').textContent=account&&!account.balanceUnavailable&&!account.providerUnavailable&&!account.accountMissing&&Number.isFinite(account.balance)?money(account.balance):accountId?'Unavailable':'—';
+  $('#billTrackerAccountName').textContent=account?connectedAccountName(account)+' · '+accountBalanceStatus(account):accountId?'Bills account unavailable':'';
   $('#billTrackerChooseAccount').hidden=!!account;
   $('#billTrackerMonth').textContent=new Date(summary.start+'T12:00:00').toLocaleDateString('en-US',{month:'long'})+' bills';
   $('#billTrackerPaidCount').textContent=summary.paidCount+' of '+summary.totalCount+' paid';
@@ -794,16 +810,16 @@
    const usd=visible.filter(a=>(a.currency||'USD')==='USD'&&!['credit','loan'].includes(a.type)&&(!['simplefin','lunchflow'].includes(a.source)||a.type==='depository'));
    const checking=a=>a.type==='depository'&&(a.subtype==='checking'||/checking/i.test(a.name||''))&&a.id!==planner.household.billsAccountId;
    const primary=usd.find(a=>a.id===planner.household.personalAccountId)||usd.find(a=>a.id===personalAccount?.id)||usd.find(a=>checking(a)&&/personal/i.test(connectedAccountName(a)))||usd.find(checking)||usd[0];
-   const secondary=usd.filter(a=>a!==primary),accountBalance=a=>a.balanceUnavailable||!Number.isFinite(a.balance)?'Unavailable':money(a.balance,a.currency||'USD');
+   const secondary=usd.filter(a=>a!==primary),accountBalance=a=>a.balanceUnavailable||a.providerUnavailable||a.accountMissing||!Number.isFinite(a.balance)?'Unavailable':money(a.balance,a.currency||'USD');
    const paydayLabel=upcoming?new Date(upcoming.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}):'';
    const summary='<span class="income-eyebrow">Bank Balance</span><div class="income-total">'+(primary?esc(accountBalance(primary)):'—')+'</div>'+
-    (primary?'<p class="income-account-name">'+esc(connectedAccountName(primary))+'</p>':'')+
-    (secondary.length?'<div class="income-secondary-accounts" role="list" aria-label="Other selected accounts">'+secondary.map(a=>'<div class="income-account-balance" role="listitem"><span>'+esc(connectedAccountName(a))+'</span><strong>'+esc(accountBalance(a))+'</strong></div>').join('')+'</div>':'')+
+    (primary?'<p class="income-account-name">'+esc(connectedAccountName(primary))+'</p><p class="subtle account-balance-status">'+esc(accountBalanceStatus(primary))+'</p>':'')+
+    (secondary.length?'<div class="income-secondary-accounts" role="list" aria-label="Other selected accounts">'+secondary.map(a=>'<div class="income-account-balance" role="listitem"><span>'+esc(connectedAccountName(a))+'<small class="account-balance-status">'+esc(accountBalanceStatus(a))+'</small></span><strong>'+esc(accountBalance(a))+'</strong></div>').join('')+'</div>':'')+
     (upcoming?'<div class="income-next-payday"><span>Next payday</span><strong>'+esc(paydayLabel)+'</strong></div>':'<p class="income-payday-empty">Set your first payday in Income to see it here.</p>');
    $('#debtIncomeSummary').innerHTML=summary;$('#incomeSummary').innerHTML=summary;
    const balanceNote=usd.length?'':'<p class="subtle">'+(accounts.length?'Choose a bank account to show your balance.':authenticated?'Connect your bank in Settings to see your balance.':'Sign in and connect your bank in Settings.')+'</p>';
    $('#debtIncomeBalances').innerHTML=balanceNote;
-   $('#debtBankUpdated').textContent=connections.bankUpdated?'Last synced '+new Date(connections.bankUpdated).toLocaleString():'';
+   $('#debtBankUpdated').textContent=''; // Freshness is shown for each account, not the last provider to sync.
    $('#accountChoices').innerHTML=accounts.filter(a=>accountShown(a.id)).map(a=>'<label class="check-label"><input type="checkbox" data-account-visible="'+esc(a.id)+'" '+(visible.some(v=>v.id===a.id)?'checked':'')+'> '+esc(connectedAccountName(a))+'</label>').join('')||'<p class="subtle">Connect a bank in Settings first.</p>';
    $('#restoreBankEstimates').hidden=true;
    review=model.reviewBankActivity(connections.transactions||[],planner.bankRules,connections.recurringBills||[],currentDay,planner.transactionLinks,planner.transactionCategories);
@@ -1082,14 +1098,13 @@
   const f=model.forecastThrough(view.forecast,modelDay(today,view.index));
   const forecastDate=d=>new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',...(view.length>180?{year:'numeric'}:{})});
   const unknown=f.opening===null,rows=f.rows.filter(r=>r.type!=='spending');
-  const firstNegative=f.opening!==null&&f.opening<0?{date:today,balance:f.opening,opening:true}:f.rows.find(r=>r.balance!==null&&r.balance<0);
-  const lowest=f.opening===f.low?{date:today}:f.rows.find(r=>r.balance===f.low);
-  const shortfall=firstNegative?'<div class="forecast-warning"><strong>'+(firstNegative.opening?'Current balance is negative':'First projected negative balance')+': '+esc(forecastDate(firstNegative.date))+' · '+money(firstNegative.balance)+'</strong>'+(firstNegative.name?'<span>After '+esc(firstNegative.name)+'.</span>':'')+'<span>Lowest balance: '+money(f.low)+' on '+esc(forecastDate(lowest?.date||firstNegative.date))+'.</span></div>':'';
+  const risk=forecastRisk(view.forecast,today),firstNegative=risk?.first;
+  const shortfall=risk?'<div class="forecast-warning" data-full-range-risk><strong>'+(firstNegative.opening?'Current balance is negative':'First projected negative balance')+': '+esc(forecastDate(firstNegative.date))+' · '+money(firstNegative.balance)+'</strong>'+(firstNegative.name?'<span>After '+esc(firstNegative.name)+'.</span>':'')+'<span>Lowest balance: '+money(risk.low)+' on '+esc(forecastDate(risk.lowest))+'.</span><span>Risk across the full forecast through '+esc(forecastDate(risk.end))+', regardless of the day selected above.</span></div>':'';
   const container=$(scope==='bills'?'#billsForecast':'#incomeForecast'),scrollTop=view.rowLimit>100?(container.querySelector('.forecast-ledger-scroll')?.scrollTop||0):0;
   container.innerHTML=
-   '<p class="subtle">'+(unknown?'Choose the account above to see your projected balance.':'Projected available on '+forecastDate(f.end))+'</p>'+
+   (view.account?'<p class="subtle account-balance-status">'+esc(accountBalanceStatus(view.account))+'</p>':'')+'<p class="subtle">'+(unknown?'Choose the account above to see your projected balance.':'Projected available on '+forecastDate(f.end))+'</p>'+
    '<div class="forecast-main'+(!unknown&&f.endBalance<0?' is-negative':'')+'">'+(unknown?'—':money(f.endBalance))+'</div>'+
-   '<div class="forecast-stats"><div class="forecast-incoming"><small>'+(scope==='bills'?'Expected deposits':'Expected income')+'</small><strong>'+money(f.income)+'</strong></div><div class="forecast-outgoing"><small>Planned outflow</small><strong>'+money(f.outgoing)+'</strong></div><div class="forecast-lowest'+(!unknown&&f.low<0?' is-negative':'')+'"><small>Lowest balance</small><strong>'+(unknown?'—':money(f.low))+'</strong></div></div>'+shortfall+
+   (f.end!==view.forecast.end?'<p class="subtle forecast-selection-note">Totals and lowest balance through '+esc(forecastDate(f.end))+'.</p>':'')+'<div class="forecast-stats"><div class="forecast-incoming"><small>'+(scope==='bills'?'Expected deposits':'Expected income')+'</small><strong>'+money(f.income)+'</strong></div><div class="forecast-outgoing"><small>Planned outflow</small><strong>'+money(f.outgoing)+'</strong></div><div class="forecast-lowest'+(!unknown&&f.low<0?' is-negative':'')+'"><small>Lowest balance</small><strong>'+(unknown?'—':money(f.low))+'</strong></div></div>'+shortfall+
    (!plan.state.startDate?'<p class="forecast-warning">Set your first payday and take-home pay in Income to include income in this forecast.</p>':'')+
    '<p class="forecast-ledger-heading">Schedule through '+esc(forecastDate(f.end))+'</p><div class="forecast-ledger-scroll" role="region" aria-label="'+(scope==='bills'?'Bills':'Personal')+' forecast schedule" tabindex="0">'+
    (rows.slice(0,view.rowLimit).map(r=>'<div class="forecast-row forecast-ledger-row'+(r.balance!==null&&r.balance<0?' is-negative':'')+'" data-forecast-date="'+esc(r.date)+'"><span>'+esc(r.name)+'<small>'+esc(forecastDate(r.date)+(r.type==='extra-deposit'?(r.overdue?' · extra deposit overdue':' · extra deposit before bills'):r.type==='income'?(r.fixedBillsTransfer?' · after Fixed Bills and planned payments':' · after planned payments'):r.received?(r.receivedDate?' · received '+forecastDate(r.receivedDate)+' · already in bank balance':' · already in bank balance'):r.type==='transfer'?' · between your accounts':r.type==='contribution'?' · to shared bills account':r.overdue?' · overdue bill':' · bill'))+'</small></span><strong class="'+(r.delta>0?'cash-incoming':r.delta<0?'cash-outgoing':'cash-neutral')+'">'+(r.delta>0?'+':r.delta<0?'−':'')+money(Math.abs(r.delta))+'</strong>'+(r.balance===null?'':'<div class="forecast-running-balance"><span>Projected balance'+(r.balance<0?' · Below zero':'')+'</span><strong>'+money(r.balance)+'</strong></div>')+'</div>').join('')||'<p class="subtle">No scheduled entries through this day.</p>')+
