@@ -84,3 +84,13 @@ test('browsing a future month does not treat future-dated bank transactions as r
  const s=billTrackerSummary({bills:[tracked]},{},{},today,{transactions,month:'2026-11-01'});
  assert.equal(s.paidCount,0);assert.equal(s.bills.length,0);
 });
+
+test('a posted transaction cannot move an awaiting-confirmation cycle into tracker paid totals',()=>{
+ const transaction={transaction_id:'posted',date:'2026-10-20',name:'Power company',itemId:'bank',account_id:'bills',currency:'USD',amount:100};
+ const tracked=bill('power','2026-10-26',10000,{source:'bank-tracked',groupKey:transactionKey(transaction)});
+ const planner={awaitingConfirmation:['power:2026-10-26'],transactionLinks:{'bill:power':paymentLink(transaction)}};
+ const pending=billTrackerSummary({bills:[tracked]},planner,{},today,{transactions:[transaction]});
+ assert.equal(pending.totalCount,1);assert.equal(pending.paidCount,0);assert.equal(pending.remaining,10000);assert.equal(pending.bills[0].awaitingConfirmation,true);
+ const confirmed=billTrackerSummary({bills:[tracked]},{...planner,awaitingConfirmation:[],paid:['power:2026-10-26']},{},today,{transactions:[transaction]});
+ assert.equal(confirmed.totalCount,1);assert.equal(confirmed.paidCount,1);assert.equal(confirmed.remaining,0);
+});

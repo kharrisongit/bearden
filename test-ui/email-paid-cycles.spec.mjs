@@ -34,19 +34,24 @@ async function setup(page,{pending=false,reconcile=false}={}){
  return {f,planner,apiState};
 }
 
-test('all bill and debt card types show submitted receipt payments without paying off balances',async({page})=>{
+test('all bill and debt card types keep submitted receipts in the unpaid list with an awaiting message',async({page})=>{
  await page.setViewportSize({width:390,height:844});const {f}=await setup(page);
  await menuGo(page,'bills');await page.getByRole('button',{name:'Next bill month',exact:true}).click();
- await expect(page.locator('#denBillsPaidCount')).toHaveText('4 of 4 paid');
- await page.locator('#paidBillsList').evaluate(el=>el.open=true);
- for(const id of ['rent','electric','internet','car'])await expect(page.locator('#paidBillsList [data-account-id="'+id+'"]')).toContainText('Paid · Awaiting confirmation');
+ await expect(page.locator('#denBillsPaidCount')).toHaveText('0 of 4 paid');
+ await expect(page.locator('#paidBillsList')).toHaveCount(0);
+ for(const id of ['rent','electric','internet','car']){
+  const card=page.locator('#billAgenda > [data-account-id="'+id+'"]');
+  await expect(card.locator('.bill-payment-pending')).toBeVisible();
+  await expect(card).toContainText('Paid · Awaiting confirmation');
+  await expect(card.locator('.den-date-stamp')).not.toHaveClass(/is-paid/);
+ }
  await page.locator('[data-account-id=rent] .bd-bill-details').click();
  await expect(page.locator('dialog[open]')).toContainText('Reserved in your forecast until the posted payment is reflected in your bank balance');
  await page.locator('dialog[open] button[aria-label="Close bill details"]').click();
  await page.getByRole('button',{name:'Next bill month',exact:true}).click();await expect(page.locator('#denBillsPaidCount')).toHaveText('0 of 4 paid');
  await menuGo(page,'debts');
  for(const selector of ['[data-tracker-account="1"]','[data-tracker-account="2"]','[data-account-id="credit-visa"]','[data-car-payment="car"]','.payment-only-debt']){
-  const card=page.locator('#debtAccounts '+selector);await expect(card).toContainText('Paid · Awaiting confirmation');await expect(card).not.toHaveClass(/is-paid-off/);
+  const card=page.locator('#debtAccounts '+selector);await expect(card).toContainText('Paid · Awaiting confirmation');await expect(card).not.toHaveClass(/is-paid-off/);await expect(card.locator('.den-date-stamp')).not.toHaveClass(/is-paid/);
  }
  await expect(page.locator('[data-tracker-account="1"] .bd-account-amount')).toContainText('$3,420');
  expect(JSON.parse(f.tracker.state.values['income-planner']).paid).toEqual([]);
@@ -61,20 +66,32 @@ test('scheduled notices stay unpaid on bill and debt cards',async({page})=>{
 test('receipt, bank posting, and balance updates advance rent and debt confirmation without duplicate payments',async({page})=>{
  const {apiState}=await setup(page,{reconcile:true});
  await menuGo(page,'bills');await page.getByRole('button',{name:'Next bill month',exact:true}).click();
- const rent=page.locator('#paidBillsList [data-account-id="rent"]');
+ const rent=page.locator('#billAgenda [data-account-id="rent"]');
  await expect(rent).toContainText('Paid · Awaiting confirmation');
  const refresh=()=>page.evaluate(()=>window.BearDen.refreshPaymentEvidence());
+ await page.clock.setFixedTime(new Date('2026-11-01T18:00:00Z'));
+ await refresh();
+ await expect(page.locator('#billTrackerPaidCount')).toHaveText('0 of 4 paid');
+ await expect(page.locator('#billTrackerRemaining')).toHaveText('$1,285.00');
+ await expect(page.locator('#paidBillsList')).toHaveCount(0);
  apiState.connections.transactions=[{transaction_id:'rent-posted',itemId:'lunchflow',account_id:'lunchflow-bills',name:'Example Rent',date:'2026-10-31',amount:800,currency:'USD',pending:false},{transaction_id:'card-posted',itemId:'lunchflow',account_id:'lunchflow-bills',name:'Visa Payment',date:'2026-10-31',amount:50,currency:'USD',pending:false}];
  await refresh();await expect(rent).toContainText('Bank posted · Awaiting balance update');
  await expect(rent).toContainText('Reserved in your forecast');
  const funding=apiState.state.accounts.find(a=>a.id==='lunchflow-bills');funding.balance-=85000;funding.balanceUpdated='2026-10-31T16:00:00Z';
  await refresh();await expect(rent).toContainText('waiting for the account balance to update');
  await expect(rent).not.toContainText('Reserved in your forecast');
+ await expect(page.locator('#denBillsPaidCount')).toHaveText('0 of 4 paid');
+ await expect(page.locator('#billTrackerPaidCount')).toHaveText('0 of 4 paid');
+ await expect(page.locator('#billTrackerUpcoming')).toContainText('Paid · Awaiting confirmation');
+ await expect(page.locator('#paidBillsList')).toHaveCount(0);
  apiState.connections.sun.snapshot={currentBalance:0,currency:'USD',checkedAt:'2026-10-31T17:00:00Z'};
  const card=apiState.connections.creditCards[0];card.minimum=0;card.balance=95000;card.updated='2026-10-31T17:00:00Z';card.payments=[{id:'issuer-paid',amount:5000,date:'2026-10-31'}];
  const credit=apiState.state.accounts.find(a=>a.id==='plaid-visa');credit.balance=95000;credit.balanceUpdated='2026-10-31T17:00:00Z';
  await refresh();await expect(rent).toContainText('Paid · Confirmed');
- await expect(page.locator('#denBillsPaidCount')).toHaveText('4 of 4 paid');
+ await expect(page.locator('#denBillsPaidCount')).toHaveText('1 of 4 paid');
+ await expect(page.locator('#billTrackerPaidCount')).toHaveText('1 of 4 paid');
+ await expect(page.locator('#billTrackerRemaining')).toHaveText('$485.00');
+ await expect(page.locator('#paidBillsList [data-account-id="rent"]')).toHaveCount(1);
  await menuGo(page,'debts');await expect(page.locator('#debtAccounts [data-account-id="credit-visa"]')).toContainText('Paid · Confirmed');
  await expect(page.locator('#debtAccounts [data-account-id="credit-visa"]')).not.toHaveClass(/is-paid-off/);
 });

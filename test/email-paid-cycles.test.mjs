@@ -48,11 +48,13 @@ test('credit cards and loans use the monthly payment rather than the entire debt
   assert.equal(emailDebtPaymentStatus([m],links,target,{...details,dueDate:null}),null);
  }
 });
-test('email-derived paid cycles update summaries without persisting a manual mark or deleting the bank cash reservation',()=>{
+test('email receipts keep unpaid totals until confirmation without deleting the cash reservation',()=>{
  const bill={...event(),name:'Rent'},planner={manual:[bill],paid:[]},m=receipt(),events=billEvents({},planner,{},'2026-10-01','2026-12-31');
  const paid=matchedEmailBillPayments(events,[m],{'bill:bill':emailLink(m)},{now});
- const display={...planner,paid:paid.map(p=>p.key)};
- assert.equal(billTrackerSummary({},display,{},'2026-10-31',{month:'2026-11-01'}).paidCount,1);
+ const display={...planner,paid:paid.filter(p=>p.confirmed).map(p=>p.key),awaitingConfirmation:paid.filter(p=>!p.confirmed).map(p=>p.key)};
+ const awaiting=billTrackerSummary({},display,{},'2026-10-31',{month:'2026-11-01'});
+ assert.equal(awaiting.paidCount,0);assert.equal(awaiting.remaining,10000);assert.equal(awaiting.bills[0].awaitingConfirmation,true);
+ assert.equal(billTrackerSummary({}, {...planner,paid:paid.map(p=>p.key)}, {},'2026-10-31',{month:'2026-11-01'}).paidCount,1);
  assert.equal(billTrackerSummary({},display,{},'2026-10-31',{month:'2026-12-01'}).paidCount,0);
  assert.equal(billEvents({},planner,{},'2026-10-31','2026-11-02').length,1);
  assert.deepEqual(planner.paid,[]);
