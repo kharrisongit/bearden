@@ -27,7 +27,7 @@ async function fixture(page,{goals=true,empty=false,unavailable=false}={}){
 
 for(const [width,theme]of [[390,'light'],[320,'dark']])test(`Bill Tracker at ${width}px ${theme} shows current-month bills and navigates to Bills`,async({page})=>{
  await page.setViewportSize({width,height:844});const errors=[];page.on('pageerror',e=>errors.push(e.message));await fixture(page);await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
- await expect(page.locator('#billTrackerBalance')).toHaveText('$750.25');await expect(page.locator('#billTrackerAccountName')).toHaveText('Household bills checking');
+ await expect(page.locator('#billTrackerBalance')).toHaveText('$750.25');await expect(page.locator('#billTrackerAccountName')).toHaveText('Household bills checking · Lunch Flow · Balance update time unknown');
  await expect(page.locator('#billTrackerPaidCount')).toHaveText('1 of 4 paid');await expect(page.locator('#billTrackerTotal')).toHaveText('$1,285.00');await expect(page.locator('#billTrackerRemaining')).toHaveText('$485.00');
  await expect(page.locator('#billTrackerUpcoming li')).toHaveCount(3);await expect(page.locator('#billTrackerUpcoming li').first()).toContainText('Internet');await expect(page.locator('#billTrackerUpcoming li').first()).toContainText('Overdue');
  expect(await page.locator('#debtIncomeCard').evaluate(el=>el.parentElement.nextElementSibling.querySelector('#billTracker')!==null)).toBe(true);

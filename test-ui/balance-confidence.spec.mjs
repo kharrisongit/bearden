@@ -36,7 +36,7 @@ test('scrubbing the wallet bills forecast before a future shortfall preserves it
  await expect(page.locator('#billsForecast [data-full-range-risk]')).toBeVisible();
  const warning=await page.locator('#billsForecast [data-full-range-risk]').innerText();
  await page.locator('#billsForecastScrub').fill('0');
- await expect(page.locator('#billsForecast [data-full-range-risk]')).toHaveText(warning);
+ await expect(page.locator('#billsForecast [data-full-range-risk]')).toHaveText(warning,{useInnerText:true});
  await expect(page.locator('#billsForecast .forecast-selection-note')).toContainText('Totals and lowest balance through');
  await expect(page.locator('#billsForecast .forecast-ledger-row[data-forecast-date="2026-11-01"]')).toHaveCount(0);
  await page.locator('#billsForecastScrub').fill('30');

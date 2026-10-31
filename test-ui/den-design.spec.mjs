@@ -33,7 +33,8 @@ for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`Den 
   await menuGo(page,destination);await expect(page.locator('#tab-'+destination)).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   if(width===390&&theme==='light')await page.screenshot({path:`test-results/wallet-page-${destination}.png`,fullPage:true});
-  expect(await page.evaluate(()=>document.body.style.overflow)).not.toBe('hidden');
+  // Native dialog close dispatches its cleanup event after the destination is shown.
+  await expect.poll(()=>page.evaluate(()=>document.body.style.overflow)).not.toBe('hidden');
  }
  await menuGo(page,'savings');await expect(page.locator('#savingsHeroContainer')).toBeFocused();
  await page.locator('#savingsHero-1 .den-savings-detail button').first().click();await expect(page.locator('#savingsGoalEdit-1')).toBeVisible();

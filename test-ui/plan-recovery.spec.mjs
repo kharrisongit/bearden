@@ -6,7 +6,10 @@ for(const width of [320,390])test(`${width}px: paycheck completion explains cons
  const first=page.locator('#paycheck-card-1');
  await expect(first.locator('.paycheck-completion-help')).toContainText('BearDen does not send payments');
  await expect(first.getByRole('checkbox',{name:'Mark paycheck 1 plan complete',exact:true})).toBeVisible();
- await first.getByRole('checkbox').check();
+ // Completing a plan replaces its card; assert the current plan state instead of
+ // Playwright check() inspecting the detached input after the click.
+ await first.getByRole('checkbox').click();
+ await expect.poll(()=>page.evaluate(()=>!!window.getDebtPlan().state.checkedPaychecks[1])).toBe(true);
  const toast=page.locator('#bearToast');await expect(toast).toContainText('No payments were sent');
  await expect(toast.getByRole('button',{name:'Undo',exact:true})).toBeVisible();
  expect(await page.evaluate(()=>Object.keys(window.debtPaymentHistory[1]||{}).length)).toBeGreaterThan(0);
@@ -14,13 +17,15 @@ for(const width of [320,390])test(`${width}px: paycheck completion explains cons
  await expect(first.getByRole('checkbox')).not.toBeChecked();
  expect(await page.evaluate(()=>window.debtPaymentHistory[1])).toBeUndefined();
  expect(await page.evaluate(()=>window.debtInterestHistory[1])).toBeUndefined();
- await first.getByRole('checkbox').check();
+ await first.getByRole('checkbox').click();
+ await expect.poll(()=>page.evaluate(()=>!!window.getDebtPlan().state.checkedPaychecks[1])).toBe(true);
  await expect(page.locator('#completedPaychecksBtn')).toBeVisible();
  await page.evaluate(()=>window.dismissBearToast('paycheck-complete'));
  await page.locator('#completedPaychecksBtn').click();
  await expect(page.locator('#scheduleRestOut')).toHaveClass(/open/);
  await expect(first.getByRole('checkbox')).toBeFocused();
- await first.getByRole('checkbox').uncheck();
+ await first.getByRole('checkbox').click();
+ await expect.poll(()=>page.evaluate(()=>!!window.getDebtPlan().state.checkedPaychecks[1])).toBe(false);
  await expect(page.locator('#completedPaychecksBtn')).toBeHidden();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });

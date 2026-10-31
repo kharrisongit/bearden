@@ -6,7 +6,9 @@ async function openBudget(page){await menuGo(page,'settings');await page.locator
 async function setIncome(page){
  await menuGo(page,'settings');await page.locator('#bdHousehold [data-den-go="income-edit"]').click();
  await page.locator('#hourlyRate').fill('25');await page.locator('#hoursPerCheck').fill('80');
- await page.locator('#incomeDropdown summary').filter({hasText:'State & withholding'}).click();
+ // Missing tax settings already open this disclosure in the editor.
+ if(!await page.locator('#incomeDropdown .income-estimate-options').evaluate(el=>el.open))await page.locator('#incomeDropdown summary').filter({hasText:'State & withholding'}).click();
+ await expect(page.locator('#tax-state')).toBeVisible();
  await page.locator('#tax-state').selectOption('MI');await page.locator('#tax-filing').selectOption('joint');
  await page.locator('#tax-retirement').fill('200');
  await page.locator('#takeHome').fill('1845');
@@ -28,7 +30,7 @@ for(const width of [320,390,1280])test(`${width}px: budget alternates from the s
  await expect(page.getByRole('checkbox',{name:'Every other paycheck for Groceries',exact:true})).toBeChecked();
  await expect(start).toHaveValue('2');expect(await budgetAmounts(page)).toEqual([0,100,0,100]);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- if(width===390){await expect(page.locator('#budgetDropdown')).toHaveCSS('max-height','none');await page.locator('#budgetItemsList').scrollIntoViewIfNeeded();await page.screenshot({path:'/workspace/scratch/6bdf69538846/qa/budget-cadence.png'});}
+ if(width===390){await expect(page.locator('#budgetDropdown')).toHaveCSS('max-height','none');await page.locator('#budgetItemsList').scrollIntoViewIfNeeded();await page.screenshot({path:'test-results/budget-cadence.png'});}
  await page.getByRole('checkbox',{name:'Every other paycheck for Groceries',exact:true}).uncheck();
  expect(await budgetAmounts(page)).toEqual([100,100,100,100]);await expect(start).toBeHidden();
  await page.evaluate(()=>window.flushBearDenState());
@@ -68,7 +70,7 @@ for(const width of [320,390,1280])test(`${width}px: paycheck opens the withholdi
  await expect(dialog).toContainText('Your entered take-home differs from this estimate.');
  expect(await page.evaluate(()=>window.getDebtPlan().schedule[0].takeHomeThisCheck)).toBe(1845);
  expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
- if(width===390)await page.screenshot({path:'/workspace/scratch/6bdf69538846/qa/paycheck-taxes.png'});
+ if(width===390)await page.screenshot({path:'test-results/paycheck-taxes.png'});
  await dialog.getByRole('button',{name:'Done',exact:true}).click();await expect(dialog).toBeHidden();await expect(button).toBeFocused();
  await menuGo(page,'income');await page.locator('#bdNextPaycheck [data-paycheck-taxes]').click();
  await expect(dialog).toBeVisible();await expect(dialog).toContainText('Paycheck 1 · Oct 30, 2026');

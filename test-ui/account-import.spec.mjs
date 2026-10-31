@@ -71,7 +71,7 @@ test('renaming a Lunch Flow account survives resync; saves and refreshes do not 
  await page.locator('#classicSync').click();
  // Simulate an autosave while the provider request is in progress.
  await page.evaluate(()=>window.BearDen.storage.set('notes','[]'));
- await expect(page.locator('#connectionMessage')).toContainText('Rent checked.');
+ await expect(page.locator('#bearToast .bear-toast-message')).toHaveText('Connections refreshed.');await expect(page.locator('#connectionMessage')).toBeEmpty();
  await expect(page.locator('[data-lunchflow-account]')).toHaveCount(1);await expect(page.locator('#lunchflowAccounts')).toContainText('Richard’s checking');
  const planner=JSON.parse(tracker.state.values['income-planner']);expect(planner.accountNames[old]).toBe('Richard’s checking');expect(planner.household.personalAccountId).toBe(old);expect(maxActive).toBe(1);expect(refreshes).toBe(1);expect(rentCalls).toBe(2);
  await page.reload();await page.evaluate(()=>window.classicReady);await page.locator('#nav-settings').click();await page.locator('#configureLunchflow').click();await page.locator('#lunchflowAccountSummary').click();await expect(page.locator('#lunchflowAccounts')).toContainText('Richard’s checking');await expect(page.locator('[data-lunchflow-account]')).toHaveCount(1);expect(errors).toEqual([]);
