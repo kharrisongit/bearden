@@ -55,3 +55,32 @@ test('a fully paid October shows no November bills until the month changes',asyn
  await page.getByRole('button',{name:'Next bill month',exact:true}).click();await expect(page.locator('#denBillsPaidCount')).toHaveText('0 of 5 paid');
  await expect(page.locator('#billAgenda [data-account-id=insurance]')).toBeVisible();
 });
+
+test('dashboard Bill Tracker browses months independently and opens the selected Bills month',async({page})=>{
+ await page.setViewportSize({width:390,height:844});const f=await fixture(page);
+ const planner=JSON.parse(f.tracker.state.values['income-planner']);
+ planner.manual.push({id:'insurance',name:'Renters Insurance',date:'2026-11-03',amount:2019,repeat:'monthly',source:'manual',billKind:'insurance'});
+ planner.paid.push('electric:2026-11-29');f.tracker.state.values['income-planner']=JSON.stringify(planner);
+ await page.reload();await expect(page.locator('#configureHousehold')).toBeEnabled();
+ const tracker=page.locator('#billTracker'),next=tracker.getByRole('button',{name:'Next tracker month'}),previous=tracker.getByRole('button',{name:'Previous tracker month'});
+ await expect(tracker.locator('#billTrackerMonth')).toHaveText('October bills');
+ await next.click();await expect(tracker.locator('#billTrackerMonth')).toHaveText('November bills');
+ await expect(tracker.locator('#billTrackerYear')).toHaveText('2026');
+ await expect(tracker.locator('#billTrackerPaidCount')).toHaveText('1 of 5 paid');
+ await expect(tracker.locator('#billTrackerTotal')).toHaveText('$1,305.19');
+ await expect(tracker.locator('#billTrackerRemaining')).toHaveText('$1,180.19');
+ await expect(tracker.locator('#billTrackerUpcoming')).toContainText('Renters Insurance');
+ await expect(tracker.locator('#billTrackerUpcoming')).not.toContainText('Oct');
+ await expect(tracker.locator('#billTrackerBalance')).toHaveText('$2,140.00');
+ expect(await tracker.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+ await tracker.screenshot({path:'test-results/bill-tracker-month-picker.png'});
+ await tracker.getByRole('button',{name:'View bills',exact:true}).filter({visible:true}).click();
+ await expect(page.locator('#denBillsMonth')).toHaveText('November bills');
+ await expect(page.locator('#denBillsPaidCount')).toHaveText('1 of 5 paid');
+ await page.getByRole('button',{name:'Next bill month',exact:true}).click();
+ await menuGo(page,'overview');await expect(tracker.locator('#billTrackerMonth')).toHaveText('November bills');
+ await next.click();await next.click();await expect(tracker.locator('#billTrackerMonth')).toHaveText('January bills');
+ await expect(tracker.locator('#billTrackerYear')).toHaveText('2027');
+ await previous.click();await expect(tracker.locator('#billTrackerMonth')).toHaveText('December bills');
+ await expect(tracker.locator('#billTrackerYear')).toHaveText('2026');
+});

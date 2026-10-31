@@ -199,7 +199,7 @@
 
 
     const actions = (a,b='') => '<div class="den-card-actions">'+a+b+'</div>';
-    insert($('#billTracker'),'den-bill-actions',actions(button('bills','View bills','bills'),button('forecast','Forecast','plan')));
+    insert($('#billTracker'),'den-bill-actions',actions(button('bills','View bills','bills','data-open-dashboard-bills'),button('forecast','Forecast','plan')));
     insert($('#debtHeroBox'),'den-debt-actions',actions(button('debts','View debts','debts')));
     const views=window.mountWalletViews({icon,bear,esc,money,go,queueRefresh});
     // Existing widgets continue to own all their numbers, edits and calculations.

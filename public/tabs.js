@@ -34,7 +34,7 @@
   const billView=e.target.closest('[data-account-view]'),debtView=e.target.closest('[data-debt-view]');
   if(billView){if(billView.dataset.accountView==='debt')selectDebtView('debt');else selectBillView(billView.dataset.accountView);}
   if(debtView)selectDebtView(debtView.dataset.debtView);
-  if(e.target.closest('[data-open-dashboard-bills]')){const now=new Date();calendarViews.bills.month=new Date(now.getFullYear(),now.getMonth(),1);calendarViews.bills.selected=null;selectBillView('bills');window.scrollTo(0,0);}
+  if(e.target.closest('[data-open-dashboard-bills]')){const now=billTrackerMonth?new Date(billTrackerMonth+'T12:00:00'):new Date();calendarViews.bills.month=new Date(now.getFullYear(),now.getMonth(),1);calendarViews.bills.selected=null;selectBillView('bills');window.scrollTo(0,0);}
  });
  document.querySelectorAll('[data-account-tabs]').forEach(bar=>bar.addEventListener('keydown',e=>{
   const views=accountSections[bar.dataset.accountTabs],button=e.target.closest('[role="tab"]'),i=views.findIndex(view=>view.button===button?.id);if(i<0)return;
@@ -66,7 +66,7 @@
  const pencil='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg>';
  let review={rows:[],bills:[],spending:{categories:[],total:0}};
  const calendarViews=Object.fromEntries(['bills','debts'].map(name=>[name,{month:new Date(new Date().getFullYear(),new Date().getMonth(),1),selected:null,agendaOpen:false,scope:'all'}]));
- let billsMonthSummary=null;
+ let billsMonthSummary=null,billTrackerMonth=null;
  window.getBillsMonthSummary=()=>billsMonthSummary;
  let calendarContext=null,model,mailModel,rentModel,sharingModel,planner={manual:[],covered:{},paid:[],accountVisibility:{},dismissedEstimates:[],estimates:{},bankRules:{},transactionCategories:{},creditCards:{},transactionLinks:{},emailLinks:{},billFunding:{},household:{},forecastDebtMode:'full'},linked={},ready=false;
 
@@ -178,18 +178,20 @@
  }
 
  function renderBillTracker(billPlan,paymentsPlanner,accounts,today){
-  const summary=model.billTrackerSummary(billPlan,paymentsPlanner,linked,today,{transactions:bankTransactions()});
+  const summary=model.billTrackerSummary(billPlan,paymentsPlanner,linked,today,{transactions:bankTransactions(),month:billTrackerMonth||today});
+  const month=new Date(summary.start+'T12:00:00'),upcoming=summary.bills.filter(b=>!b.paid).slice(0,3),overdue=summary.bills.filter(b=>!b.paid&&!b.awaitingConfirmation&&b.date<today).length;
   const accountId=planner.household.billsAccountId,account=accounts.find(a=>a.id===accountId&&(a.currency||'USD')==='USD'&&!['credit','loan'].includes(a.type));
   $('#billTrackerBalance').textContent=account&&!account.balanceUnavailable&&!account.providerUnavailable&&!account.accountMissing&&Number.isFinite(account.balance)?money(account.balance):accountId?'Unavailable':'—';
   $('#billTrackerAccountName').textContent=account?connectedAccountName(account)+' · '+accountBalanceStatus(account):accountId?'Bills account unavailable':'';
   $('#billTrackerChooseAccount').hidden=!!account;
-  $('#billTrackerMonth').textContent=new Date(summary.start+'T12:00:00').toLocaleDateString('en-US',{month:'long'})+' bills';
+  $('#billTrackerMonth').textContent=month.toLocaleDateString('en-US',{month:'long'})+' bills';
+  $('#billTrackerYear').textContent=month.getFullYear();
   $('#billTrackerPaidCount').textContent=summary.paidCount+' of '+summary.totalCount+' paid';
-  const progress=$('#billTrackerProgress');progress.max=summary.totalCount||1;progress.value=summary.paidCount;progress.setAttribute('aria-label',summary.paidCount+' of '+summary.totalCount+' bills paid this month');
+  const progress=$('#billTrackerProgress');progress.max=summary.totalCount||1;progress.value=summary.paidCount;progress.setAttribute('aria-label',summary.paidCount+' of '+summary.totalCount+' bills paid for '+month.toLocaleDateString('en-US',{month:'long',year:'numeric'}));
   $('#billTrackerTotal').textContent=money(summary.total);$('#billTrackerRemaining').textContent=money(summary.remaining);
-  $('#billTrackerUpcomingLabel').textContent=summary.overdueCount?'Next bills · '+summary.overdueCount+' overdue':'Next bills';
-  $('#billTrackerUpcoming').innerHTML=summary.upcoming.map(b=>'<li><span><strong>'+esc(b.name)+'</strong><small class="'+(b.date<today&&!b.awaitingConfirmation?'is-overdue':'')+'">'+esc((b.awaitingConfirmation?'Paid · Awaiting confirmation · ':b.date<today?'Overdue · ':b.date===today?'Due today · ':'Due ')+dateLabel(b.date))+'</small></span><b>'+money(b.amount)+'</b></li>').join('');
-  $('#billTrackerEmpty').hidden=!!summary.upcoming.length;$('#billTrackerEmpty').textContent=summary.hasBills?'No upcoming bills.':'Add bills in the Bills tab to see them here.';
+  $('#billTrackerUpcomingLabel').textContent=overdue?'Next bills · '+overdue+' overdue':'Next bills';
+  $('#billTrackerUpcoming').innerHTML=upcoming.map(b=>'<li><span><strong>'+esc(b.name)+'</strong><small class="'+(b.date<today&&!b.awaitingConfirmation?'is-overdue':'')+'">'+esc((b.awaitingConfirmation?'Paid · Awaiting confirmation · ':b.date<today?'Overdue · ':b.date===today?'Due today · ':'Due ')+dateLabel(b.date))+'</small></span><b>'+money(b.amount)+'</b></li>').join('');
+  $('#billTrackerEmpty').hidden=!!upcoming.length;$('#billTrackerEmpty').textContent=summary.totalCount?'All bills paid for this month.':summary.hasBills?'No bills scheduled for this month.':'Add bills in the Bills tab to see them here.';
  }
  function error(e){$('#incomeStatus').textContent=e.message||String(e);$('#accountStatus').textContent=e.message||String(e);$('#accountSaveStatus').textContent=e.message||String(e);}
  async function save(message){if(!ready)throw Error('Accounts have not loaded. Reload before saving changes.');await window.BearDen.storage.set('income-planner',JSON.stringify(planner));$('#incomeStatus').textContent='Saved';$('#accountStatus').textContent='Saved';await renderIncome();if(message)window.showBearToast?.(message);}
@@ -1395,6 +1397,8 @@
  });
 
  document.addEventListener('click',e=>{
+  const trackerMove=e.target.closest('[data-bill-tracker-month-move]');
+  if(trackerMove){const month=billTrackerMonth?new Date(billTrackerMonth+'T12:00:00'):new Date();billTrackerMonth=iso(new Date(month.getFullYear(),month.getMonth()+Number(trackerMove.dataset.billTrackerMonthMove),1));renderIncome();return;}
   const monthMove=e.target.closest('[data-bills-month-move]');
   if(monthMove){const view=calendarViews.bills;view.month=new Date(view.month.getFullYear(),view.month.getMonth()+Number(monthMove.dataset.billsMonthMove),1);view.selected=null;renderIncome();return;}
   const card=e.target.closest('[data-payment-calendar]');if(!card)return;
