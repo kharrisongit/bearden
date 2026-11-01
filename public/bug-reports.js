@@ -1,4 +1,4 @@
-import {APP_RELEASE} from './app-release.mjs?v=support-requests1';
+import {APP_RELEASE} from './app-release.mjs?v=support-requests2';
 
 // Reports and release acknowledgements never read or save the financial plan.
 const $ = (selector, root=document) => root.querySelector(selector);
@@ -39,7 +39,7 @@ function mount(){
     <p id="bugReportSignIn" class="subtle" hidden>Sign in with Google or Microsoft in Settings to send a report.</p>
     <form id="bugReportForm">
       <fieldset id="bugReportFields">
-        <label>Request type<select name="type" id="bugReportType"><option value="bug">Bug report</option><option value="feature">Feature request</option></select></label>
+        <label>Request type<select name="type" id="bugReportType" aria-label="Request type"><option value="bug">Bug report</option><option value="feature">Feature request</option></select></label>
         <label>Short description<input name="reportTitle" maxlength="120" required placeholder="e.g. A button does not respond"></label>
         <label><span id="reportAreaLabel">Where did it happen?</span><select name="area">${Object.entries(areas).map(([value,label])=>'<option value="'+value+'">'+label+'</option>').join('')}</select></label>
         <label><span id="reportDetailsLabel">What happened?</span><textarea name="details" maxlength="4000" rows="4" required placeholder="Describe the problem."></textarea></label>

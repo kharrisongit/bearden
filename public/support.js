@@ -1,4 +1,4 @@
-import { APP_RELEASE } from './app-release.mjs?v=support-requests1';
+import { APP_RELEASE } from './app-release.mjs?v=support-requests2';
 
 const $ = selector => document.querySelector(selector);
 const fragment = new URLSearchParams(location.hash.slice(1));
