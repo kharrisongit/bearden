@@ -4,7 +4,7 @@ Preserve existing financial records and concurrent user changes. A bug report is
 
 ## Bug reports and releases
 
-- Reports live in the app's separate encrypted support store. The owner can review them at `/support.html`; dot can use its private reporting-only link. Never put that link in this repository or a public issue.
+- Reports live in the app's separate encrypted support store. The owner and the configured dot task review them at `/support` using the owner's existing authorized sign-in. Report submitters need no dot connection or ChatGPT setup. Optional reporting-only credentials are a maintenance API feature; never put those credentials in this repository or a public issue.
 - Read the actual report, reproduce or identify the defect, and make a focused fix. If more information is needed, record `needs_details` with a clear question. Do not claim a fix without evidence.
 - Use the report revision when updating progress. A conflict means the report changed; reload it instead of overwriting another update.
 - Update `public/app-release.mjs` for every user-visible deployed change: choose a new unique `id`, a short title, concise user-facing notes, and the IDs of reports fixed by that release. Notes must not reveal account details or private report text.

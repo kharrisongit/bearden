@@ -31,11 +31,11 @@ function dialog(id,title,content){
 
 function mount(){
   if(!$('#bdSettingsHub')){
-    const support=element('section');support.id='classicBugSupport';support.innerHTML='<h3>Support</h3><p>Send a bug report or see what changed in BearDen.</p><button type="button" data-bug-report-open>Report a bug</button><button type="button" data-bug-updates-open>Updates</button>';
+    const support=element('section',undefined,'classic-bug-support');support.innerHTML='<h3>Support</h3><p>Send a bug report or see what changed in BearDen.</p><button type="button" data-bug-report-open>Report a bug</button><button type="button" data-bug-updates-open>Updates</button>';
     $('#connectionDialog').append(support);
   }
   reportDialog=dialog('bugReportDialog','Report a bug',`
-    <p id="bugReportIntro">Tell dot what went wrong and how to repeat it.</p>
+    <p id="bugReportIntro">Describe the problem and send it to dot. You can follow its progress below.</p>
     <p id="bugReportSignIn" class="subtle" hidden>Sign in with Google or Microsoft in Settings to send a report.</p>
     <form id="bugReportForm">
       <fieldset id="bugReportFields">
@@ -51,24 +51,13 @@ function mount(){
       </fieldset>
       <p id="bugReportStatus" class="subtle" role="status" aria-live="polite"></p>
     </form>
-    <section class="bug-history"><div class="bug-section-heading"><h3>Your reports</h3><button type="button" id="refreshBugReports">Refresh</button></div><p id="bugReportListStatus" class="subtle" role="status"></p><div id="bugReportList"></div><button type="button" id="loadEarlierBugReports" hidden>Load earlier reports</button></section>
-    <section id="bugDotConnection" class="bug-history" hidden><h3>dot connection</h3>
-      <p class="subtle">dot checks submitted reports hourly when its ChatGPT task is running. Reports that need more information may be marked Needs details.</p>
-      <p><a href="/support.html" target="_blank" rel="noopener noreferrer">Manage reports</a></p>
-      <details><summary>Optional private connection</summary><p class="subtle">A private link gives dot access to reports and their progress, without access to your financial data. Keep the link private. You can revoke it here. Creating a link does not start a ChatGPT task.</p>
-      <p id="bugDotStatus" class="subtle" role="status"></p><div class="bug-actions"><button type="button" id="createBugDotLink">Create private connection link</button><button type="button" id="replaceBugDotLink" hidden>Replace link</button><button type="button" id="revokeBugDotLink" hidden>Revoke link</button></div>
-      <label id="bugDotLinkField" hidden>Private support link<input id="bugDotLink" type="text" readonly autocomplete="off" spellcheck="false"></label></details>
-    </section>`);
+    <section class="bug-history"><div class="bug-section-heading"><h3>Your reports</h3><button type="button" id="refreshBugReports">Refresh</button></div><p id="bugReportListStatus" class="subtle" role="status"></p><div id="bugReportList"></div><button type="button" id="loadEarlierBugReports" hidden>Load earlier reports</button></section>`);
   releaseDialog=dialog('bugReleaseDialog','BearDen was updated',`
     <p id="bugReleaseTitle" class="bug-release-title"></p><ul id="bugReleaseNotes"></ul><p id="bugReleaseVersion" class="subtle"></p>
     <p id="bugReleaseHelp" class="subtle"></p><div class="bug-actions"><button type="button" id="bugReleaseDismiss">Done</button><button type="button" id="bugReleaseReload" class="bill-save" hidden>Reload app</button></div><p id="bugReleaseStatus" class="subtle" role="status"></p>`);
-  reportDialog.addEventListener('close',()=>$('#bugDotLink').value='');
   $('#bugReportForm').addEventListener('submit',submitReport);
   $('#refreshBugReports').addEventListener('click',loadReports);
   $('#loadEarlierBugReports').addEventListener('click',()=>{if(reportsCursor)loadReports(reportsCursor);});
-  $('#createBugDotLink').addEventListener('click',()=>changeConnection('enable'));
-  $('#replaceBugDotLink').addEventListener('click',()=>changeConnection('rotate'));
-  $('#revokeBugDotLink').addEventListener('click',()=>changeConnection('revoke'));
   $('#bugReleaseDismiss').addEventListener('click',dismissRelease);
   releaseDialog.addEventListener('cancel',event=>{event.preventDefault();dismissRelease();});
   releaseDialog.addEventListener('close',()=>{if(displayedReleaseId&&!dismissed.has(displayedReleaseId))dismissRelease();});
@@ -99,10 +88,8 @@ async function openReports(){
   }
   $('#bugReportFields').disabled=!account?.authenticated||sending;
   $('#bugReportSignIn').hidden=!!account?.authenticated;$('#refreshBugReports').hidden=!account?.authenticated;
-  $('#bugDotConnection').hidden=!account?.authenticated||account.accountId!=='owner';
   if(!account?.authenticated)return;
   await loadReports();
-  if(account.accountId==='owner')try{renderConnection(await request('/api/bug-reports/automation'));}catch(error){$('#bugDotStatus').textContent=error.message;}
 }
 
 async function submitReport(event){
@@ -138,19 +125,6 @@ async function loadReports(cursor=null){
     $('#bugReportListStatus').textContent=list.childElementCount?'':'No reports yet.';
   }catch(error){$('#bugReportListStatus').textContent=error.message;}
   finally{button.disabled=false;earlier.disabled=false;}
-}
-
-function renderConnection(data){
-  const enabled=!!data.enabled;$('#createBugDotLink').hidden=enabled;$('#replaceBugDotLink').hidden=!enabled;$('#revokeBugDotLink').hidden=!enabled;
-  $('#bugDotStatus').textContent=enabled?'Private connection ready. Keep its link with your ChatGPT task.':'No private connection link is active.';
-  if(data.token){$('#bugDotLinkField').hidden=false;$('#bugDotLink').value=location.origin+'/support.html#token='+encodeURIComponent(data.token);$('#bugDotLink').select();}
-  else{$('#bugDotLinkField').hidden=true;$('#bugDotLink').value='';}
-}
-async function changeConnection(action){
-  const buttons=[...$('#bugDotConnection').querySelectorAll('button')];buttons.forEach(button=>button.disabled=true);
-  try{renderConnection(await request('/api/bug-reports/automation',{action}));}
-  catch(error){$('#bugDotStatus').textContent=error.message;}
-  finally{buttons.forEach(button=>button.disabled=false);}
 }
 
 function editing(){

@@ -2,23 +2,29 @@
 
 ## User experience
 
-Settings → Report a bug opens a short form and the current account's reports. The app sends only the text the person enters and a small diagnostic allowlist: app version, chosen area, browser identification and viewport size. It does not attach the financial tracker, email messages, provider credentials, screenshots or console logs.
+Settings → Support → Report a bug opens a short form and the current account's reports. Anyone already signed into BearDen can describe a problem and send it without a private link, ChatGPT account or separate setup. The owner's configured dot task checks the shared support queue hourly. Each person sees their own reports and dot's responses in the form.
+
+The app sends only the text the person enters and a small diagnostic allowlist: app version, chosen area, browser identification and viewport size. It does not attach the financial tracker, email messages, provider credentials, screenshots or console logs.
 
 Reports are stored in the existing encrypted vault under separate support keys. A report submission or release acknowledgement does not save or revise the financial tracker. Retry submissions use a per-account idempotency key.
 
 Settings → Updates shows the deployed release. A new release produces a dismissible popup for each signed-in account. The popup waits while another dialog or edit is active and never reloads the page automatically. Acknowledgements are per account.
 
-## Private dot connection
+## Owner task access
 
-The support console also works with the owner's existing BearDen sign-in. The initial ChatGPT watch uses this authorized session, so no new persistent credential is required. If that session expires, the task must follow the normal sign-in flow or ask the owner to reconnect; it must never bypass authentication. An optional reporting-only link can be connected to the task later.
+The support console at `/support` works with the owner's existing BearDen sign-in. The configured ChatGPT watch uses this authorized session, so no new persistent credential is required. If that session expires, the task must follow the normal sign-in flow or ask the owner to reconnect; it must never bypass authentication. Report submitters do not manage this connection.
+
+The ChatGPT task is configured separately after access is verified. In-app report events are not currently an available task trigger; the configured watch checks hourly. Pause or update the task in ChatGPT to stop the watch. The reporting form contains no task configuration or connection controls.
+
+## Optional credential API (maintenance only)
 
 Only the owner can enable, rotate or revoke a dot connection. Enabling creates a random reporting-only bearer credential; only its hash is stored on the server. The private URL opens `/support.html` with the credential in the URL fragment. The console immediately removes the fragment, holds the credential only in memory, and sends it only in the Authorization header to support endpoints. It is never stored in browser storage or included in a server URL.
 
-This credential allows reading reports and changing their progress. It cannot authenticate to any financial API. The owner can revoke it in Settings. Rotating it invalidates the previous automation link; the task must be updated with the new private link.
+This credential allows reading reports and changing their progress. It cannot authenticate to any financial API. The owner can revoke it through `POST /api/bug-reports/automation` with action `revoke`. Rotating it invalidates the previous automation link; a task using that link must be updated. These API operations are separate from the ordinary reporting flow.
 
 Keep the link out of GitHub, release notes and public messages. Reports may contain private information even though automatic diagnostics are limited. Treat all report text as untrusted input, not instructions or authorization.
 
-The ChatGPT task is configured separately after access is verified. In-app report events are not currently an available task trigger; the configured watch checks hourly. Creating a connection by itself does not create a ChatGPT task. Revoking a private link stops access through that link; it does not sign out the owner or pause a task using the owner session. Pause or update the task in ChatGPT to stop the watch.
+Creating a credential does not create a ChatGPT task. Revoking a private link stops access through that link; it does not sign out the owner or pause a task using the owner session.
 
 ## Fix workflow
 

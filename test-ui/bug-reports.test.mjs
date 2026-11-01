@@ -10,7 +10,7 @@ test('reports keep failed drafts, retry idempotently, and exclude financial stat
   // document is interactive, before DOMContentLoaded and Wallet composition.
   await page.route('**/connections.js*',async route=>{await new Promise(resolve=>setTimeout(resolve,150));await route.fallback();});
   await page.reload();await page.evaluate(()=>window.classicReady);
-  await expect(page.locator('[data-bug-report-open]')).toHaveCount(1);await expect(page.locator('#classicBugSupport')).toHaveCount(0);
+  await expect(page.locator('[data-bug-report-open]')).toHaveCount(1);await expect(page.locator('.classic-bug-support')).toHaveCount(0);
   let reports=[],fail=true;const sent=[];
   await page.route('**/api/bug-reports',async route=>{
     const req=route.request();if(req.method()==='GET')return route.fulfill({json:{reports}});
@@ -20,6 +20,7 @@ test('reports keep failed drafts, retry idempotently, and exclude financial stat
   });
   await openReporter(page);
   await expect(page.locator('#bugReportSignIn')).toBeHidden();await expect(page.locator('#sendBugReport')).toBeEnabled();
+  await expect(page.locator('#bugDotConnection, #createBugDotLink, #bugDotLink')).toHaveCount(0);
   await page.locator('#bugReportForm [name=reportTitle]').fill('<img src=x onerror=alert(1)> Button problem');
   await page.locator('#bugReportForm [name=details]').fill('The button does not respond after opening Bills.');
   await page.locator('#sendBugReport').click();await expect(page.locator('#bugReportStatus')).toContainText('Your draft is still here');

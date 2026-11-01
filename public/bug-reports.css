@@ -20,8 +20,7 @@
 .bug-release-title { font-weight:700; font-size:1rem; }
 #bugReleaseNotes { padding-left:22px; line-height:1.6; }
 #bugReleaseNotes li { margin:8px 0; }
-#bugDotLink { font-size:13px; }
-#classicBugSupport button { margin:6px 10px 6px 0; }
+.classic-bug-support button { margin:6px 10px 6px 0; }
 .bug-dialog [hidden] { display:none!important; }
 :root[data-theme=dark] .bug-dialog { color:var(--ink,#eef3fb); background:var(--card,#202e43); }
 :root[data-theme=dark] .bug-dialog :is(input,textarea,select) { background:var(--surface-subtle,#18263b); }
