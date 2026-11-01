@@ -1,4 +1,5 @@
-import {occurrences,monthly,day} from './engine.mjs';
+import {occurrences,monthly,day,cents} from './engine.mjs';
+import {createInterestState,accrueInterest,applyInterestPayment} from './debt-interest.mjs';
 
 // Car payments already reserve cash as bills. Project their remaining loan
 // separately so including them in debt totals never deducts a second payment.
@@ -18,17 +19,24 @@ export function carPaymentLoans(bills,planner,accounts=[],today){
   const loan={id:bill.id,name:bill.name,balance,startingBalance:details.startingBalance??balance,currency:account?.currency||'USD',amount:bill.amount,date:bill.date,repeat:bill.repeat||'monthly',apr,accountId,asOf:today,payoffDate:null,interest:null,needsDetails:false,balances:[]};
   if(balance===0)return [{...loan,payoffDate:today,finalPayment:0,interest:0}];
   if(balance===null||apr===null||apr<0||apr>100||loan.currency!=='USD'||!(bill.amount>0)||!bill.date){loan.needsDetails=true;return [loan];}
-  let remaining=balance,interest=0,last=today;
+  const interestCard={apr,interestRules:{...details.interestRules,profileId:'daily-simple',balanceBasis:'principal',grace:'lost'}};
+  const interestState=createInterestState(interestCard,balance/100,today);
+  let remaining=balance,reportedInterest=0;
   const paid=new Set(planner.paid||[]);
   for(const date of occurrences(bill.date,loan.repeat,today,monthly(today,360))){
    // A current bank balance already reflects posted/confirmed payments.
    if(paid.has(bill.id+':'+date))continue;
-   const days=Math.round((Date.parse(date+'T12:00:00Z')-Date.parse(last+'T12:00:00Z'))/86400000);
-   const accrued=Math.round(remaining*apr/100*days/365);
-   interest+=accrued;remaining+=accrued;
-   const payment=Math.min(remaining,bill.amount);remaining-=payment;last=date;
+   // Unpaid interest stays separate from principal. A payment below accrued
+   // interest must not make the next interval accrue interest on that interest.
+   accrueInterest(interestState,interestCard,date);
+   remaining=cents(interestState.balance);
+   const cumulativeInterest=cents(interestState.totalInterest),accrued=cumulativeInterest-reportedInterest;
+   reportedInterest=cumulativeInterest;
+   const payment=Math.min(remaining,bill.amount);
+   applyInterestPayment(interestState,payment===remaining?interestState.balance:payment/100);
+   remaining=cents(interestState.balance);
    loan.balances.push({date,balance:remaining,interest:accrued});
-   if(remaining<=0){loan.payoffDate=date;loan.finalPayment=payment;loan.interest=interest;break;}
+   if(remaining<=0){loan.payoffDate=date;loan.finalPayment=payment;loan.interest=cumulativeInterest;break;}
    if(!Number.isSafeInteger(remaining))break;
   }
   return [loan];

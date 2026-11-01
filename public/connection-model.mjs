@@ -1,4 +1,5 @@
-import {monthlyMinimum,validDueDate} from './debt-payments.mjs?v=paid-cycle1';
+import {monthlyMinimum,validDueDate} from './debt-payments.mjs?v=credit-rules1';
+import {reviewedTermSource} from './debt-terms.mjs?v=credit-rules1';
 const cents=n=>Number.isSafeInteger(n)&&n>=0?n:null;
 const rate=n=>typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=100?n:null;
 const timestamp=value=>Number.isFinite(Date.parse(value))?Date.parse(value):0;
@@ -50,15 +51,26 @@ export function resolveDebtDetails({card,primary=null,backup=null,issuers=[],sta
    push(key,value,'Email statement',at,old,newerProvider?5:old?4:newer?-1:2);
   }
  }
+ const reviewed={};
+ for(const key of ['apr','monthlyMinimum']){
+  const source=reviewedTermSource(card,key);if(!source)continue;
+  const updated=source.asOf+'T00:00:00Z',time=timestamp(updated);if(time>now)continue;
+  const stale=now-time>62*86400000;
+  reviewed[key]={...field(manual[key],source.label,updated,stale),reviewed:true};
+  // A document's date establishes freshness, never the date it was imported.
+  // A current paid-cycle zero remains authoritative over an older amount due.
+  const newer=candidates[key].some(c=>c.time>=time),paid=key==='monthlyMinimum'&&candidates[key].some(c=>c.value===0&&!c.stale);
+  candidates[key].push({...reviewed[key],rank:newer||paid?6:-2,time});
+ }
  const resolved={};
  for(const key of Object.keys(candidates)){
   const list=candidates[key].sort((a,b)=>a.rank-b.rank||b.time-a.time);
-  resolved[key]=(automatic||key==='balance'||key==='creditLimit')&&list.length?list[0]:field(manual[key],'Entered manually');
+  resolved[key]=(automatic||key==='balance'||key==='creditLimit')&&list.length?list[0]:reviewed[key]||field(manual[key],'Entered manually');
   if(resolved[key].stale)notes.push(key==='balance'?'Using the last reported balance; refresh its connection.':'Some payment details use older saved information.');
  }
  const positive=[...candidates.monthlyMinimum.filter(c=>c.value>0),...pastMinimums].sort((a,b)=>timestamp(b.updated)-timestamp(a.updated));
  const forecastMinimum=resolved.monthlyMinimum.value>0?resolved.monthlyMinimum:cents(futureMinimum)>0?field(futureMinimum,'Saved future estimate'):positive[0]||field(manual.monthlyMinimum>0?manual.monthlyMinimum:card.lastPositiveMonthlyMinimum>0?Math.round(card.lastPositiveMonthlyMinimum*100):null,'Saved payment plan');
- return {...resolved,forecastMinimum,currentCycleMinimum:automatic&&resolved.monthlyMinimum.source!=='Entered manually',notes:[...new Set(notes)]};
+ return {...resolved,forecastMinimum,currentCycleMinimum:automatic&&!resolved.monthlyMinimum.reviewed&&resolved.monthlyMinimum.source!=='Entered manually',notes:[...new Set(notes)]};
 }
 export function resolveDebtConnections(planner,accounts,issuers,cards,statements={},items=[],now=Date.now()){
  return Object.fromEntries(cards.map(card=>{

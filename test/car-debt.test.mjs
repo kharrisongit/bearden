@@ -57,3 +57,16 @@ test('paycheck debt summaries include car principal and interest without duplica
  assert.deepEqual(carDebtPeriod(loans,'2027-01-01','2027-01-14'),{balance:0,reduction:5000,interest:0});
  assert.deepEqual(carDebtPeriod([],'2026-11-06','2026-11-19'),{balance:0,reduction:0,interest:0});
 });
+
+test('unpaid car-loan interest does not become principal when the payment is too small',()=>{
+ const smallPayment={...bill,date:'2026-01-11',amount:500};
+ const p={...planner,carLoanDetails:{car:{balance:100000,apr:36.5}}};
+ const before=JSON.stringify(p);
+ const [loan]=carPaymentLoans([smallPayment],p,[],'2026-01-01');
+ // At $1 per day on $1,000 principal, each $5 payment leaves principal intact.
+ assert.deepEqual(loan.balances.slice(0,3).map(row=>row.interest),[1000,3100,2800]);
+ assert.deepEqual(loan.balances.slice(0,3).map(row=>row.balance),[100500,103100,105400]);
+ assert.equal(loan.payoffDate,null);
+ assert.equal(loan.interest,null);
+ assert.equal(JSON.stringify(p),before);
+});

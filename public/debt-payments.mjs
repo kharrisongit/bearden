@@ -1,5 +1,5 @@
-// Monthly amounts are shown in account editors. The payoff engine retains
-// its existing 26-paycheck annual allocation, including legacy saved amounts.
+// Monthly amounts are shown in account editors. Legacy per-paycheck values
+// remain readable; accounts with calculation rules fund each actual due cycle.
 const money=value=>Math.round((Number(value)||0)*100)/100;
 export function monthlyMinimum(card){
  return money(Number.isFinite(card?.monthlyMinimum)?card.monthlyMinimum:(Number(card?.min)||0)*26/12);
@@ -20,12 +20,36 @@ export function validDueDate(value){
 export function paymentIsLate(timing,payday,today,checked,amount){
  return !checked&&amount>0&&validDueDate(timing?.dueDate)&&timing.dueDate<(payday>today?payday:today);
 }
+// Split a complete monthly requirement across the actual biweekly paydays in
+// (previous due date, current due date]. The last payday receives cent residue.
+export function monthlyPaycheckAllocation(card,payday,startDate){
+ if(!validDueDate(card?.dueDate)||!validDueDate(payday)||!validDueDate(startDate))return null;
+ const stamp=value=>Date.parse(value+'T12:00Z'),period=14*86400000,p=stamp(payday),start=stamp(startDate);
+ if(p<start||(p-start)%period!==0)return null;
+ const current=new Date(p),dueDay=Number(card.dueDate.slice(8));
+ const dueAt=offset=>{
+  const first=new Date(Date.UTC(current.getUTCFullYear(),current.getUTCMonth()+offset,1,12));
+  const last=new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,0,12)).getUTCDate();
+  return Date.UTC(first.getUTCFullYear(),first.getUTCMonth(),Math.min(dueDay,last),12);
+ };
+ const offset=p<=dueAt(0)?0:1,due=dueAt(offset),previous=dueAt(offset-1);
+ const firstIndex=Math.max(0,Math.floor((previous-start)/period)+1),lastIndex=Math.floor((due-start)/period);
+ const count=lastIndex-firstIndex+1,index=Math.round((p-start)/period)-firstIndex;
+ if(count<1||index<0||index>=count)return null;
+ const monthly=Math.max(0,monthlyMinimum(card)),total=Math.round(monthly*100),base=Math.floor(total/count);
+ return {scheduled:true,minimum:(base+(index===count-1?total-base*count:0))/100,
+  dueDate:new Date(due).toISOString().slice(0,10),cycleStart:new Date(previous).toISOString().slice(0,10),
+  cyclePaychecks:count,cyclePaycheckIndex:index+1,monthlyMinimum:monthly,allocation:'monthly-split',late:false,missingDate:false};
+}
 // Each monthly due date belongs to the last biweekly payday before its buffer.
 // Calendar arithmetic uses UTC noon so daylight-saving changes cannot move a day.
 export function scheduledPayment(card,payday,startDate,settings={}){
  const metadata={estimatedMinimum:!!card.estimatedMinimum,missingFutureMinimum:!!card.missingFutureMinimum,forecastMonthlyMinimum:card.forecastMonthlyMinimum??null};
  const timing=paymentTiming(settings),fallback={...metadata,scheduled:true,minimum:Math.max(0,Number(card.min)||0),dueDate:null,late:false,missingDate:false};
- if(timing.mode!=='due-date')return fallback;
+ if(timing.mode!=='due-date'){
+  const profiled=card.interestRules&&typeof card.interestRules==='object'&&!Array.isArray(card.interestRules);
+  return profiled?{...fallback,...monthlyPaycheckAllocation(card,payday,startDate),missingDate:!validDueDate(card.dueDate)}:fallback;
+ }
  if(!validDueDate(card.dueDate))return {...fallback,missingDate:true};
  const stamp=value=>Date.parse(value+'T12:00Z'),day=86400000,p=stamp(payday),start=stamp(startDate),next=p+14*day,d=new Date(p),dueDay=Number(card.dueDate.slice(8));
  let due=null;

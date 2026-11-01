@@ -325,7 +325,7 @@ function payoffActionPayment(balance,interest,minimum,action){
  return action==='squash'?balance+interest:Math.min(balance+interest,Math.max(minimum,Math.round(balance*50)/100));
 }
 function paycheckActionAllowance(row,index,action){
- const amount=payoffActionPayment(row.balancesBefore[index],row.interestByAccount[index],row.minimumPayments[index],action);
+ const amount=payoffActionPayment(row.balancesBefore[index],row.interestByAccount[index]+(row.feesByAccount?.[index]||0),row.minimumPayments[index],action);
  const required=row.payoffActionPayments.reduce((sum,n)=>sum+n,0)-row.payoffActionPayments[index]+amount;
  const shortfall=Math.max(0,Math.round(required*100)-Math.round(row.payoffActionFunds*100))/100;
  return {allowed:row.balancesBefore[index]>.005&&shortfall===0,shortfall};
@@ -464,6 +464,9 @@ function gatherAppState(){
       apr: c.apr,
       min: c.min,
       monthlyMinimum: c.monthlyMinimum,
+      interestRules: c.interestRules,
+      minimumRules: c.minimumRules,
+      termsSource: c.termsSource,
       lastPositiveMonthlyMinimum: c.lastPositiveMonthlyMinimum,
       dueDate: c.dueDate || '',
       debtKind: c.debtKind || 'other',
@@ -495,6 +498,7 @@ function gatherAppState(){
     debtPaymentSettings: window.debtPaymentSettings || {},
     debtPaymentHistory: window.debtPaymentHistory || {},
     debtInterestHistory: window.debtInterestHistory || {},
+    debtFeeHistory: window.debtFeeHistory || {},
     paycheckOverrides,
     savingsContributionOverrides,
     budgetItemOverrides,
@@ -578,6 +582,7 @@ async function loadAppState(){
     window.debtPaymentSettings = window.BearDenDebtPayments.paymentTiming(state.debtPaymentSettings);
     window.debtPaymentHistory = state.debtPaymentHistory || {};
     window.debtInterestHistory = state.debtInterestHistory || {};
+    window.debtFeeHistory = state.debtFeeHistory || {};
 
     if (state.cards && state.cards.length) { cardsData = state.cards; cardIdCounter = state.cardIdCounter || cardIdCounter; }
     if (state.budgetItems) { budgetItems = state.budgetItems; budgetItemIdCounter = state.budgetItemIdCounter || budgetItemIdCounter; }
@@ -860,6 +865,10 @@ function calculate(isInitialLoad){
       id: c.id,
       name: c.name,
       dueDate: c.dueDate || '',
+      debtKind: c.debtKind || 'other',
+      interestRules: c.interestRules,
+      minimumRules: c.minimumRules,
+      termsSource: c.termsSource,
       balance: balEl ? (parseFloat(balEl.value)||0) : c.balance,
       apr: (aprEl ? (parseFloat(aprEl.value)||0) : c.apr)/100,
       ...(minEl&&Number(minEl.value)!==window.BearDenDebtPayments.monthlyMinimum(c)
@@ -871,7 +880,7 @@ function calculate(isInitialLoad){
   // account's detail view closes and its inputs leave the DOM.
   cardsData.forEach((c, idx) => {
     c.balance = cards[idx].balance;
-    c.apr = cards[idx].apr * 100;
+    c.apr = Number((cards[idx].apr * 100).toFixed(6));
     c.min = cards[idx].min;
     c.monthlyMinimum = cards[idx].monthlyMinimum;
   });
@@ -914,6 +923,12 @@ function calculate(isInitialLoad){
   });
 
   const syncedApplied=new Set();
+  const interestModel=window.BearDenDebtInterest;
+  const interestStates=cards.map(()=>null);
+  const initialInterestDate=startDateVal||date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+  const lastInterestDates=cards.map(()=>initialInterestDate);
+  const minimumCycles=cards.map(()=>new Map());
+  const minimumCyclePaid=cards.map(()=>new Map());
   const schedule = [];
   let totalInterest = 0;
   let paycheck = 0;
@@ -949,7 +964,7 @@ function calculate(isInitialLoad){
     const dateKey=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
     // Rebase only future, unchecked rows; historical checkoffs retain their original math.
     let rebased=false;
-    cards.forEach((card,i)=>{const snapshot=window.syncedDebtBalances?.[card.id];if(snapshot&&!syncedApplied.has(card.id)&&dateKey>=snapshot.date&&!checkedPaychecks[paycheck]){balances[i]=snapshot.balance/100;paidOffAt[i]=null;syncedApplied.add(card.id);rebased=true;}});
+    cards.forEach((card,i)=>{const snapshot=window.syncedDebtBalances?.[card.id];if(snapshot&&!syncedApplied.has(card.id)&&dateKey>=snapshot.date&&!checkedPaychecks[paycheck]){balances[i]=snapshot.balance/100;paidOffAt[i]=null;interestStates[i]=null;lastInterestDates[i]=snapshot.date;syncedApplied.add(card.id);rebased=true;}});
     if(rebased){prevTotal=balances.reduce((a,b)=>a+b,0);debtFreeDate=null;debtFreePaycheck=null;}
     const accountBillsThisCheck=window.accountBillsForPaycheck?.(dateKey,paycheck)||[];
     expensesThisCheck+=accountBillsThisCheck.reduce((sum,bill)=>sum+bill.amount/100,0);
@@ -988,22 +1003,66 @@ function calculate(isInitialLoad){
     });
 
     const payday=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
-    const effective=cards.map(c=>window.BearDenDebtPayments.effectiveDebtTerms({...c,apr:c.apr*100},window.syncedDebtTerms?.[c.id],payday,!!checkedPaychecks[paycheck]));
+    let effective=cards.map(c=>window.BearDenDebtPayments.effectiveDebtTerms({...c,apr:c.apr*100},window.syncedDebtTerms?.[c.id],payday,!!checkedPaychecks[paycheck]));
     const aprs=effective.map(c=>c.apr/100);
+    const fees=cards.map(()=>0),interestNotes=cards.map(()=>[]);
     const interest = balances.map((b,i) => {
-      const recorded=checkedPaychecks[paycheck]&&window.debtInterestHistory?.[paycheck]?.[cards[i].id];
-      return Number.isFinite(recorded)?recorded:b*aprs[i]/26;
+      if(checkedPaychecks[paycheck]){
+        const recorded=window.debtInterestHistory?.[paycheck]?.[cards[i].id];
+        const recordedFees=window.debtFeeHistory?.[paycheck]?.[cards[i].id];
+        fees[i]=Number.isFinite(recordedFees)?recordedFees:0;
+        // Completed checks retain their original recorded math, including
+        // legacy checks that predate explicit interest history.
+        return Number.isFinite(recorded)?recorded:b*aprs[i]/26;
+      }
+      if(!interestModel)return b*aprs[i]/26;
+      interestStates[i]??=interestModel.createInterestState(effective[i],b,lastInterestDates[i]);
+      const accrued=interestModel.accrueInterest(interestStates[i],effective[i],payday);
+      fees[i]=accrued.fees;interestNotes[i]=accrued.notes;
+      return accrued.interest;
     });
+    const charges=interest.map((n,i)=>n+fees[i]);
     const interestThisCheck = interest.reduce((a,b)=>a+b, 0);
     interest.forEach(v => totalInterest += v);
 
-    const timing=effective.map(c=>window.BearDenDebtPayments.scheduledPayment(c,payday,startDateVal||payday,window.debtPaymentSettings));
-    const minApplied = balances.map((b,i) => b <= 0 ? 0 : Math.min(timing[i].minimum, b + interest[i]));
+    const timing=effective.map((card,i)=>{
+      const synced=window.syncedDebtTerms?.[card.id];
+      const currentReported=!!synced?.currentCycleMinimum&&payday>=synced.date&&payday<=(synced.currentCycleThrough||synced.dueDate||synced.date);
+      const minimumSource=card.termsSource?.fields?card.termsSource.fields.monthlyMinimum:card.termsSource;
+      const statementThrough=minimumSource?.statementDueDate??(minimumSource?card.termsSource?.statementDueDate:null);
+      const currentReviewed=window.BearDenDebtPayments.validDueDate(statementThrough)&&payday<=statementThrough;
+      const profile=card.minimumRules?.profileId||'saved';
+      let proposed=card;
+      if(interestModel&&!checkedPaychecks[paycheck]&&!currentReported&&!currentReviewed&&profile!=='saved'&&profile!=='installment'){
+        const monthly=interestModel.estimateMinimumPayment(card,balances[i]+charges[i]);
+        proposed={...card,...window.BearDenDebtPayments.monthlyPaymentSettings(card,monthly),estimatedMinimum:true,forecastMonthlyMinimum:monthly};
+      }
+      let result=window.BearDenDebtPayments.scheduledPayment(proposed,payday,startDateVal||payday,window.debtPaymentSettings);
+      // A statement minimum is a monthly obligation. Keep its amount stable
+      // across the paydays funding that cycle instead of shrinking it after
+      // the first partial payment.
+      if(!checkedPaychecks[paycheck]&&proposed.interestRules&&result.dueDate){
+        const cached=minimumCycles[i].get(result.dueDate);
+        if(cached!==undefined&&!currentReported){
+          proposed={...proposed,...window.BearDenDebtPayments.monthlyPaymentSettings(proposed,cached),...(proposed.estimatedMinimum?{forecastMonthlyMinimum:cached}:{})};
+          result=window.BearDenDebtPayments.scheduledPayment(proposed,payday,startDateVal||payday,window.debtPaymentSettings);
+        }else minimumCycles[i].set(result.dueDate,window.BearDenDebtPayments.monthlyMinimum(proposed));
+      }
+      if(!checkedPaychecks[paycheck]&&result.allocation==='monthly-split'){
+        const paid=minimumCyclePaid[i].get(result.dueDate)||0;
+        const remaining=Math.max(0,Math.round(result.monthlyMinimum*100)-Math.round(paid*100));
+        const slots=Math.max(1,result.cyclePaychecks-result.cyclePaycheckIndex+1);
+        result={...result,minimum:(slots===1?remaining:Math.floor(remaining/slots))/100};
+      }
+      effective[i]=proposed;
+      return result;
+    });
+    const minApplied = balances.map((b,i) => Math.max(0,Math.min(timing[i].minimum,b+charges[i])));
     // A payoff action replaces automatic extra payments and old manual payment
     // adjustments. Reserve real spending, savings and every other debt first.
     const realExtras=(extraExpenses[paycheck]||[]).filter(e=>e.autoFromCardId==null).reduce((sum,e)=>sum+e.amount,0);
     const payoffActionFunds=Math.max(0,thisCheckTakeHome+bonusThisCheck-expensesThisCheck-realExtras-totalContribThisCheck);
-    const payoffActionPayments=cards.map((card,i)=>squashed[i]?payoffActionPayment(balances[i],interest[i],minApplied[i],'squash'):sliced[i]?payoffActionPayment(balances[i],interest[i],minApplied[i],'slice'):minApplied[i]);
+    const payoffActionPayments=cards.map((card,i)=>squashed[i]?payoffActionPayment(balances[i],charges[i],minApplied[i],'squash'):sliced[i]?payoffActionPayment(balances[i],charges[i],minApplied[i],'slice'):minApplied[i]);
     const payoffActionShortfall=Math.max(0,Math.round(payoffActionPayments.reduce((sum,n)=>sum+n,0)*100)-Math.round(payoffActionFunds*100))/100;
     // Keep recorded history intact. Upcoming actions remain selected but pause
     // at minimums when refreshed balances or budget edits make them unaffordable.
@@ -1050,7 +1109,7 @@ function calculate(isInitialLoad){
       let pool=burn?Math.floor(cash*50+1e-8)/100:cash;
       for(const i of priorityOrder){
         if(fixedPayments[i]!==null||balances[i]<=0||(!burn&&!timing[i].scheduled))continue;
-        const remainingAfterMin=Math.max(0,balances[i]+interest[i]-minApplied[i]);
+        const remainingAfterMin=Math.max(0,balances[i]+charges[i]-minApplied[i]);
         let amount=Math.min(pool,remainingAfterMin);
         if(burn&&remainingAfterMin-amount<=10+1e-8&&remainingAfterMin<=cash)amount=remainingAfterMin;
         extras[i]=amount;
@@ -1098,8 +1157,20 @@ function calculate(isInitialLoad){
     const payments = [];
     const newBalances = [];
     for (let i = 0; i < cards.length; i++) {
-      const payment = overridePayment[i] !== null ? overridePayment[i] : (minApplied[i] + extra[i]);
-      const newBal = Math.max(0, balances[i] + interest[i] - payment);
+      const requestedPayment = overridePayment[i] !== null ? overridePayment[i] : (minApplied[i] + extra[i]);
+      const payment = checkedPaychecks[paycheck]?requestedPayment:Math.max(0,Math.min(requestedPayment,balances[i]+charges[i]));
+      let newBal = Math.max(0, balances[i] + charges[i] - payment);
+      if(interestModel&&!checkedPaychecks[paycheck]&&interestStates[i]){
+        interestModel.applyInterestPayment(interestStates[i],payment);
+        newBal=interestStates[i].balance;
+      }else interestStates[i]=null;
+      lastInterestDates[i]=payday;
+      if(timing[i].dueDate){
+        const synced=window.syncedDebtTerms?.[cards[i].id];
+        // A refreshed current-cycle minimum is the requirement as observed on
+        // its source date; earlier completed payments must not reduce it twice.
+        if(!synced?.currentCycleMinimum||payday>synced.date||payday===synced.date&&!checkedPaychecks[paycheck])minimumCyclePaid[i].set(timing[i].dueDate,(minimumCyclePaid[i].get(timing[i].dueDate)||0)+payment);
+      }
       payments.push(payment);
       newBalances.push(newBal);
       if (balances[i] > 0 && newBal <= 0.005 && paidOffAt[i] === null) {
@@ -1127,6 +1198,9 @@ function calculate(isInitialLoad){
       debtReduction: prevTotal - newTotal,
       interestThisCheck,
       interestByAccount: interest.slice(),
+      feesByAccount: fees.slice(),
+      feesThisCheck: fees.reduce((sum,n)=>sum+n,0),
+      interestNotes,
       payments: payments.slice(),
       naturalPayments,
       paymentOverridden: overridePayment.map(v => !sliceMode&&v !== null),
@@ -2050,6 +2124,9 @@ function toggleChecked(paycheckNum, checked){
   window.debtInterestHistory??={};
   if(checked&&row)window.debtInterestHistory[paycheckNum]=Object.fromEntries(cardsData.map((c,i)=>[c.id,row.interestByAccount?.[i]||0]));
   else delete window.debtInterestHistory[paycheckNum];
+  window.debtFeeHistory??={};
+  if(checked&&row)window.debtFeeHistory[paycheckNum]=Object.fromEntries(cardsData.map((c,i)=>[c.id,row.feesByAccount?.[i]||0]));
+  else delete window.debtFeeHistory[paycheckNum];
   checkedPaychecks[paycheckNum] = checked;
   window.dispatchEvent(new Event('bearden-plan-changed'));
   performSaveAppState(); // Persist completion before the celebration or leaving animation.
@@ -2249,9 +2326,16 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
   const startTotal = cards.reduce((a,c)=>a+c.balance,0);
   lastStartTotal = startTotal;
   const baseDebtFreeDate=debtFreeDate;
+  const uncertainLoans=cards.filter((c,i)=>{
+    if(c.interestRules?.balanceBasis!=='unknown')return false;
+    const snapshot=window.syncedDebtBalances?.[c.id];
+    const remaining=Number.isFinite(snapshot?.balance)?snapshot.balance/100:c.balance+schedule.filter(row=>checkedPaychecks[row.paycheck]).reduce((sum,row)=>sum+(row.interestByAccount?.[i]||0)+(row.feesByAccount?.[i]||0)-(row.payments?.[i]||0),0);
+    return remaining>0.01;
+  }).map(c=>c.name);
   const dateKey=date=>date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
   const forecast=window.BearDenCarDebt.combinedDebtForecast({date:debtFreeDate?dateKey(debtFreeDate):null,interest:totalInterest,hasDebt:cards.some(c=>c.balance>0)},window.carDebtForecast||[],dateKey(new Date()));
   debtFreeDate=forecast.date?new Date(forecast.date+'T00:00:00'):null;
+  if(uncertainLoans.length)debtFreeDate=null;
   if((window.carDebtForecast||[]).length){
     const first=document.getElementById('startDate').value;
     debtFreePaycheck=debtFreeDate&&first?Math.max(1,Math.floor((debtFreeDate-new Date(first+'T00:00:00'))/86400000/14)+1):null;
@@ -2261,7 +2345,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
 
   if (neverPaysOff) {
     const missingFutureMinimum=schedule.some(row=>row.debtTiming?.some((t,i)=>t.missingFutureMinimum&&row.balancesBefore[i]>0));
-    document.getElementById('heroDate').textContent = forecast.needsCarDetails?'Car loan details needed':missingFutureMinimum?'Future minimum needed':(cards.some(c=>c.balance>0)||(window.carDebtForecast||[]).some(l=>l.balance>0))&&Number(document.getElementById('takeHome').value)>0?'No payoff within 30 years':'Set up income, budget, and debt to begin';
+    document.getElementById('heroDate').textContent = uncertainLoans.length?'Loan balance type needed':forecast.needsCarDetails?'Car loan details needed':missingFutureMinimum?'Future minimum needed':(cards.some(c=>c.balance>0)||(window.carDebtForecast||[]).some(l=>l.balance>0))&&Number(document.getElementById('takeHome').value)>0?'No payoff within 30 years':'Set up income, budget, and debt to begin';
     document.getElementById('heroDate').style.color = '#e8a15c';
     document.getElementById('heroDate').style.fontSize = '1.15rem';
     document.getElementById('heroDayCounter').textContent = '';
@@ -2277,7 +2361,8 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
   document.getElementById('heroPaycheckCounter').style.display=neverPaysOff?'none':'';
   document.getElementById('heroInterest').textContent = neverPaysOff?'Unavailable':money(totalInterest);
   const forecastNote=document.getElementById('debtForecastNote');
-  forecastNote.textContent=debtForecastNotice(cards,schedule,baseDebtFreeDate,checkedPaychecks);
+  const loanNote=uncertainLoans.length?'Confirm the balance type for '+uncertainLoans.join(', ')+'. Their forecast excludes additional interest until principal is distinguished from total scheduled repayments.':'';
+  forecastNote.textContent=[debtForecastNotice(cards,schedule,baseDebtFreeDate,checkedPaychecks),loanNote].filter(Boolean).join(' ');
   forecastNote.hidden=!forecastNote.textContent;
   const sliceNote=document.getElementById('sliceInterestNote');
   sliceNote.hidden=!sliceComparison;
@@ -2395,6 +2480,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
         <div class="paycheck-debt-amounts">
           <div><small>Before</small><span class="balance-before">${money(row.balancesBefore[i])}</span></div>
           <div><small>Interest</small><span class="interest">${money(row.interestByAccount[i])}</span></div>
+          ${row.feesByAccount?.[i]>0.005?`<div><small>Fees</small><span>${money(row.feesByAccount[i])}</span></div>`:''}
           <label><small>${row.debtTiming?.[i]?.estimatedMinimum?'Est. payment':'Payment'}</small><input type="number" class="${payInputClass}" aria-label="Payment for ${bdEscape(c.name)}" ${row.sliceMode?`readonly title="${payoffControlsEnabled?'Undo Slice or Squash':'Enable Slice / Squash in Settings, then undo the choice'} to edit this paycheck’s payments"`:''} value="${row.payments[i].toFixed(2)}" step="0.01" data-bd-change="updateAccountPayment(${c.id}, ${row.paycheck}, this.value, ${row.naturalPayments[i]})"></label>
           <div><small>After</small><span class="bal">${money(row.balancesAfter[i])}</span></div>
         </div>
@@ -6956,8 +7042,10 @@ function setupPaycheckBears(){
 
 window.classicReady=(async function init(){
   await window.BearDen.ready;
-  window.BearDenDebtPayments=await import('./debt-payments.mjs?v=creditor-themes2');
-  window.BearDenCarDebt=await import('./car-debt.mjs?v=car-debt1');
+  window.BearDenDebtPayments=await import('./debt-payments.mjs?v=credit-rules1');
+  window.BearDenDebtInterest=await import('./debt-interest.mjs?v=credit-rules1');
+  window.BearDenDebtTerms=await import('./debt-terms.mjs?v=credit-rules1');
+  window.BearDenCarDebt=await import('./car-debt.mjs?v=credit-rules1');
   window.BearDenTaxes=await import('./tax-ui.mjs?v=household-theme1');window.BearDenTaxes.mount();
   applyThemeButtonIcon(); // reflect whatever the early <head> script already applied
   applyThemeBackground(document.documentElement.getAttribute('data-theme') === 'dark');
@@ -7028,8 +7116,28 @@ window.deleteDebtAccounts=async function(ids,nextPlanner){
  cardsData=next.cards;accountPaymentOverrides=next.accountPaymentOverrides||{};
  paycheckSlices=next.paycheckSlices||{};paycheckSquashes=next.paycheckSquashes||{};extraExpenses=next.extraExpenses||{};
  window.debtPaymentHistory=next.debtPaymentHistory||{};window.debtInterestHistory=next.debtInterestHistory||{};
+ window.debtFeeHistory=next.debtFeeHistory||{};
  for(const id of ids){if(window.syncedDebtBalances)delete window.syncedDebtBalances[id];if(window.syncedDebtTerms)delete window.syncedDebtTerms[id];}
  currentDetailAccountIdx=null;calculate();clearTimeout(saveDebounceTimer);
+};
+
+// Reviewed statement terms never supply or rewrite a live account balance.
+window.saveDebtTerms=async function(patch){
+ await window.classicReady;
+ const index=cardsData.findIndex(c=>String(c.id)===String(patch.id));
+ if(index<0)throw Error('That debt no longer exists.');
+ const before=structuredClone(cardsData),balancesBefore=cardsData.map(c=>c.balance);
+ const syncedBefore=JSON.stringify(window.syncedDebtBalances||{});
+ window.captureDebtHistory();
+ const syncTerms=()=>cardsData.forEach(c=>{for(const [prefix,value]of [['apr',c.apr],['monthlyMin',window.BearDenDebtPayments.monthlyMinimum(c)]]){const input=document.getElementById(prefix+'_'+c.id);if(input)input.value=value;}});
+ try{
+  cardsData[index]=window.BearDenDebtTerms.applyDebtTerms(cardsData[index],patch);
+  syncTerms();calculate();clearTimeout(saveDebounceTimer);
+  if(cardsData.some((c,i)=>c.balance!==balancesBefore[i])||JSON.stringify(window.syncedDebtBalances||{})!==syncedBefore)throw Error('The balance changed while updating terms. Reload and try again.');
+  await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));
+  clearTimeout(saveRetryTimer);window.dismissBearToast?.('autosave-error');setStorageStatus('Terms saved');
+  return cardsData[index].id;
+ }catch(error){cardsData=before;syncTerms();calculate();clearTimeout(saveDebounceTimer);throw error;}
 };
 
 // Account creation uses the same payoff state as the original tracker.
@@ -7043,9 +7151,15 @@ window.saveDebtAccount=async function(data){
  if(data.id!==null&&data.id!==undefined&&!card)throw Error('That debt no longer exists.');
  window.captureDebtHistory();
  const payment=window.BearDenDebtPayments.monthlyPaymentSettings(card,monthly);
+ const manuallyChangedTerms=card?['apr','monthlyMinimum'].filter(key=>key==='apr'?Number(card.apr)!==apr:window.BearDenDebtPayments.monthlyMinimum(card)!==monthly):[];
  const lastPositiveMonthlyMinimum=monthly>0?monthly:card&&window.BearDenDebtPayments.monthlyMinimum(card)>0?window.BearDenDebtPayments.monthlyMinimum(card):card?.lastPositiveMonthlyMinimum;
  if(!card){cardIdCounter=Math.max(cardIdCounter,...cardsData.map(c=>Number(c.id)||0))+1;card={id:cardIdCounter};cardsData.push(card);}
  Object.assign(card,{name,balance,apr,dueDate,...payment,lastPositiveMonthlyMinimum,debtKind:['credit-card','car-loan','loan','other'].includes(data.debtKind)?data.debtKind:'other'});
+ if(card.termsSource&&manuallyChangedTerms.length){
+  const fields={...(card.termsSource.fields||Object.fromEntries(['apr','monthlyMinimum'].map(key=>[key,{asOf:card.termsSource.asOf,label:card.termsSource.label}])))};
+  for(const key of manuallyChangedTerms)delete fields[key];
+  card.termsSource={...card.termsSource,fields};
+ }
  const syncInputs=()=>cardsData.forEach(c=>{for(const [prefix,key]of [['bal','balance'],['apr','apr'],['monthlyMin','monthlyMinimum']]){const input=document.getElementById(prefix+'_'+c.id);if(input)input.value=prefix==='monthlyMin'?window.BearDenDebtPayments.monthlyMinimum(c):c[key];}});
  try{syncInputs();calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));clearTimeout(saveRetryTimer);window.dismissBearToast?.('autosave-error');setStorageStatus('Saved');return card.id;}
  catch(e){cardsData=oldCards;cardIdCounter=oldCounter;syncInputs();calculate();clearTimeout(saveDebounceTimer);throw e;}
@@ -7122,10 +7236,11 @@ window.setSyncedDebtBalances=snapshots=>{
 
 
 window.captureDebtHistory=()=>{
- window.debtPaymentHistory??={};window.debtInterestHistory??={};
+ window.debtPaymentHistory??={};window.debtInterestHistory??={};window.debtFeeHistory??={};
  for(const row of lastSchedule)if(checkedPaychecks[row.paycheck]){
   window.debtPaymentHistory[row.paycheck]??=Object.fromEntries(cardsData.map((c,i)=>[c.id,row.payments[i]]));
   window.debtInterestHistory[row.paycheck]??=Object.fromEntries(cardsData.map((c,i)=>[c.id,row.interestByAccount?.[i]||0]));
+  window.debtFeeHistory[row.paycheck]??=Object.fromEntries(cardsData.map((c,i)=>[c.id,row.feesByAccount?.[i]||0]));
  }
 };
 window.setSyncedDebtTerms=function(terms){
@@ -7162,7 +7277,7 @@ document.getElementById('addDebtPaymentForm').onsubmit=async event=>{
  const row=lastSchedule.find(r=>r.paycheck===addingDebtPaycheck),index=cardsData.findIndex(c=>String(c.id)===form.elements.debtId.value),extra=Number(form.elements.amount.value);
  if(!row||index<0||checkedPaychecks[addingDebtPaycheck]){status.textContent='This paycheck changed. Close and reopen it.';return;}
  if(!Number.isFinite(extra)||extra<=0){status.textContent='Enter an amount greater than zero.';return;}
- const card=cardsData[index],owed=row.balancesBefore[index]+row.interestByAccount[index],payment=Math.round((row.payments[index]+extra)*100)/100;
+ const card=cardsData[index],owed=row.balancesBefore[index]+row.interestByAccount[index]+(row.feesByAccount?.[index]||0),payment=Math.round((row.payments[index]+extra)*100)/100;
  if(payment>owed+.005){status.textContent='That exceeds the remaining balance for this paycheck.';return;}
  const before=structuredClone(accountPaymentOverrides),slices=structuredClone(paycheckSlices),squashes=structuredClone(paycheckSquashes);
  button.disabled=true;try{

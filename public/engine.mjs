@@ -1,3 +1,5 @@
+import {createInterestState,accrueInterest,applyInterestPayment} from './debt-interest.mjs';
+
 export const cents = n => Math.round(Number(n || 0) * 100);
 export const money = n => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n/100);
 export const today = () => {const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
@@ -33,6 +35,18 @@ export function validate(s){
 }
 export function forecast(s,start=today(),length=s.settings.horizon){
  const end=day(start,length), events=[],paid=new Set(s.paid), balances=s.debts.map(d=>d.balance), savings=s.goals.map(g=>g.saved);
+ // Keep the interest ledger in dollars at full precision; the legacy planner
+ // exposes integer cents. Cash events never capitalize or round debt interest.
+ const interestStates=s.debts.map(d=>createInterestState(d,d.balance/100,start));
+ const accrueTo=date=>interestStates.forEach((state,i)=>{accrueInterest(state,s.debts[i],date);balances[i]=cents(state.balance);});
+ const payDebt=(i,requested)=>{
+  const state=interestStates[i],due=Math.max(0,Math.min(balances[i],Math.round(requested)));
+  // Close a fractional-cent payoff at the payment boundary, without leaving a
+  // phantom debt when the cent-denominated payment satisfies the rounded debt.
+  applyInterestPayment(state,due===balances[i]?state.balance:due/100);
+  balances[i]=cents(state.balance);
+  return due;
+ };
  for(const p of s.income)for(const date of occurrences(p.date,p.repeat,start,end))events.push({date,type:'income',id:p.id+':'+date,name:p.name,amount:p.amount});
  for(const b of s.bonuses)if(b.date>=start&&b.date<=end)events.push({date:b.date,type:'bonus',id:b.id,name:b.name,amount:b.amount});
  for(const b of s.bills){const dates=b.repeat==='once'&&b.date<start?[b.date]:occurrences(b.date,b.repeat,start,end);for(const date of dates)if(!paid.has(b.id+':'+date))events.push({date:date<start?start:date,type:['budget','baby-bear-budget'].includes(b.source)?'budget':'bill',id:b.id+':'+date,name:b.name+(date<start?' (overdue)':''),amount:-b.amount});}
@@ -47,13 +61,13 @@ export function forecast(s,start=today(),length=s.settings.horizon){
   if(date>=start&&date<=end&&events.some(x=>x.date===date&&['income','bonus'].includes(x.type)))for(const x of edit.expenses||[])events.push({date,type:'expense',id:'extra:'+date+':'+x.id,name:x.name,amount:-x.amount});
  }
  const priority={bill:0,minimum:1,income:2,bonus:2,budget:3,expense:3};events.sort((a,b)=>a.date.localeCompare(b.date)||priority[a.type]-priority[b.type]);
- let cash=s.accounts.filter(a=>a.include).reduce((n,a)=>n+a.balance,0), low=cash,firstShortfall=cash<0?start:null,interest=0,lastDate=start;
- const rows=[],checks=[];let accrued=balances.map(()=>0),minimumPaid=balances.map(()=>0);
+ let cash=s.accounts.filter(a=>a.include).reduce((n,a)=>n+a.balance,0), low=cash,firstShortfall=cash<0?start:null;
+ const rows=[],checks=[];let reportedInterest=balances.map(()=>0),minimumPaid=balances.map(()=>0);
  let debtFreeDate=balances.every(b=>b===0)?start:null;
  for(let idx=0;idx<events.length;idx++){
-  const e=events[idx],elapsed=Math.round((new Date(e.date)-new Date(lastDate))/86400000);
-  if(elapsed>0){balances.forEach((b,i)=>{const add=Math.round(b*s.debts[i].apr/100*elapsed/365);balances[i]+=add;interest+=add;accrued[i]+=add;});lastDate=e.date;}
-  if(e.type==='minimum'){const due=Math.min(balances[e.debt],-e.amount);e.amount=-due;balances[e.debt]-=due;minimumPaid[e.debt]+=due;}
+  const e=events[idx];
+  accrueTo(e.date);
+  if(e.type==='minimum'){const due=payDebt(e.debt,-e.amount);e.amount=-due;minimumPaid[e.debt]+=due;}
   cash+=e.amount;low=Math.min(low,cash);if(cash<0&&!firstShortfall)firstShortfall=e.date;
   rows.push({...e,balance:cash});
   // Combine all deposits on a day, then plan once. Bills on payday conservatively precede deposits.
@@ -70,14 +84,21 @@ export function forecast(s,start=today(),length=s.settings.horizon){
    let order=balances.map((_,i)=>i).sort((a,b)=>s.settings.method==='avalanche'?s.debts[b].apr-s.debts[a].apr:balances[a]-balances[b]);
    // Reserve explicit extra payments before distributing remaining money automatically.
    order.sort((a,b)=>Number(edit.debt?.[s.debts[b].id]!==undefined)-Number(edit.debt?.[s.debts[a].id]!==undefined));
-   for(const i of order){let target=balances[i];if(s.settings.method==='squasher'&&!s.squash.includes(e.date))target=(bonus>0?largest.has(i):!largest.has(i))?Math.ceil(balances[i]/2):0;const requested=edit.debt?.[s.debts[i].id];if(requested!==undefined)target=Math.min(requested,balances[i]);const n=Math.min(pool,target);if(requested!==undefined&&n<requested)capped=true;pool-=n;balances[i]-=n;debt[i]=n;}
+   for(const i of order){let target=balances[i];if(s.settings.method==='squasher'&&!s.squash.includes(e.date))target=(bonus>0?largest.has(i):!largest.has(i))?Math.ceil(balances[i]/2):0;const requested=edit.debt?.[s.debts[i].id];if(requested!==undefined)target=Math.min(requested,balances[i]);const n=payDebt(i,Math.min(pool,target));if(requested!==undefined&&n<requested)capped=true;pool-=n;debt[i]=n;}
    const allocated=save.reduce((a,b)=>a+b,0)+debt.reduce((a,b)=>a+b,0);cash-=allocated;
    if(allocated)rows.push({date:e.date,type:'plan',name:'Suggested debt & savings',amount:-allocated,balance:cash});
-   checks.push({date:e.date,next,reserve,bonus,debt,save,obligations:obligations.map(x=>({...x})),balances:[...balances],savings:[...savings],accrued:[...accrued],minimumPaid:[...minimumPaid],capped,left:cash,shortfall:Math.max(0,reserve+baseCushion-cash),income:events.filter(x=>x.date===e.date&&['income','bonus'].includes(x.type)).reduce((n,x)=>n+x.amount,0)});
-   accrued.fill(0);minimumPaid.fill(0);
+   const cumulativeInterest=interestStates.map(state=>cents(state.totalInterest));
+   checks.push({date:e.date,next,reserve,bonus,debt,save,obligations:obligations.map(x=>({...x})),balances:[...balances],savings:[...savings],accrued:cumulativeInterest.map((n,i)=>n-reportedInterest[i]),minimumPaid:[...minimumPaid],capped,left:cash,shortfall:Math.max(0,reserve+baseCushion-cash),income:events.filter(x=>x.date===e.date&&['income','bonus'].includes(x.type)).reduce((n,x)=>n+x.amount,0)});
+   reportedInterest=cumulativeInterest;minimumPaid.fill(0);
    low=Math.min(low,cash);
   }
   if(!debtFreeDate&&balances.every(b=>b===0))debtFreeDate=e.date;
  }
- return {debtFreeDate,rows,checks,low,firstShortfall,endBalance:cash,balances,savings,interest,end};
+ // End balances must describe the requested horizon even when no cash event
+ // happens on its final day.
+ accrueTo(end);
+ if(balances.some(balance=>balance>0))debtFreeDate=null;
+ const interest=interestStates.reduce((sum,state)=>sum+cents(state.totalInterest),0);
+ const interestNotes=[...new Set(interestStates.flatMap(state=>state.notes))];
+ return {debtFreeDate,rows,checks,low,firstShortfall,endBalance:cash,balances,savings,interest,end,interestNotes};
 }

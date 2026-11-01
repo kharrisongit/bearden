@@ -1,11 +1,11 @@
 export {removeBillFromPlanner,removeDebtsFromPlanner} from './account-removal.mjs?v=delete-accounts1';
-export {carPaymentLoans} from './car-debt.mjs?v=car-debt1';
+export {carPaymentLoans} from './car-debt.mjs?v=credit-rules1';
 export {transactionCategories,categorizeTransaction,transactionMerchantKey,setTransactionCategory} from './transaction-categories.mjs?v=auto-categories1';
-export {resolveDebtConnections,resolveDebtDetails,remapConnectedAccountReferences} from './connection-model.mjs?v=lunchflow-only1';
+export {resolveDebtConnections,resolveDebtDetails,remapConnectedAccountReferences} from './connection-model.mjs?v=credit-rules1';
 import {transactionAccountId,matchingPayments,postedPayment} from './transaction-links.mjs?v=plaid-restore1';
 import {transactionKey} from './bank-activity.mjs?v=payment-history1';
-import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=creditor-themes2';
-export {monthlyMinimum} from './debt-payments.mjs?v=creditor-themes2';
+import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=credit-rules1';
+export {monthlyMinimum} from './debt-payments.mjs?v=credit-rules1';
 import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-portal1';
 import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices,contributionReceipts} from './household-model.mjs?v=early-contributions1';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
@@ -24,8 +24,9 @@ export function trackerDebtStatus(plan,id){
  const payments=checked.filter(r=>cents(r.payments?.[index])>0);
  const paid=checked.reduce((sum,r)=>sum+cents(r.payments?.[index]),0);
  const interest=checked.reduce((sum,r)=>sum+cents(r.interestByAccount?.[index]),0);
+ const fees=checked.reduce((sum,r)=>sum+cents(r.feesByAccount?.[index]),0);
  const synced=plan.syncedDebtBalances?.[card.id];
- const balance=synced? synced.balance : Math.max(0,cents(card.balance)+interest-paid);
+ const balance=synced? synced.balance : Math.max(0,cents(card.balance)+interest+fees-paid);
  return {index,balance,paid,paidOff:balance<=1,lastPayment:payments.at(-1)||null};
 }
 // Estimates come from this account's actual payoff schedule, in cents.
@@ -40,6 +41,7 @@ export function trackerDebtForecast(plan,id){
   const completed=card.activelyPaidOff?card.payoffHistory?.at(-1):null;
   return {date:status.lastPayment?.date||null,interest:Number.isFinite(completed?.interestPaid)?cents(completed.interestPaid):rows.filter(r=>plan.state.checkedPaychecks?.[r.paycheck]).reduce((sum,r)=>sum+cents(r.interestByAccount?.[status.index]),0),paidOff:true};
  }
+ if(card.interestRules?.balanceBasis==='unknown')return {date:null,interest:null,reason:'Loan balance type needed'};
  if(!payoff)return {date:null,interest:null,reason:rows.some(r=>r.debtTiming?.[status.index]?.missingFutureMinimum)?'Future payment needed':rows.length?'No payoff in forecast':'Set up income'};
  return {date:payoff.date,interest:rows.filter(r=>r.paycheck<=payoff.paycheck).reduce((sum,r)=>sum+cents(r.interestByAccount?.[status.index]),0)};
 }

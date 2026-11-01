@@ -41,7 +41,7 @@ export function removeDebtsFromState(state,ids){
  const next=structuredClone(state),removed=new Set(ids.map(String));
  next.cards=(next.cards||[]).filter(c=>!removed.has(String(c.id)));
  removeKeys(next.accountPaymentOverrides,removed);
- for(const field of ['paycheckSlices','paycheckSquashes','debtPaymentHistory','debtInterestHistory'])for(const [paycheck,entries]of Object.entries(next[field]||{})){
+ for(const field of ['paycheckSlices','paycheckSquashes','debtPaymentHistory','debtInterestHistory','debtFeeHistory'])for(const [paycheck,entries]of Object.entries(next[field]||{})){
   removeKeys(entries,removed);if(!Object.keys(entries).length)delete next[field][paycheck];
  }
  for(const [paycheck,expenses]of Object.entries(next.extraExpenses||{})){

@@ -45,3 +45,23 @@ test('per-paycheck budgets are allocated after their own deposit and editable on
  const s=setup();s.accounts[0].balance=0;s.bills=[{id:'food',name:'Food',amount:10000,date:'2026-10-05',repeat:'biweekly',source:'budget'}];s.checkEdits={'2026-10-05':{bills:{'food:2026-10-05':12000}}};const p=forecast(validate(s),start,30);
  assert.equal(p.firstShortfall,null);assert.equal(p.checks[0].reserve,12000);assert.equal(p.checks[0].obligations[0].id,'food:2026-10-05');assert.equal(p.checks[1].reserve,10000);assert.equal(p.rows.find(r=>r.id==='food:2026-10-05').amount,-12000);
 });
+
+test('debt interest reaches the requested horizon and is independent of unrelated event frequency',()=>{
+ for(const profileId of ['generic','capital-one','credit-one','milestone','elga-card']){
+  const s=blank();s.accounts=[{id:'cash',name:'Cash',balance:0,include:true}];
+  s.debts=[{id:'loan',name:'Example debt',balance:100000,minimum:30000,apr:36.5,date:'2026-01-16',interestRules:{profileId,closingDay:31,grace:'lost'}}];
+  const saved=JSON.stringify(s),base=forecast(s,'2026-01-01',31);
+  assert.equal(JSON.stringify(s),saved);
+  const split=structuredClone(s);
+  split.bills=[3,8,20,30].map(day=>({id:'note-'+day,name:'No-cost event',amount:0,date:'2026-01-'+String(day).padStart(2,'0'),repeat:'once'}));
+  split.income=[{id:'zero',name:'No extra allocation',amount:0,date:'2026-01-25',repeat:'once'}];
+  const withEvents=forecast(split,'2026-01-01',31);
+  assert.equal(withEvents.interest,base.interest,profileId);
+  assert.deepEqual(withEvents.balances,base.balances,profileId);
+  assert.equal(withEvents.endBalance,base.endBalance,profileId);
+ }
+ const idle=blank();idle.debts=[{id:'loan',name:'Example loan',balance:100000,minimum:0,apr:36.5,date:'2026-03-01'}];
+ const result=forecast(idle,'2026-01-01',30);
+ assert.equal(result.interest,3000);
+ assert.deepEqual(result.balances,[103000]);
+});
