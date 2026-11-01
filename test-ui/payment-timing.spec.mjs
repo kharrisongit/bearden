@@ -161,7 +161,11 @@ test('same-debt backup supplies current balance and email terms update future pa
  await page.locator('#nav-debts').click();await page.locator('[data-edit-debt="1"]').first().click();
  await page.locator('[name="backupDebtAccount"]').selectOption('lunchflow-b');await expect(page.locator('#debtSources')).toContainText('Lunch Flow backup');
  await expect(page.locator('#debtEditorForm [name="minimum"]')).toHaveValue('125.00');await expect(page.locator('#debtEditorForm [name="apr"]')).toHaveValue('26');await expect(page.locator('#debtEditorForm [name="balance"]')).toHaveValue('10000');
- await page.getByRole('button',{name:'Save debt',exact:true}).click();await expect(page.locator('#debtEditor')).not.toBeVisible();
+ await page.getByRole('button',{name:'Save debt',exact:true}).click();await expect.poll(()=>page.locator('#debtEditor').evaluate(dialog=>({
+  closed:!dialog.open,
+  error:dialog.querySelector('#debtEditorError').textContent,
+  invalid:[...dialog.querySelectorAll(':invalid')].filter(el=>el.name).map(el=>({name:el.name,value:el.value,message:el.validationMessage})),
+ }))).toEqual({closed:true,error:'',invalid:[]});
  await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().syncedDebtBalances[1]?.balance)).toBe(85000);
  await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().schedule[0].payments[0])).toBe(57.69);
  expect(JSON.parse(f.tracker.state.values['income-planner']).debtBackupLinks[1]).toBe('lunchflow-b');
