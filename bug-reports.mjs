@@ -3,7 +3,8 @@ import {Buffer} from 'node:buffer';
 
 const INDEX='bug-reports:index',AUTOMATION='bug-reports:automation';
 const areas=new Set(['general','dashboard','wallet','debt','bills','income','accounts','connections','tools','settings','other']);
-const statuses=new Set(['new','investigating','needs_details','fixed']);
+const statuses=new Set(['new','investigating','needs_details','fixed','closed']);
+const types=new Set(['bug','feature']);
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const fail=(message,status=400)=>{throw Object.assign(Error(message),{status});};
 function text(value,label,max,required=false){
@@ -15,7 +16,7 @@ function text(value,label,max,required=false){
 }
 function publicReport(report){
  const {id,createdAt,updatedAt,revision,title,details,expected,steps,area,appVersion,diagnostics,status,response,fixedInRelease}=report;
- return {id,createdAt,updatedAt,revision,title,details,expected,steps,area,appVersion,diagnostics,status,response,fixedInRelease};
+ return {id,type:report.type==='feature'?'feature':'bug',createdAt,updatedAt,revision,title,details,expected,steps,area,appVersion,diagnostics,status,response,fixedInRelease};
 }
 export function createBugReportStore({read,write,locked,release,now=()=>Date.now()}){
  const key=id=>'bug-report:'+id;
@@ -29,15 +30,16 @@ export function createBugReportStore({read,write,locked,release,now=()=>Date.now
   return {reports,nextCursor:start+size<rows.length?page.at(-1).id:null,...(admin?{release}: {})};
  }
  async function submit(accountId,input){return locked(async()=>{
-  if(!input||typeof input!=='object'||Array.isArray(input))fail('Enter a bug report.');
+  if(!input||typeof input!=='object'||Array.isArray(input))fail('Enter a bug report or feature request.');
   const submissionId=text(input.submissionId,'Submission ID',80,true);if(!/^[\w-]{8,80}$/.test(submissionId))fail('Invalid submission ID. Reload and try again.');
   const id='BR-'+digest(accountId+'\0'+submissionId).slice(0,24),existing=await read(key(id),null),rows=await index();
   if(existing){if(existing.accountId!==accountId)fail('Report unavailable.',404);if(!rows.some(row=>row.id===id)){rows.push({id,accountId,createdAt:existing.createdAt});await write(INDEX,rows);}return {report:publicReport(existing)};}
   const time=now();if(rows.filter(row=>row.accountId===accountId&&Date.parse(row.createdAt)>time-86400000).length>=10)fail('You have sent 10 reports in the last 24 hours. Try again later.',429);
   if(rows.length>=2000)fail('The report queue is full. Ask the app owner to archive old reports.',429);
+  const type=input.type===undefined?'bug':text(input.type,'Request type',20,true);if(!types.has(type))fail('Choose Bug report or Feature request.');
   const area=text(input.area||'other','Area',30);if(!areas.has(area))fail('Choose an area from the list.');
   const diagnostics=input.diagnostics&&typeof input.diagnostics==='object'&&!Array.isArray(input.diagnostics)?input.diagnostics:{};
-  const stamp=new Date(time).toISOString(),report={id,accountId,createdAt:stamp,updatedAt:stamp,revision:1,title:text(input.title,'Title',120,true),details:text(input.details,'What happened',4000,true),expected:text(input.expected,'Expected behavior',2000),steps:text(input.steps,'Steps',3000),area,appVersion:text(input.appVersion,'App version',100),diagnostics:{browser:text(diagnostics.browser,'Browser',240),viewport:text(diagnostics.viewport,'Viewport',40)},status:'new',response:'',fixedInRelease:null};
+  const stamp=new Date(time).toISOString(),report={id,type,accountId,createdAt:stamp,updatedAt:stamp,revision:1,title:text(input.title,'Title',120,true),details:text(input.details,type==='feature'?'Feature description':'What happened',4000,true),expected:text(input.expected,'Expected behavior',2000),steps:text(input.steps,'Steps',3000),area,appVersion:text(input.appVersion,'App version',100),diagnostics:{browser:text(diagnostics.browser,'Browser',240),viewport:text(diagnostics.viewport,'Viewport',40)},status:'new',response:'',fixedInRelease:null};
   await write(key(id),report);rows.push({id,accountId,createdAt:stamp});await write(INDEX,rows);
   return {report:publicReport(report)};
  });}
@@ -48,7 +50,9 @@ export function createBugReportStore({read,write,locked,release,now=()=>Date.now
   if(!statuses.has(input.status))fail('Choose a valid report status.');
   if(input.status==='fixed'&&!(report.status==='fixed'&&report.fixedInRelease)&&!release.fixedReportIds?.includes(id))fail('This report can be marked fixed only after its fix is in the deployed release.',409);
   if(release.fixedReportIds?.includes(id)&&input.status!=='fixed')fail('This report is included in the deployed release. Submit a new report if the problem continues.',409);
-  const next={...report,status:input.status,response:text(input.response,'Response',2000),fixedInRelease:input.status==='fixed'?(report.fixedInRelease||release.id):null,revision:report.revision+1,updatedAt:new Date(now()).toISOString()};
+  if(input.status==='closed'&&(report.status==='fixed'||report.fixedInRelease))fail('A deployed request cannot be closed without a fix. Submit a new report if needed.',409);
+  const response=text(input.response,'Response',2000,input.status==='closed');
+  const next={...report,status:input.status,response,fixedInRelease:input.status==='fixed'?(report.fixedInRelease||release.id):null,revision:report.revision+1,updatedAt:new Date(now()).toISOString()};
   await write(key(id),next);return {report:publicReport(next)};
  });}
  async function automation(){const value=await read(AUTOMATION,{});return {enabled:!!value.hash,connected:value.connected===true,...(value.taskId?{taskId:value.taskId,mode:value.mode||'session'}:{})};}

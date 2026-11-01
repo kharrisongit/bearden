@@ -4,19 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>BearDen · Bug reports</title>
-  <link rel="stylesheet" href="/support.css?v=bug-reports1">
-  <script type="module" src="/support.js?v=bug-reports1"></script>
+  <title>BearDen · Support requests</title>
+  <link rel="stylesheet" href="/support.css?v=support-requests1">
+  <script type="module" src="/support.js?v=support-requests1"></script>
 </head>
 <body>
   <main>
     <header class="page-heading">
-      <div><p class="eyebrow">BEARDEN SUPPORT</p><h1>Bug reports</h1><p class="muted">Private reports and progress updates for dot.</p></div>
+      <div><p class="eyebrow">BEARDEN SUPPORT</p><h1>Bugs & feature requests</h1><p class="muted">Private requests and progress updates for dot.</p></div>
       <a href="/">Back to BearDen</a>
     </header>
     <p id="connectionStatus" role="status">Checking your reporting connection…</p>
     <section id="reportTools" class="toolbar" hidden>
-      <label>Show <select id="statusFilter"><option value="open">Open reports</option><option value="all">All reports</option><option value="fixed">Fixed reports</option></select></label>
+      <label>Show <select id="statusFilter"><option value="open">Open reports</option><option value="all">All reports</option><option value="fixed">Completed requests</option><option value="closed">Closed requests</option></select></label>
+      <label>Type <select id="typeFilter"><option value="all">All types</option><option value="bug">Bug reports</option><option value="feature">Feature requests</option></select></label>
       <button id="refreshReports" type="button">Refresh reports</button>
       <span id="reportCount" class="muted"></span>
     </section>
@@ -33,7 +34,7 @@
         <p id="taskSetupStatus" role="status"></p>
       </form>
     </details>
-    <p class="footer-note">This support page only reads bug reports and updates their progress. Financial records are not loaded here.</p>
+    <p class="footer-note">This support page only reads bug reports and feature requests and updates their progress. Financial records are not loaded here.</p>
   </main>
 </body>
 </html>

@@ -27,7 +27,7 @@ test('reports keep failed drafts, retry idempotently, and exclude financial stat
   await expect(page.locator('#bugReportForm [name=details]')).toHaveValue('The button does not respond after opening Bills.');
   fail=false;await page.locator('#sendBugReport').click();await expect(page.locator('#bugReportStatus')).toContainText('Report bug-example received');
   expect(sent).toHaveLength(2);expect(sent[1].submissionId).toBe(sent[0].submissionId);
-  expect(Object.keys(sent[1]).sort()).toEqual(['appVersion','area','details','diagnostics','expected','steps','submissionId','title']);
+  expect(Object.keys(sent[1]).sort()).toEqual(['appVersion','area','details','diagnostics','expected','steps','submissionId','title','type']);
   expect(Object.keys(sent[1].diagnostics).sort()).toEqual(['browser','viewport']);expect(sent[1].appVersion).toBe(APP_RELEASE.id);
   await expect(page.locator('#bugReportList')).toContainText('<img src=x onerror=alert(1)> Button problem');await expect(page.locator('#bugReportList img')).toHaveCount(0);
   await expect(page.locator('#bugReportForm [name=reportTitle]')).toHaveValue('');
@@ -47,11 +47,38 @@ test('release notices wait for editors and acknowledge only the release actually
   await openReporter(page);await page.locator('#bugReportForm [name=details]').fill('My unfinished draft');
   const first=page.waitForResponse('**/api/app-release');await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await first;
   await expect(page.locator('#bugReleaseDialog')).not.toBeVisible();
-  await page.getByRole('button',{name:'Close report a bug',exact:true}).click();await expect(page.locator('#bugReleaseDialog')).toBeVisible();await expect(page.locator('#bugReleaseTitle')).toHaveText('First fix');
+  await page.getByRole('button',{name:'Close bug report / feature request',exact:true}).click();await expect(page.locator('#bugReleaseDialog')).toBeVisible();await expect(page.locator('#bugReleaseTitle')).toHaveText('First fix');
   const next=page.waitForResponse('**/api/app-release');release={...release,id:'release-B',title:'Second fix'};await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await next;
   await expect(page.locator('#bugReleaseTitle')).toHaveText('First fix');
   await page.locator('#bugReleaseDismiss').click();await expect.poll(()=>acknowledgements).toContain('release-A');expect(acknowledgements).not.toContain('release-B');
   await expect(page.locator('#bugReleaseDialog')).toBeVisible();await expect(page.locator('#bugReleaseTitle')).toHaveText('Second fix');
   await page.locator('#bugReleaseDismiss').click();await expect.poll(()=>acknowledgements).toContain('release-B');
   await page.locator('[data-bug-report-open]').click();await expect(page.locator('#bugReportForm [name=details]')).toHaveValue('My unfinished draft');
+});
+
+
+test('feature requests retain drafts, persist type, and display Implemented without financial payload',async({page})=>{
+  await fixture(page);const sent=[];let reports=[];
+  await page.route('**/api/bug-reports',async route=>{
+    if(route.request().method()==='GET')return route.fulfill({json:{reports}});
+    const body=route.request().postDataJSON();sent.push(body);
+    const report={...body,id:'feature-example',createdAt:'2026-11-01T12:00:00Z',status:'fixed',response:'Available now.',fixedInRelease:'test-release',revision:2};reports=[report];return route.fulfill({json:{report}});
+  });
+  await openReporter(page);
+  await page.getByLabel('Request type',{exact:true}).selectOption('feature');
+  await expect(page.getByLabel('What would you like to add or change?',{exact:true})).toBeVisible();
+  await page.locator('[name=reportTitle]').fill('Calendar filter');
+  await page.locator('#bugReportForm [name=details]').fill('Add a filter for upcoming entries.');
+  await page.getByRole('button',{name:'Close bug report / feature request',exact:true}).click();
+  await page.locator('[data-bug-report-open]').click();
+  await expect(page.locator('#bugReportType')).toHaveValue('feature');
+  await expect(page.locator('#bugReportForm [name=details]')).toHaveValue('Add a filter for upcoming entries.');
+  await page.getByRole('button',{name:'Send request',exact:true}).click();
+  await expect(page.locator('#bugReportStatus')).toContainText('received');
+  expect(sent).toHaveLength(1);expect(sent[0].type).toBe('feature');
+  expect(Object.keys(sent[0]).sort()).toEqual(['appVersion','area','details','diagnostics','expected','steps','submissionId','title','type']);
+  await expect(page.locator('#bugReportList .bug-report-badge')).toHaveText('Implemented');
+  await expect(page.locator('#bugReportType')).toHaveValue('bug');
+  await expect(page.getByLabel('What happened?',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Send report',exact:true})).toBeVisible();
 });

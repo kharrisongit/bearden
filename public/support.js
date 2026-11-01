@@ -1,4 +1,4 @@
-import { APP_RELEASE } from './app-release.mjs?v=bug-reports1';
+import { APP_RELEASE } from './app-release.mjs?v=support-requests1';
 
 const $ = selector => document.querySelector(selector);
 const fragment = new URLSearchParams(location.hash.slice(1));
@@ -6,7 +6,7 @@ let token = fragment.get('token') || '';
 // The credential stays in memory, never in the URL sent to the server or browser storage.
 if (location.hash) history.replaceState(null, '', location.pathname);
 let accountId = '', reports = [], nextCursor = null, release = APP_RELEASE, loading = false;
-const statuses = { new: 'Received', investigating: 'Investigating', needs_details: 'Needs details', fixed: 'Fixed' };
+const statuses = { new: 'Received', investigating: 'Investigating', needs_details: 'Needs details', fixed: 'Fixed', closed: 'Closed' };
 
 function el(tag, text, className) {
   const node = document.createElement(tag);
@@ -43,12 +43,14 @@ function section(parent, title, value) {
 function renderReport(report) {
   const article = el('article', undefined, 'report');
   article.dataset.reportId = report.id;
+  const feature=report.type==='feature';
+  const statusLabelFor=value=>value==='fixed'&&feature?'Implemented':statuses[value]||'Received';
   const heading = el('div', undefined, 'report-header');
-  heading.append(el('h2', report.title), el('span', statuses[report.status] || 'Received', 'badge'));
-  article.append(heading, el('p', `${report.id} · ${new Date(report.createdAt).toLocaleString()} · ${report.area || 'general'} · Revision ${report.revision}`, 'report-meta'));
-  section(article, 'What happened', report.details);
-  section(article, 'Expected', report.expected);
-  section(article, 'Steps to repeat', report.steps);
+  heading.append(el('h2', report.title), el('span', statusLabelFor(report.status), 'badge'));
+  article.append(heading, el('p', `${feature?'Feature request':'Bug report'} · ${report.id} · ${new Date(report.createdAt).toLocaleString()} · ${report.area || 'general'} · Revision ${report.revision}`, 'report-meta'));
+  section(article, feature?'Requested feature':'What happened', report.details);
+  section(article, feature?'Benefit':'Expected', report.expected);
+  section(article, feature?'Examples':'Steps to repeat', report.steps);
   section(article, 'Latest response', report.response);
   if (report.fixedInRelease) section(article, 'Released in', report.fixedInRelease);
   const diagnostics = el('details', undefined, 'diagnostics');
@@ -59,7 +61,7 @@ function renderReport(report) {
   const select = el('select');
   select.setAttribute('aria-label', `Progress for ${report.id}`);
   for (const [value, label] of Object.entries(statuses)) {
-    const option = el('option', label); option.value = value;
+    const option = el('option', statusLabelFor(value)); option.value = value;
     if (value === 'fixed' && !(release.fixedReportIds || []).includes(report.id)) option.disabled = true;
     select.append(option);
   }
@@ -74,15 +76,17 @@ function renderReport(report) {
   const result = el('span', '', 'save-message'); result.setAttribute('role', 'status');
   actions.append(save, result);
   form.append(statusLabel, responseLabel, actions);
-  if (!(release.fixedReportIds || []).includes(report.id)) form.append(el('small', 'Fixed becomes available after a live release includes this report.', 'muted'));
+  if (!(release.fixedReportIds || []).includes(report.id)) form.append(el('small', (feature?'Implemented':'Fixed')+' becomes available after a live release includes this request. Closed is for requests not being implemented.', 'muted'));
   form.addEventListener('submit', async event => {
     event.preventDefault(); save.disabled = true; result.classList.remove('error'); result.textContent = 'Saving…';
     try {
       const data = await request('/api/support/reports/status', { id: report.id, revision: report.revision, status: select.value, response: response.value });
       report = data.report;
       reports = reports.map(item => item.id === report.id ? report : item);
-      const updated = renderReport(report); article.replaceWith(updated);
-      updated.querySelector('.save-message').textContent = 'Saved.';
+      render();
+      const updated = [...document.querySelectorAll('[data-report-id]')].find(node=>node.dataset.reportId===report.id);
+      if(updated)updated.querySelector('.save-message').textContent = 'Saved.';
+      $('#supportMessage').textContent = 'Progress saved.';
     } catch (error) { result.classList.add('error'); result.textContent = error.message; }
     finally { save.disabled = false; }
   });
@@ -91,8 +95,8 @@ function renderReport(report) {
 }
 
 function render() {
-  const filter = $('#statusFilter').value;
-  const visible = reports.filter(report => filter === 'all' || (filter === 'fixed' ? report.status === 'fixed' : report.status !== 'fixed'));
+  const filter = $('#statusFilter').value,type=$('#typeFilter').value;
+  const visible = reports.filter(report => (type==='all'||(report.type||'bug')===type)&&(filter==='all'||(filter==='open'?!['fixed','closed'].includes(report.status):report.status===filter)));
   $('#reportList').replaceChildren(...visible.map(renderReport));
   if (!visible.length) $('#reportList').append(el('p', nextCursor ? 'No matching reports on this page. Load earlier reports to continue.' : 'No matching reports yet.', 'muted'));
   $('#reportCount').textContent = `${visible.length} shown`;
@@ -115,6 +119,7 @@ async function load(more = false) {
 }
 
 $('#statusFilter').addEventListener('change', render);
+$('#typeFilter').addEventListener('change', render);
 $('#refreshReports').addEventListener('click', () => load());
 $('#moreReports').addEventListener('click', () => load(true));
 $('#taskSetupForm').addEventListener('submit', async event => {

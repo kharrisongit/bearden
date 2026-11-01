@@ -57,3 +57,30 @@ test('private support link removes its credential and safely updates a report re
   expect(authorized.every(request => request.headers.authorization === 'Bearer ' + token)).toBe(true);
   expect(requests.some(request => request.path === '/api/config' || request.path === '/api/state' || request.path === '/api/classic')).toBe(false);
 });
+
+
+test('support filters request types and shows feature completion and closed states honestly', async ({page}) => {
+  const reports=[
+    {id:'legacy',title:'Legacy bug',status:'new',revision:1,createdAt:'2026-11-01T12:00:00Z'},
+    {id:'feature',type:'feature',title:'A helpful filter',details:'Filter the calendar.',status:'fixed',fixedInRelease:'test-release',revision:2,createdAt:'2026-11-01T12:00:00Z'},
+    {id:'test',type:'feature',title:'Visibility test',status:'closed',response:'Only a test; no implementation requested.',revision:2,createdAt:'2026-11-01T12:00:00Z'}
+  ];
+  await page.route('https://bearden.test/**',route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(path==='/api/support/reports')return route.fulfill({json:{reports,nextCursor:null,release:{id:'test-release',fixedReportIds:['feature']}}});
+    if(path.startsWith('/api/'))return route.fulfill({status:404,json:{}});
+    const filename=path.slice(1);return route.fulfill({body:readFileSync(new URL('../public/'+filename,import.meta.url)),contentType:filename.endsWith('.css')?'text/css':/\.(js|mjs)$/.test(filename)?'text/javascript':'text/html'});
+  });
+  await page.goto('https://bearden.test/support.html#token=synthetic-test');
+  await expect(page.locator('.report')).toHaveCount(1);
+  await expect(page.locator('.report h2')).toHaveText('Legacy bug');
+  await page.locator('#statusFilter').selectOption('all');
+  await page.locator('#typeFilter').selectOption('feature');
+  await expect(page.locator('.report')).toHaveCount(2);
+  await expect(page.locator('[data-report-id=feature] .badge')).toHaveText('Implemented');
+  await expect(page.locator('[data-report-id=test] .badge')).toHaveText('Closed');
+  await expect(page.locator('[data-report-id=feature] option[value=fixed]')).toHaveText('Implemented');
+  await page.locator('#statusFilter').selectOption('closed');
+  await expect(page.locator('.report')).toHaveCount(1);
+  await expect(page.locator('.report h2')).toHaveText('Visibility test');
+});

@@ -1,10 +1,10 @@
 // Ship this manifest with each user-visible update. Never put private report text here.
 export const APP_RELEASE = Object.freeze({
-  id: '2026-11-01-simple-bug-reports',
-  title: 'Simpler bug reporting',
+  id: '2026-11-01-support-requests',
+  title: 'Bug reports and feature requests',
   notes: [
-    'Send a report directly from Settings with no connection setup.',
-    'Follow your report’s progress in the same place.'
+    'Choose Bug report or Feature request from Settings → Support.',
+    'Follow progress in one place, with clear completion labels for each request.'
   ],
   fixedReportIds: []
 });

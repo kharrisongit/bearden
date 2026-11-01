@@ -1,4 +1,4 @@
-import {APP_RELEASE} from './app-release.mjs?v=bug-reports1';
+import {APP_RELEASE} from './app-release.mjs?v=support-requests1';
 
 // Reports and release acknowledgements never read or save the financial plan.
 const $ = (selector, root=document) => root.querySelector(selector);
@@ -9,13 +9,13 @@ const element = (tag, text, className) => {
   return node;
 };
 const areas={dashboard:'Dashboard',income:'Income',bills:'Bills',debt:'Debt',tools:'Tools',settings:'Settings',other:'Something else'};
-const statuses={new:'Received',investigating:'Investigating',needs_details:'Needs details',fixed:'Fixed'};
+const statuses={new:'Received',investigating:'Investigating',needs_details:'Needs details',fixed:'Fixed',closed:'Closed'};
 let account, reportDialog, releaseDialog, releaseData, displayedReleaseId, reportsCursor=null, requestInFlight=false, sending=false, lastSubmission=null;
 let activeArea='dashboard', openedFromArea='dashboard';
 const dismissed=new Set();
 
 async function request(path, body){
-  if(!account?.authenticated)throw Error('Sign in to BearDen to use bug reports.');
+  if(!account?.authenticated)throw Error('Sign in to BearDen to send a bug report or feature request.');
   const response=await fetch(path,{method:body===undefined?'GET':'POST',cache:'no-store',credentials:'same-origin',headers:{...(account.accountId?{'X-BearDen-Account':account.accountId}:{}),...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});
   let data;try{data=await response.json();}catch{throw Error('Could not read the response. Please try again.');}
   if(!response.ok){const error=Error(data.error||'Could not complete that request. Please try again.');error.status=response.status;throw error;}
@@ -31,20 +31,21 @@ function dialog(id,title,content){
 
 function mount(){
   if(!$('#bdSettingsHub')){
-    const support=element('section',undefined,'classic-bug-support');support.innerHTML='<h3>Support</h3><p>Send a bug report or see what changed in BearDen.</p><button type="button" data-bug-report-open>Report a bug</button><button type="button" data-bug-updates-open>Updates</button>';
+    const support=element('section',undefined,'classic-bug-support');support.innerHTML='<h3>Support</h3><p>Report a bug, request a feature, or see what changed in BearDen.</p><button type="button" data-bug-report-open>Bug report / Feature request</button><button type="button" data-bug-updates-open>Updates</button>';
     $('#connectionDialog').append(support);
   }
-  reportDialog=dialog('bugReportDialog','Report a bug',`
-    <p id="bugReportIntro">Describe the problem and send it to dot. You can follow its progress below.</p>
+  reportDialog=dialog('bugReportDialog','Bug report / Feature request',`
+    <p id="bugReportIntro">Choose a bug report or feature request and send it to dot. You can follow its progress below.</p>
     <p id="bugReportSignIn" class="subtle" hidden>Sign in with Google or Microsoft in Settings to send a report.</p>
     <form id="bugReportForm">
       <fieldset id="bugReportFields">
+        <label>Request type<select name="type" id="bugReportType"><option value="bug">Bug report</option><option value="feature">Feature request</option></select></label>
         <label>Short description<input name="reportTitle" maxlength="120" required placeholder="e.g. A button does not respond"></label>
-        <label>Where did it happen?<select name="area">${Object.entries(areas).map(([value,label])=>'<option value="'+value+'">'+label+'</option>').join('')}</select></label>
-        <label>What happened?<textarea name="details" maxlength="4000" rows="4" required placeholder="Describe the problem."></textarea></label>
+        <label><span id="reportAreaLabel">Where did it happen?</span><select name="area">${Object.entries(areas).map(([value,label])=>'<option value="'+value+'">'+label+'</option>').join('')}</select></label>
+        <label><span id="reportDetailsLabel">What happened?</span><textarea name="details" maxlength="4000" rows="4" required placeholder="Describe the problem."></textarea></label>
         <details class="bug-extra"><summary>Add more details (optional)</summary>
-          <label>What did you expect?<textarea name="expected" maxlength="2000" rows="2"></textarea></label>
-          <label>Steps to repeat it<textarea name="steps" maxlength="3000" rows="3" placeholder="1. Open…&#10;2. Tap…"></textarea></label>
+          <label><span id="reportExpectedLabel">What did you expect?</span><textarea name="expected" maxlength="2000" rows="2"></textarea></label>
+          <label><span id="reportStepsLabel">Steps to repeat it</span><textarea name="steps" maxlength="3000" rows="3" placeholder="1. Open…&#10;2. Tap…"></textarea></label>
         </details>
         <p class="subtle">Includes this app version, the area you choose, browser, and screen size. Your balances, email, and saved plan are not attached. Please leave passwords and account numbers out of your report.</p>
         <button type="submit" class="bill-save" id="sendBugReport">Send report</button>
@@ -56,6 +57,7 @@ function mount(){
     <p id="bugReleaseTitle" class="bug-release-title"></p><ul id="bugReleaseNotes"></ul><p id="bugReleaseVersion" class="subtle"></p>
     <p id="bugReleaseHelp" class="subtle"></p><div class="bug-actions"><button type="button" id="bugReleaseDismiss">Done</button><button type="button" id="bugReleaseReload" class="bill-save" hidden>Reload app</button></div><p id="bugReleaseStatus" class="subtle" role="status"></p>`);
   $('#bugReportForm').addEventListener('submit',submitReport);
+  $('#bugReportType').addEventListener('change',renderRequestType);
   $('#refreshBugReports').addEventListener('click',loadReports);
   $('#loadEarlierBugReports').addEventListener('click',()=>{if(reportsCursor)loadReports(reportsCursor);});
   $('#bugReleaseDismiss').addEventListener('click',dismissRelease);
@@ -81,6 +83,18 @@ function mount(){
   setInterval(maybeShowRelease,5000);
 }
 
+function renderRequestType(){
+  const form=$('#bugReportForm'),feature=form.elements.type.value==='feature';
+  $('#reportAreaLabel').textContent=feature?'Where would it help?':'Where did it happen?';
+  $('#reportDetailsLabel').textContent=feature?'What would you like to add or change?':'What happened?';
+  $('#reportExpectedLabel').textContent=feature?'How would this help you?':'What did you expect?';
+  $('#reportStepsLabel').textContent=feature?'Examples or how it should work':'Steps to repeat it';
+  form.elements.reportTitle.placeholder=feature?'e.g. Add a calendar filter':'e.g. A button does not respond';
+  form.elements.details.placeholder=feature?'Describe the feature and what you want it to do.':'Describe the problem.';
+  form.elements.steps.placeholder=feature?'Describe an example of using this feature.':'1. Open…\n2. Tap…';
+  $('#sendBugReport').textContent=feature?'Send request':'Send report';
+}
+
 async function openReports(){
   if(!reportDialog.open){
     if(!$('#bugReportForm').elements.reportTitle.value&&!$('#bugReportForm').elements.details.value)$('#bugReportForm').elements.area.value=activeArea==='settings'?openedFromArea:activeArea;
@@ -96,13 +110,13 @@ async function submitReport(event){
   event.preventDefault();if(sending||!account?.authenticated)return;
   const form=event.currentTarget;if(!form.reportValidity())return;
   const values=Object.fromEntries(new FormData(form));
-  const payload={title:values.reportTitle.trim(),details:values.details.trim(),expected:values.expected.trim(),steps:values.steps.trim(),area:values.area,appVersion:APP_RELEASE.id,diagnostics:{browser:navigator.userAgent.slice(0,240),viewport:Math.round(innerWidth)+'x'+Math.round(innerHeight)}};
-  if(!payload.title||!payload.details){$('#bugReportStatus').textContent='Add a description and tell us what happened.';return;}
+  const payload={type:values.type,title:values.reportTitle.trim(),details:values.details.trim(),expected:values.expected.trim(),steps:values.steps.trim(),area:values.area,appVersion:APP_RELEASE.id,diagnostics:{browser:navigator.userAgent.slice(0,240),viewport:Math.round(innerWidth)+'x'+Math.round(innerHeight)}};
+  if(!payload.title||!payload.details){$('#bugReportStatus').textContent='Add a short description and the details of your request.';return;}
   const signature=JSON.stringify(payload);if(lastSubmission?.signature!==signature)lastSubmission={signature,id:crypto.randomUUID()};
   sending=true;$('#bugReportFields').disabled=true;$('#bugReportStatus').textContent='Sending report…';
   try{
     const data=await request('/api/bug-reports',{submissionId:lastSubmission.id,...payload});
-    form.reset();lastSubmission=null;$('#bugReportStatus').textContent='Report '+data.report.id+' received. You can follow its progress below.';await loadReports();
+    form.reset();renderRequestType();lastSubmission=null;$('#bugReportStatus').textContent='Report '+data.report.id+' received. You can follow its progress below.';await loadReports();
   }catch(error){$('#bugReportStatus').textContent=error.message+' Your draft is still here.';}
   finally{sending=false;$('#bugReportFields').disabled=!account?.authenticated;}
 }
@@ -114,11 +128,12 @@ async function loadReports(cursor=null){
   try{
     const data=await request('/api/bug-reports'+(cursor?'?cursor='+encodeURIComponent(cursor):'')),list=$('#bugReportList');if(!cursor)list.replaceChildren();
     for(const report of data.reports||[]){
-      const item=element('details',undefined,'bug-report-item'),summary=element('summary');summary.append(element('span',report.title),element('span',statuses[report.status]||'Received','bug-report-badge'));item.append(summary);
+      const item=element('details',undefined,'bug-report-item'),summary=element('summary');summary.append(element('span',report.title),element('span',report.status==='fixed'&&report.type==='feature'?'Implemented':statuses[report.status]||'Received','bug-report-badge'));item.append(summary);
+      item.append(element('p',report.type==='feature'?'Feature request':'Bug report','subtle'));
       const date=new Date(report.createdAt);item.append(element('p',report.id+(Number.isFinite(date.getTime())?' · '+date.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):''),'subtle'));
-      for(const [label,value]of [['What happened',report.details],['Expected',report.expected],['Steps',report.steps],['dot’s response',report.response]])if(value){const text=element('p',undefined,'bug-report-text');text.append(element('strong',label+': '),document.createTextNode(String(value)));item.append(text);}
+      for(const [label,value]of [[report.type==='feature'?'Requested feature':'What happened',report.details],[report.type==='feature'?'Benefit':'Expected',report.expected],[report.type==='feature'?'Examples':'Steps',report.steps],['dot’s response',report.response]])if(value){const text=element('p',undefined,'bug-report-text');text.append(element('strong',label+': '),document.createTextNode(String(value)));item.append(text);}
       if(report.status==='needs_details')item.append(element('p','Send a new report with the requested details and include report '+report.id+'.','subtle'));
-      if(report.fixedInRelease)item.append(element('p','Fixed in '+report.fixedInRelease,'subtle'));
+      if(report.fixedInRelease)item.append(element('p',(report.type==='feature'?'Implemented in ':'Fixed in ')+report.fixedInRelease,'subtle'));
       list.append(item);
     }
     reportsCursor=typeof data.nextCursor==='string'?data.nextCursor:null;earlier.hidden=!reportsCursor;

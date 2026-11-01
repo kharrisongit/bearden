@@ -89,3 +89,48 @@ test('release acknowledgements are account-specific and a configured task is dis
  await store.manage({action:'enable'});await store.manage({action:'connect',taskId:'task_456',mode:'token'});await store.manage({action:'rotate'});assert.equal((await store.automation()).connected,false);
  release.id='release-two';assert.equal((await store.appRelease('owner')).acknowledged,false);
 });
+
+test('request types are validated, persisted and exposed with a legacy bug default',async()=>{
+ const {store,data}=storeFixture();
+ const bug=(await store.submit('owner',input('bug-type-test'))).report;
+ assert.equal(bug.type,'bug');
+ const feature=(await store.submit('member',{...input('feature-type-test'),type:'feature',details:'Add a compact calendar view.'})).report;
+ assert.equal(feature.type,'feature');
+ assert.equal(data.get('bug-report:'+feature.id).type,'feature');
+ assert.equal((await store.list({accountId:'member'})).reports[0].type,'feature');
+ const legacy=data.get('bug-report:'+bug.id);delete legacy.type;data.set('bug-report:'+bug.id,legacy);
+ assert.equal((await store.list({accountId:'owner'})).reports[0].type,'bug');
+ assert.equal((await store.submit('owner',input('bug-type-test'))).report.type,'bug');
+ for(const type of ['other','',null,{},123])await assert.rejects(store.submit('owner',{...input('invalid-type'),type}),{status:400});
+ await assert.rejects(store.submit('member',{...input('empty-feature'),type:'feature',details:''}),/feature description/i);
+});
+
+test('features require deployment before completion and closed requests require a reason',async()=>{
+ const {store,release}=storeFixture();
+ const feature=(await store.submit('member',{...input('feature-close-test'),type:'feature'})).report;
+ await assert.rejects(store.update({id:feature.id,revision:1,status:'fixed',response:'Implemented.'}),{status:409});
+ await assert.rejects(store.update({id:feature.id,revision:1,status:'closed'}),{status:400});
+ await assert.rejects(store.update({id:feature.id,revision:1,status:'closed',response:'  '}),{status:400});
+ const closed=(await store.update({id:feature.id,revision:1,status:'closed',response:'Cancelled by the requester.'})).report;
+ assert.equal(closed.status,'closed');assert.equal(closed.fixedInRelease,null);assert.equal(closed.type,'feature');
+ await assert.rejects(store.update({id:feature.id,revision:1,status:'investigating'}),{status:409});
+ release.fixedReportIds.push(feature.id);
+ await assert.rejects(store.update({id:feature.id,revision:2,status:'closed',response:'Cancelled.'}),{status:409});
+ const implemented=(await store.update({id:feature.id,revision:2,status:'fixed',response:'The feature is live.'})).report;
+ assert.equal(implemented.fixedInRelease,release.id);assert.equal(implemented.type,'feature');
+ release.fixedReportIds=[];
+ await assert.rejects(store.update({id:feature.id,revision:3,status:'closed',response:'Cancelled.'}),{status:409});
+});
+
+test('feature submissions use the same private account boundaries without changing financial records',async()=>{
+ const f=workerFixture();try{
+  f.set('classic',{revision:7,state:{values:{balance:'1234'}}});
+  const before=f.db.prepare("SELECT value FROM vault WHERE id='classic'").get().value;
+  const report=(await(await f.call('/api/bug-reports',{account:'member',body:{...input('feature-endpoint'),type:'feature'}})).json()).report;
+  assert.equal(report.type,'feature');
+  assert.equal((await(await f.call('/api/bug-reports')).json()).reports.length,0);
+  assert.equal((await(await f.call('/api/support/reports')).json()).reports[0].type,'feature');
+  assert.equal((await f.call('/api/bug-reports/status',{account:'member',body:{id:report.id,revision:1,status:'closed',response:'Cancelled'}})).status,403);
+  assert.equal(f.db.prepare("SELECT value FROM vault WHERE id='classic'").get().value,before);
+ }finally{f.db.close();}
+});
