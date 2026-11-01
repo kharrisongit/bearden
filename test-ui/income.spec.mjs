@@ -85,6 +85,7 @@ test('percentage retirement and Michigan elections persist without converting le
  await expect(page.locator('#tax-retirement')).toBeHidden();
  await page.locator('#tax-retirementPercent').fill('4');
  expect(await page.evaluate(()=>window.getDebtPlan().state.taxSettings.retirementPercent)).toBe('4');
+ await page.locator('#incomeDropdown .income-estimate-options > summary').click();
  await page.locator('#withholdingControls summary').click();
  await page.locator('#tax-stateExemptions').fill('2');
  await page.evaluate(()=>window.flushBearDenState());
