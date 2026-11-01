@@ -44,7 +44,7 @@ for(const [width,theme]of [[390,'light'],[320,'dark']])test(`Bill Tracker at ${w
 test('hiding savings persists without changing goals or paycheck contributions, and a failed save restores visibility',async({page})=>{
  const f=await fixture(page);const before=await page.evaluate(()=>window.getDebtPlan());
  await page.locator('#nav-settings').click();await expect(page.locator('#savingsTrackerToggle')).toBeChecked();
- f.failSavings=true;await page.locator('#savingsTrackerToggle').uncheck();await expect(page.locator('#featureSettingsStatus')).toContainText('Could not save');await expect(page.locator('#savingsTrackerToggle')).toBeChecked();
+ f.failSavings=true;await page.locator('#savingsTrackerToggle').click();await expect(page.locator('#featureSettingsStatus')).toContainText('Could not save');await expect(page.locator('#savingsTrackerToggle')).toBeChecked();
  f.failSavings=false;await page.locator('#savingsTrackerToggle').uncheck();await expect(page.locator('#featureSettingsStatus')).toHaveText('Savings Tracker preference saved.');
  await page.locator('#nav-debt').click();await expect(page.locator('#savingsHeroContainer')).toBeHidden();await expect(page.locator('#billTracker')).toBeVisible();
  const after=await page.evaluate(()=>window.getDebtPlan());expect(after.state.savingsGoals).toEqual(before.state.savingsGoals);expect(after.schedule[0].savingsByGoal).toEqual(before.schedule[0].savingsByGoal);expect(JSON.parse(f.tracker.state.values['app-state']).showSavingsTracker).toBe(false);

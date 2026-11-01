@@ -4,7 +4,9 @@ import {fixture,menuGo} from './wallet.fixture.mjs';
 test('settings is a compact hub with profile, working search and the original detailed editors',async({page})=>{
  await page.setViewportSize({width:390,height:844});await fixture(page);await menuGo(page,'settings');
  await expect(page.locator('#bdAccountEmail')).toHaveText('you@example.com');
- await expect(page.locator('#bdSettingsHub .bd-setting-group')).toHaveCount(4);
+ await expect(page.locator('#bdSettingsHub .bd-setting-group')).toHaveCount(5);
+ await expect(page.locator('#bdSupport [data-bug-report-open]')).toBeVisible();
+ await expect(page.locator('#bdSupport [data-bug-updates-open]')).toBeVisible();
  await expect(page.locator('#bdHousehold [data-den-go=budget]')).toBeVisible();
  await expect(page.locator('#classicLogin')).toBeHidden();
  const row=await page.locator('#bdHousehold .bd-setting-row').first().boundingBox();expect(row.height).toBeLessThan(50);

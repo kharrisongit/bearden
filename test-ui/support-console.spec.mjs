@@ -41,7 +41,7 @@ test('private support link removes its credential and safely updates a report re
   await expect(article.getByRole('heading', { level: 2 })).toHaveText(report.title);
   await expect(article.locator('img, script, svg')).toHaveCount(0);
   await expect(article.getByText(report.details, { exact: true })).toBeVisible();
-  await expect(article.locator('option[value="fixed"]')).toBeDisabled();
+  await expect(article.locator('option[value="fixed"]')).toHaveJSProperty('disabled', true);
   expect(await page.evaluate(() => ({ executed: !!window.reportMarkupExecuted, local: localStorage.length, session: sessionStorage.length })))
     .toEqual({ executed: false, local: 0, session: 0 });
 
