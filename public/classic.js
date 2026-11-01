@@ -810,7 +810,7 @@ function updateIncomeEstimateDisplay(apply=false){
  if(error==='Paycheck deductions cannot exceed gross pay.'){
   if(['hourlyRate','hoursPerCheck'].includes(document.activeElement?.id))error='Finish entering your hourly rate and hours to update take-home pay.';
   else{
-   const settings=window.BearDenTaxes.read(),deductions=['health','retirement','afterTax'].reduce((sum,key)=>sum+(Number(settings[key])||0),0);
+   const settings=window.BearDenTaxes.read(),deductions=['health','afterTax'].reduce((sum,key)=>sum+(Number(settings[key])||0),0)+window.BearDenTaxes.retirementContribution(gross,settings);
    error=`Paycheck deductions (${money(deductions)}) exceed gross pay (${money(gross)}). Check your hours, 401(k), health benefits and other paycheck deductions.`;
   }
  }
@@ -7053,7 +7053,7 @@ window.classicReady=(async function init(){
   window.BearDenDebtInterest=await import('./debt-interest.mjs?v=credit-rules1');
   window.BearDenDebtTerms=await import('./debt-terms.mjs?v=credit-rules1');
   window.BearDenCarDebt=await import('./car-debt.mjs?v=credit-rules1');
-  window.BearDenTaxes=await import('./tax-ui.mjs?v=household-theme1');window.BearDenTaxes.mount();
+  window.BearDenTaxes=await import('./tax-ui.mjs?v=income-percent1');window.BearDenTaxes.mount();
   applyThemeButtonIcon(); // reflect whatever the early <head> script already applied
   applyThemeBackground(document.documentElement.getAttribute('data-theme') === 'dark');
   applyHolidayMenuState();

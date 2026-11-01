@@ -76,3 +76,24 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark']) {
   });
 }
 
+
+test('percentage retirement and Michigan elections persist without converting legacy dollars',async({page})=>{
+ await openFixture(page,'light');
+ await page.locator('#nav-income').click();await page.locator('#incomeToggleBtn').click();
+ await expect(page.locator('#tax-retirementMode')).toHaveValue('dollars');
+ await page.locator('#tax-retirementMode').selectOption('percent');
+ await expect(page.locator('#tax-retirement')).toBeHidden();
+ await page.locator('#tax-retirementPercent').fill('4');
+ expect(await page.evaluate(()=>window.getDebtPlan().state.taxSettings.retirementPercent)).toBe('4');
+ await page.locator('#withholdingControls summary').click();
+ await page.locator('#tax-stateExemptions').fill('2');
+ await page.evaluate(()=>window.flushBearDenState());
+ await page.reload();await page.evaluate(()=>window.classicReady);
+ await page.locator('#nav-income').click();await page.locator('#incomeToggleBtn').click();
+ await expect(page.locator('#tax-retirementMode')).toHaveValue('percent');
+ await expect(page.locator('#tax-retirementPercent')).toHaveValue('4');
+ await expect(page.locator('#tax-stateExemptions')).toHaveValue('2');
+ await page.locator('#tax-retirementMode').selectOption('dollars');
+ await expect(page.locator('#tax-retirement')).toHaveValue('125');
+ await expect(page.locator('#incomeSummary .income-schedule-anchor')).toContainText('Next payday shows the next upcoming date');
+});

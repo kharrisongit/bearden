@@ -908,7 +908,8 @@
    const summary='<span class="income-eyebrow">Bank Balance</span><div class="income-total">'+(primary?esc(accountBalance(primary)):'—')+'</div>'+
     (primary?'<p class="income-account-name">'+esc(connectedAccountName(primary))+'</p><p class="subtle account-balance-status">'+esc(accountBalanceStatus(primary))+'</p>':'')+
     (secondary.length?'<div class="income-secondary-accounts" role="list" aria-label="Other selected accounts">'+secondary.map(a=>'<div class="income-account-balance" role="listitem"><span>'+esc(connectedAccountName(a))+'<small class="account-balance-status">'+esc(accountBalanceStatus(a))+'</small></span><strong>'+esc(accountBalance(a))+'</strong></div>').join('')+'</div>':'')+
-    (upcoming?'<div class="income-next-payday"><span>Next payday</span><strong>'+esc(paydayLabel)+'</strong></div>':'<p class="income-payday-empty">Set your first payday in Income to see it here.</p>');
+    (upcoming?'<div class="income-next-payday"><span>Next payday</span><strong>'+esc(paydayLabel)+'</strong></div>':'<p class="income-payday-empty">Set your first payday in Income to see it here.</p>')+
+    (plan.state.startDate?'<p class="subtle income-schedule-anchor">Every two weeks from '+esc(dateLabel(plan.state.startDate))+'. Next payday shows the next upcoming date, not the schedule start.</p>':'');
    $('#debtIncomeSummary').innerHTML=summary;$('#incomeSummary').innerHTML=summary;
    const balanceNote=usd.length?'':'<p class="subtle">'+(accounts.length?'Choose a bank account to show your balance.':authenticated?'Connect your bank in Settings to see your balance.':'Sign in and connect your bank in Settings.')+'</p>';
    $('#debtIncomeBalances').innerHTML=balanceNote;

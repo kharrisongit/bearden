@@ -43,3 +43,20 @@ test('401(k) validation and bonus estimates preserve regular-paycheck deduction 
  assert.equal(bonus.retirement,0);assert.equal(bonus.net,661);
 });
 
+test('percentage 401(k) follows gross, rounds to cents, and preserves legacy dollars',()=>{
+ const settings={...mi,retirement:125,retirementMode:'percent',retirementPercent:4};
+ assert.equal(estimatePay(2500,settings).retirement,100);
+ assert.equal(estimatePay(3000,settings).retirement,120);
+ assert.equal(estimatePay(2345.67,settings).retirement,93.83);
+ assert.deepEqual(estimatePay(2500,settings),estimatePay(2500,{...mi,retirement:100}));
+ assert.deepEqual(estimatePay(2500,{...settings,retirementType:'roth'}),estimatePay(2500,{...mi,retirement:100,retirementType:'roth'}));
+ assert.equal(estimatePay(2500,{...settings,retirementMode:'dollars'}).retirement,125);
+ assert.equal(estimatePay(2500,{...mi,retirement:125,retirementPercent:4}).retirement,125);
+ assert.equal(estimatePay(1000,settings,{bonus:true}).retirement,0);
+ for(const retirementPercent of [-1,101,NaN])assert.throws(()=>estimatePay(2500,{...settings,retirementPercent}));
+});
+test('past biweekly anchor retains history while next payday is upcoming',()=>{
+ const state={cards:[],budgetItems:[],takeHome:1500,startDate:'2026-10-16'};
+ const events=paydayEvents({state,schedule:[]},'2026-11-01','2026-11-30');
+ assert.equal(events[0].date,'2026-11-13');assert.equal(state.startDate,'2026-10-16');
+});

@@ -7,11 +7,19 @@ const standard={joint:[[0,0],[19300,0],[44100,2480],[120100,11600],[230700,35932
 const twoJobs={joint:[[0,0],[16100,0],[28500,1240],[66500,5800],[121800,17966],[217875,41024],[272325,58448],[400450,103291.75]],single:[[0,0],[8050,0],[14250,620],[33250,2900],[60900,8983],[108938,20512],[136163,29224],[328350,96489.63]],head:[[0,0],[12075,0],[20925,885],[45800,3870],[64925,8077.5],[112950,19603.5],[140175,28315.5],[332375,95585.5]]};
 const round=n=>Math.round((n+Number.EPSILON)*100)/100;
 function value(n,label){const v=Number(n??0);if(!Number.isFinite(v)||v<0||v>1e9)throw Error('Enter a valid '+label+'.');return v;}
+export function retirementContribution(gross,settings={}){
+ if(settings.retirementMode==='percent'){
+  const percent=value(settings.retirementPercent,'401(k) percentage');
+  if(percent>100)throw Error('401(k) percentage must be between 0 and 100.');
+  return round(value(gross,'gross pay')*percent/100);
+ }
+ return value(settings.retirement,'401(k) deduction');
+}
 export function estimatePay(gross,settings={},options={}){
  gross=value(gross,'gross pay');if(!['single','joint','head'].includes(settings.filing))throw Error('Choose your filing status.');
  if(settings.state!=='MI')throw Error('Automatic state withholding currently supports Michigan. For another state, enter your actual take-home pay.');
  const n=26,bonus=!!options.bonus,exempt=settings.federalExempt===true,step2=settings.twoJobs===true;
- const health=bonus?0:value(settings.health,'pre-tax benefits'),retirement=bonus?0:value(settings.retirement,'401(k) deduction'),afterTax=bonus?0:value(settings.afterTax,'other paycheck deductions'),local=bonus?0:value(settings.localTax,'local tax');
+ const health=bonus?0:value(settings.health,'pre-tax benefits'),retirement=bonus?0:retirementContribution(gross,settings),afterTax=bonus?0:value(settings.afterTax,'other paycheck deductions'),local=bonus?0:value(settings.localTax,'local tax');
  if(health+retirement+afterTax>gross)throw Error('Paycheck deductions cannot exceed gross pay.');
  const taxable=Math.max(0,gross-health-(settings.retirementType==='roth'?0:retirement)),ficaWages=Math.max(0,gross-health),ytd=value(settings.ytdWages,'year-to-date Social Security and Medicare wages');
  const allowance=value(settings.stateExemptions,'MI-W4 exemptions');if(!Number.isInteger(allowance)||allowance>99)throw Error('Use a whole number of MI-W4 exemptions (0–99).');
