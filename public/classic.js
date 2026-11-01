@@ -2397,6 +2397,9 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
   const out = document.getElementById('scheduleOut');
   const restOut = document.getElementById('scheduleRestOut');
   const expandBtn = document.getElementById('scheduleExpandBtn');
+  // A delayed completion refresh can run after the user has opened completed
+  // paychecks. Keep their checkbox focus when replacing the schedule below.
+  const focusedPaycheckCheckboxId = document.activeElement?.matches('.paycheck-head input[type=checkbox]') ? document.activeElement.id : null;
   let completedBtn=document.getElementById('completedPaychecksBtn');
   if(!completedBtn){
     completedBtn=document.createElement('button');completedBtn.id='completedPaychecksBtn';completedBtn.type='button';
@@ -2697,6 +2700,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
     expandBtn.style.display = 'none';
     restOut.classList.remove('open');
   }
+  if (focusedPaycheckCheckboxId) document.getElementById(focusedPaycheckCheckboxId)?.focus({preventScroll:true});
 }
 
 // Peeking header bear: pops up along the top of the active tab banner

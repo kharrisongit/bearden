@@ -1319,6 +1319,7 @@
   const details=planner.carLoanDetails?.[editingBill?.id]||{},bankBalance=a&&!a.balanceUnavailable&&a.balance>0?a.balance:null;
   form.elements.carLoanBalance.value=(bankBalance??details.balance)!=null?(bankBalance??details.balance)/100:'';
   form.elements.carLoanBalance.readOnly=bankBalance!==null;
+  if(editingBill)editingBill.loanBalanceInitial=bankBalance??details.balance??null;
   form.elements.carLoanApr.value=details.apr??a?.apr??'';
   $('#billLoanInfo').textContent=a?connectedAccountName(a)+' · Remaining loan balance '+(a.balanceUnavailable?'Not supplied':money(a.balance,a.currency||'USD'))+'. Updates when your bank syncs. Keep the monthly payment and due date below.':id?'Linked loan unavailable. Reconnect your bank in Settings.':'Choose the loan for this car, including an ELGA loan. The loan balance does not replace your monthly payment. Use the transaction link below to track payments from checking.';
  }
@@ -1330,7 +1331,7 @@
   if(transaction){const temporary={choice:'bill',id:'new',name:transaction.name,amount:Math.round(transaction.amount*100),lastPayment:transaction.date,repeat:'monthly'};base=model.reviewBankActivity([transaction],{[transaction.key]:temporary},[],iso(new Date())).bills[0];}
   if(!base)return;
   const b=rentUpdated(mailModel.emailBillUpdate({...base,...planner.estimates[base.id]},mailMessages(),planner.emailLinks)),form=$('#billEditorForm');
-  editingBill={id:transaction?null:id,key:transaction?.key||raw?.groupKey,transaction,base,manual:!!manual,legacy:!!legacy,newManual};
+  editingBill={id:transaction?null:id,key:transaction?.key||raw?.groupKey,transaction,base,manual:!!manual,legacy:!!legacy,newManual,wasCarPayment:b.billKind==='car-payment'};
   form.reset();form.elements.billKind.innerHTML=Object.entries(billCategories).filter(([key])=>!['credit-card','loan'].includes(key)||key===b.billKind).map(([key,label])=>'<option value="'+key+'">'+label+'</option>').join('');form.elements.name.value=b.name;form.elements.billKind.value=billCategories[b.billKind]?b.billKind:'other';form.elements.amount.value=newManual?'':b.amount/100;form.elements.date.value=b.date;form.elements.repeat.value=b.repeat||'monthly';form.elements.covered.checked=!!planner.covered[id];
   const loanId=planner.loanLinks?.[id]||'',loans=(window.BearDen.plan?.state?.accounts||[]).filter(a=>['plaid','lunchflow'].includes(a.source)&&a.type==='loan'&&(accountShown(a.id)||a.id===loanId));
   form.elements.loanAccount.innerHTML='<option value="">No linked loan</option>'+loans.map(a=>'<option value="'+esc(a.id)+'">'+esc(connectedAccountName(a))+' ('+(a.source==='lunchflow'?'Lunch Flow':'Plaid')+') · '+esc((a.balanceUnavailable?'Not supplied':money(a.balance,a.currency||'USD')))+' remaining</option>').join('')+(loanId&&!loans.some(a=>a.id===loanId)?'<option value="'+esc(loanId)+'">Previously linked loan (unavailable)</option>':'');
@@ -1368,7 +1369,14 @@
    if(billKind==='car-payment'){
     const balance=String(d.get('carLoanBalance')||'').trim()===''?null:Math.round(Number(d.get('carLoanBalance'))*100),apr=String(d.get('carLoanApr')||'').trim()===''?null:Number(d.get('carLoanApr'));
     if(balance!==null&&(!Number.isSafeInteger(balance)||balance<0)||apr!==null&&(!Number.isFinite(apr)||apr<0||apr>100))throw Error('Enter a valid loan balance and APR.');
-    planner.carLoanDetails??={};planner.carLoanDetails[id]={balance,apr,startingBalance:planner.carLoanDetails[id]?.startingBalance??balance};
+    planner.carLoanDetails??={};
+    const previous=planner.carLoanDetails[id]||{},details={...previous,apr};
+    const balanceEdited=!form.elements.carLoanBalance.readOnly&&balance!==editingBill.loanBalanceInitial;
+    const newCarSetup=!editingBill.id||(!editingBill.wasCarPayment&&!Object.hasOwn(planner.carLoanDetails,id));
+    // A connected balance is a display value, not a replacement for the saved
+    // fallback or starting balance when another loan field is being edited.
+    if(balanceEdited||newCarSetup){details.balance=balance;if(!Object.hasOwn(previous,'startingBalance'))details.startingBalance=balance;}
+    planner.carLoanDetails[id]=details;
    }
    storeEditorLink('bill','bill:'+id,name);
    if(!linkDrafts.bill.link&&!editingBill.manual&&!editingBill.legacy&&!editingBill.newManual){delete planner.bankRules[editingBill.key];delete planner.estimates[id];planner.manual.push({id,name,amount,date,repeat,billKind,source:'manual'});}

@@ -24,6 +24,19 @@ for(const width of [320,390])test(`${width}px: paycheck completion explains cons
  await page.locator('#completedPaychecksBtn').click();
  await expect(page.locator('#scheduleRestOut')).toHaveClass(/open/);
  await expect(first.getByRole('checkbox')).toBeFocused();
+ // A pending completion refresh can replace a focused completed checkbox.
+ // Include Wallet's animation-frame decoration in the focus assertion.
+ await page.evaluate(()=>{
+  calculate();
+  return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+ });
+ await expect(first.getByRole('checkbox')).toBeFocused();
+ await page.locator('#completedPaychecksBtn').focus();
+ await page.evaluate(()=>{
+  calculate();
+  return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+ });
+ await expect(page.locator('#completedPaychecksBtn')).toBeFocused();
  await first.getByRole('checkbox').click();
  await expect.poll(()=>page.evaluate(()=>!!window.getDebtPlan().state.checkedPaychecks[1])).toBe(false);
  await expect(page.locator('#completedPaychecksBtn')).toBeHidden();

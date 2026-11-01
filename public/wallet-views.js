@@ -261,6 +261,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
     for(const card of $$('.paycheck')){
       if(card.dataset.bdBuilt)continue;card.dataset.bdBuilt='true';card.classList.add('bd-paycheck');
       const head=$('.paycheck-head',card),number=card.id.replace('paycheck-card-',''),check=$('input[type=checkbox]',head),date=$('.date',head);
+      const restoreCheckFocus=document.activeElement===check;
       const title=make('div','bd-paycheck-title','<small>Paycheck '+esc(number)+'</small><strong>'+esc(date.textContent.split('—').slice(1).join('—').trim())+'</strong>');
       head.replaceChildren(check,title,make('span','bd-paycheck-status',check.checked?'Completed':'Planned'));
       const collapse=make('button','bd-paycheck-collapse',chevron);collapse.type='button';collapse.setAttribute('aria-label','Collapse paycheck '+number);head.append(collapse);
@@ -286,6 +287,8 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
       const totals=make('div','bd-paycheck-totals');
       $$(':scope > .line:not(.paycheck-debt-row):not(.paycheck-cash-left)',body).forEach(n=>totals.append(n));if(totals.childElementCount)cash?cash.before(totals):body.append(totals);
       $('.paycheck-bear-scene',body)?.remove();
+      // replaceChildren moves the original checkbox and clears browser focus.
+      if(restoreCheckFocus)check.focus({preventScroll:true});
     }
   }
   function updateIncome(plan,next,upcoming,allocationRows,allocations){
