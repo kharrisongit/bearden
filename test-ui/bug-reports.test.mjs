@@ -5,7 +5,13 @@ import {APP_RELEASE} from '../public/app-release.mjs';
 async function openReporter(page){await menuGo(page,'settings');await page.locator('[data-bug-report-open]').click();await expect(page.locator('#bugReportDialog')).toBeVisible();}
 
 test('reports keep failed drafts, retry idempotently, and exclude financial state',async({page})=>{
-  await fixture(page);let reports=[],fail=true;const sent=[];
+  await fixture(page);
+  // Hold the deferred account script so the module is evaluated while the
+  // document is interactive, before DOMContentLoaded and Wallet composition.
+  await page.route('**/connections.js*',async route=>{await new Promise(resolve=>setTimeout(resolve,150));await route.fallback();});
+  await page.reload();await page.evaluate(()=>window.classicReady);
+  await expect(page.locator('[data-bug-report-open]')).toHaveCount(1);await expect(page.locator('#classicBugSupport')).toHaveCount(0);
+  let reports=[],fail=true;const sent=[];
   await page.route('**/api/bug-reports',async route=>{
     const req=route.request();if(req.method()==='GET')return route.fulfill({json:{reports}});
     const data=req.postDataJSON();sent.push(data);expect(req.headers()['x-bearden-account']).toBe('test');
@@ -13,6 +19,7 @@ test('reports keep failed drafts, retry idempotently, and exclude financial stat
     const report={...data,id:'bug-example',createdAt:'2026-11-01T12:00:00Z',status:'new',response:'',revision:1};reports=[report];return route.fulfill({json:{report}});
   });
   await openReporter(page);
+  await expect(page.locator('#bugReportSignIn')).toBeHidden();await expect(page.locator('#sendBugReport')).toBeEnabled();
   await page.locator('#bugReportForm [name=title]').fill('<img src=x onerror=alert(1)> Button problem');
   await page.locator('#bugReportForm [name=details]').fill('The button does not respond after opening Bills.');
   await page.locator('#sendBugReport').click();await expect(page.locator('#bugReportStatus')).toContainText('Your draft is still here');

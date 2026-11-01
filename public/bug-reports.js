@@ -188,7 +188,11 @@ async function dismissRelease(){
 }
 
 async function start(){
-  mount();await window.BearDen?.ready;account=window.BearDen?.config||{};
+  // The module can run while readyState is interactive but deferred account
+  // scripts and the DOMContentLoaded Wallet composition have not run yet.
+  // Start after that event, then wait for the real account readiness promise.
+  mount();await window.BearDen.ready;account=window.BearDen.config||{};
   await window.classicReady;await checkRelease();
 }
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
+if(document.readyState==='complete')start();
+else document.addEventListener('DOMContentLoaded',start,{once:true});

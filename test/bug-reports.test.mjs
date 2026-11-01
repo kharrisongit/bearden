@@ -36,6 +36,8 @@ test('reports are isolated, encrypted, idempotent, and independent from financia
 
 test('report endpoints enforce real sessions, owner role, account header, and origin',async()=>{
  const f=workerFixture();try{
+  // Cloudflare redirects .html assets to the extensionless canonical address.
+  for(const path of ['/support','/support.html'])assert.equal((await f.call(path,{account:null})).status,200,path);
   for(const path of ['/api/bug-reports','/api/bug-reports/admin','/api/bug-reports/automation','/api/support/reports','/api/app-release'])assert.equal((await f.call(path,{account:null})).status,401,path);
   for(const path of ['/api/bug-reports/admin','/api/bug-reports/automation'])assert.equal((await f.call(path,{account:'member'})).status,403,path);
   assert.equal((await f.call('/api/support/reports',{account:'member'})).status,401);
