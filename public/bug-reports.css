@@ -1,0 +1,29 @@
+.bug-dialog { width:min(600px,calc(100vw - 28px)); max-height:calc(100dvh - 36px); overflow:auto; }
+.bug-dialog fieldset { border:0; padding:0; margin:0; min-width:0; }
+.bug-dialog-content { min-width:0; }
+.bug-dialog label { display:block; margin:14px 0; font-weight:600; }
+.bug-dialog :is(input,textarea,select) { display:block; box-sizing:border-box; width:100%; min-width:0; margin-top:6px; padding:10px; font:inherit; color:inherit; border:1px solid var(--line,#8396b1); border-radius:10px; background:var(--card,#fff); }
+.bug-dialog textarea { resize:vertical; min-height:70px; }
+.bug-dialog button { min-height:40px; }
+.bug-dialog :focus-visible { outline:3px solid var(--accent,#216aff); outline-offset:3px; }
+.bug-extra { margin:16px 0; }
+.bug-history { border-top:1px solid var(--line,#b7c8dc); padding-top:18px; margin-top:22px; }
+.bug-section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.bug-section-heading h3 { margin:0; }
+.bug-report-item { border:1px solid var(--line,#b7c8dc); border-radius:12px; padding:12px; margin:10px 0; }
+.bug-report-item summary { cursor:pointer; display:flex; justify-content:space-between; align-items:start; gap:12px; overflow-wrap:anywhere; }
+.bug-report-item summary > span:first-child { flex:1; min-width:0; font-weight:700; }
+.bug-report-badge { color:var(--ink,#142740); background:var(--surface-subtle,#e7eff8); padding:4px 8px; border:1px solid var(--line,#b7c8dc); border-radius:16px; font-size:.72rem; white-space:nowrap; }
+.bug-report-text { white-space:pre-wrap; overflow-wrap:anywhere; }
+.bug-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; }
+.bug-actions button { flex:1; }
+.bug-release-title { font-weight:700; font-size:1rem; }
+#bugReleaseNotes { padding-left:22px; line-height:1.6; }
+#bugReleaseNotes li { margin:8px 0; }
+#bugDotLink { font-size:13px; }
+#classicBugSupport button { margin:6px 10px 6px 0; }
+.bug-dialog [hidden] { display:none!important; }
+:root[data-theme=dark] .bug-dialog { color:var(--ink,#eef3fb); background:var(--card,#202e43); }
+:root[data-theme=dark] .bug-dialog :is(input,textarea,select) { background:var(--surface-subtle,#18263b); }
+:root[data-layout=den] .bug-dialog .bug-dialog-content { padding:0; }
+@media(max-width:420px){.bug-report-item summary{display:block}.bug-report-badge{display:inline-block;margin-top:8px}.bug-actions button{flex-basis:100%}}

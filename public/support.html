@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>BearDen · Bug reports</title>
+  <link rel="stylesheet" href="/support.css?v=bug-reports1">
+  <script type="module" src="/support.js?v=bug-reports1"></script>
+</head>
+<body>
+  <main>
+    <header class="page-heading">
+      <div><p class="eyebrow">BEARDEN SUPPORT</p><h1>Bug reports</h1><p class="muted">Private reports and progress updates for dot.</p></div>
+      <a href="/">Back to BearDen</a>
+    </header>
+    <p id="connectionStatus" role="status">Checking your reporting connection…</p>
+    <section id="reportTools" class="toolbar" hidden>
+      <label>Show <select id="statusFilter"><option value="open">Open reports</option><option value="all">All reports</option><option value="fixed">Fixed reports</option></select></label>
+      <button id="refreshReports" type="button">Refresh reports</button>
+      <span id="reportCount" class="muted"></span>
+    </section>
+    <p id="supportMessage" role="status" aria-live="polite"></p>
+    <div id="reportList"></div>
+    <button id="moreReports" type="button" hidden>Load earlier reports</button>
+    <details id="taskSetup" hidden>
+      <summary>dot task connection</summary>
+      <p class="muted">After enabling the report watch in ChatGPT, record its task ID here. Scheduling and pausing the watch are managed in ChatGPT.</p>
+      <form id="taskSetupForm">
+        <label for="automationTaskId">ChatGPT task ID</label>
+        <input id="automationTaskId" required maxlength="120" pattern="[A-Za-z0-9_\-]+" autocomplete="off">
+        <button type="submit">Record task connection</button>
+        <p id="taskSetupStatus" role="status"></p>
+      </form>
+    </details>
+    <p class="footer-note">This support page only reads bug reports and updates their progress. Financial records are not loaded here.</p>
+  </main>
+</body>
+</html>

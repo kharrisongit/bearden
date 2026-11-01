@@ -1,3 +1,5 @@
+import {createBugReportStore} from '../bug-reports.mjs';
+import {APP_RELEASE} from '../public/app-release.mjs';
 import {retireLegacyBanks,retiredBankAccount,cleanRetiredBankLinks} from '../bank-retirement.mjs';
 import {connectLunchflow,publicLunchflow,syncLunchflow,configureLunchflowAccount} from '../lunchflow.mjs';
 import {applyPlaidLoanBalances,diagnosePlaid} from '../plaid-loans.mjs';
@@ -38,6 +40,8 @@ export function runtime(env,fetcher=fetch){
  async function rawRead(id,fallback){const r=await first('SELECT value FROM vault WHERE id=?',id);return r?decrypt(r.value):fallback;}
  const rawWrite=(id,value)=>run('INSERT INTO vault VALUES(?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value',id,encrypt(value));
  const read=(id,fallback)=>rawRead(users.key(id),fallback),write=(id,value)=>rawWrite(users.key(id),value);
+ async function reportLocked(fn){const lockId='bug-reports',id=random(),now=Date.now(),r=await run("INSERT INTO locks VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET owner=excluded.owner,expires=excluded.expires WHERE locks.expires < ?",lockId,id,now+30000,now);if(!r.meta?.changes)throw Object.assign(Error('Another report is being saved. Try again in a moment.'),{status:409});try{return await fn();}finally{await run('DELETE FROM locks WHERE id=? AND owner=?',lockId,id);}}
+ const reports=createBugReportStore({read:rawRead,write:rawWrite,locked:reportLocked,release:APP_RELEASE});
  const plan=()=>read('plan',{state:blank(),revision:0});
  const connections=()=>read('connections',{items:[],transactions:[],candidates:[],gmail:null,status:'No connections yet.'});
  async function updatePlan(fn){const p=await plan();fn(p.state);p.revision++;await write('plan',p);return p;}
@@ -137,15 +141,35 @@ export function runtime(env,fetcher=fetch){
    if(record.gmail){requireMicrosoftMail(token);await locked(async()=>{const c=await connections();connectMicrosoftMailbox(c,user,token.refresh_token,users.current().email);await write('connections',c);});return redirect('/?connected=1',[cookie('bearden_microsoft_oauth','',0)]);}
    const identity=microsoftIdentity(user),session='v2.'+random();await rawWrite('auth-session:'+hash(session),identity);const profile=await rawRead('user-index:'+identity.accountId,{lastSync:0});await rawWrite('user-index:'+identity.accountId,{...profile,...identity});await run('DELETE FROM sessions WHERE expires < ?',Date.now());await run('INSERT INTO sessions VALUES(?,?)',hash(session),Date.now()+7*86400000);return redirect('/?connected=1',[cookie('bearden',session,7*86400),cookie('bearden_microsoft_oauth','',0)]);
   }
+  if(path==='/api/support/reports'||path==='/api/support/reports/status'){
+   const bearer=await reports.authorize(req.headers.get('authorization')),ownerSession=await authorized(req)&&users.current().accountId==='owner';
+   if(!bearer&&!ownerSession)return json({error:'Sign in as the app owner or provide a reporting connection token.'},401);
+   if(!bearer&&sessionMismatch(users.current(),req.headers.get('X-BearDen-Account'),req.method))return json({error:'The signed-in account changed. Reload before continuing.'},409);
+   if(req.method==='GET'&&path==='/api/support/reports')return json(await reports.list({admin:true,cursor:u.searchParams.get('cursor')}));
+   if(req.method!=='POST'||path!=='/api/support/reports/status')return json({error:'Method not allowed'},405);
+   const requestOrigin=req.headers.get('origin');if((!bearer||requestOrigin)&&requestOrigin!==origin)return json({error:'Request origin does not match this server'},403);
+   return json(await reports.update(await body(req)));
+  }
   if(path.startsWith('/api/')){
    if(!await authorized(req))return json({error:'Sign in to access private data.'},401);
    if(sessionMismatch(users.current(),req.headers.get('X-BearDen-Account'),req.method))return json({error:'The signed-in account changed. Reload before continuing; your edits have not been saved to the other account.'},409);
+   if(req.method==='GET'&&path==='/api/bug-reports')return json(await reports.list({accountId:users.current().accountId,cursor:u.searchParams.get('cursor')}));
+   if(req.method==='GET'&&path==='/api/app-release')return json(await reports.appRelease(users.current().accountId));
+   if(path==='/api/bug-reports/admin'||path==='/api/bug-reports/status'||path==='/api/bug-reports/automation'){
+    if(users.current().accountId!=='owner')return json({error:'Only the app owner can manage bug reports.'},403);
+    if(req.method==='GET'&&path==='/api/bug-reports/admin')return json(await reports.list({admin:true,cursor:u.searchParams.get('cursor')}));
+    if(req.method==='GET'&&path==='/api/bug-reports/automation')return json(await reports.automation());
+   }
    if(req.method==='GET'&&path==='/api/income/baby-bear'){const saved=await read('income-shortcut',null),classic=await read('classic',{}),preset=saved||incomeFromTracker(classic.state)||incomeFromPlan((await plan()).state);return preset?json(preset):json({error:'Set your income in the Income tab once to save your Baby Bear income shortcut.'},404);}
    if(path.startsWith('/api/simplefin/'))return json({error:'SimpleFIN is no longer available. Use Lunch Flow or Plaid.'},410);
    if(path==='/api/import/baby-bear')return json({error:'Preset account imports have been retired. Use Accounts or the income-only shortcut.'},410);
    if(req.method==='GET'&&path==='/api/classic')return json(await read('classic',{state:{version:1,values:{}},revision:0}));
    if(req.method==='GET'&&path==='/api/state')return json({...await plan(),connections:publicConnections(await connections())});
    if(req.method!=='POST')return json({error:'Method not allowed'},405);if(req.headers.get('origin')!==origin)return json({error:'Request origin does not match this server'},403);const b=await body(req);
+   if(path==='/api/bug-reports')return json(await reports.submit(users.current().accountId,b));
+   if(path==='/api/bug-reports/status')return json(await reports.update(b));
+   if(path==='/api/bug-reports/automation')return json(await reports.manage(b));
+   if(path==='/api/app-release/ack')return json(await reports.acknowledge(users.current().accountId,b));
    if(path==='/api/logout'){await run('DELETE FROM sessions WHERE hash=?',hash(cookies(req).bearden));const response=json({ok:true});response.headers.append('Set-Cookie',cookie('bearden','',0));return response;}
    if(path==='/api/bank/refresh')return json(await sync(true,true,b.itemId||null,false,b.continueTransactions===true&&!!b.itemId));
    if(path==='/api/sync')return json(await sync(true,false,null,b.gmailOnly===true));
@@ -262,7 +286,7 @@ export function runtime(env,fetcher=fetch){
    });
   }
   if(!['GET','HEAD'].includes(req.method))return json({error:'Method not allowed'},405);
-  if(!['/statement-insights.mjs','/statement-model.mjs','/statement-reader.mjs','/statement-insights.css','/vendor/pdfjs.mjs','/vendor/pdfjs-worker.mjs','/','/index.html','/plaid-return','/style.css','/app.mjs','/engine.mjs','/setup-key','/setup-key.html','/setup-key.mjs','/favicon.ico','/tabs.js','/tabs.css','/theme.css','/theme-builder.js','/theme-builder.css','/income-model.mjs','/forecast-report-export.mjs','/forecast-report-data.mjs','/forecast-report-pdf.mjs','/forecast-report.css','/vendor/pdf-lib.mjs','/bills-savings.mjs','/connection-model.mjs','/debt-payments.mjs','/debt-interest.mjs','/debt-terms.mjs','/rent-model.mjs','/rent-browser.mjs','/household-model.mjs','/contribution-matching.mjs','/bill-sharing.mjs','/credit-model.mjs','/transaction-links.mjs','/email-model.mjs','/payment-confirmation.mjs','/tax-model.mjs','/tax-ui.mjs','/onboarding.js','/bank-activity.mjs','/transaction-categories.mjs','/account-removal.mjs','/car-debt.mjs','/classic.js','/classic.css','/classic-theme.js','/brand-logos.js','/wallet-views.js','/den-design.js','/den-design.css','/classic-events.js','/classic-migrate.mjs','/connections.js','/connections.css','/purify.min.js'].includes(path))return json({error:'Not found'},404);
+  if(!['/bug-reports.js','/bug-reports.css','/app-release.mjs','/support.html','/support.js','/support.css','/statement-insights.mjs','/statement-model.mjs','/statement-reader.mjs','/statement-insights.css','/vendor/pdfjs.mjs','/vendor/pdfjs-worker.mjs','/','/index.html','/plaid-return','/style.css','/app.mjs','/engine.mjs','/setup-key','/setup-key.html','/setup-key.mjs','/favicon.ico','/tabs.js','/tabs.css','/theme.css','/theme-builder.js','/theme-builder.css','/income-model.mjs','/forecast-report-export.mjs','/forecast-report-data.mjs','/forecast-report-pdf.mjs','/forecast-report.css','/vendor/pdf-lib.mjs','/bills-savings.mjs','/connection-model.mjs','/debt-payments.mjs','/debt-interest.mjs','/debt-terms.mjs','/rent-model.mjs','/rent-browser.mjs','/household-model.mjs','/contribution-matching.mjs','/bill-sharing.mjs','/credit-model.mjs','/transaction-links.mjs','/email-model.mjs','/payment-confirmation.mjs','/tax-model.mjs','/tax-ui.mjs','/onboarding.js','/bank-activity.mjs','/transaction-categories.mjs','/account-removal.mjs','/car-debt.mjs','/classic.js','/classic.css','/classic-theme.js','/brand-logos.js','/wallet-views.js','/den-design.js','/den-design.css','/classic-events.js','/classic-migrate.mjs','/connections.js','/connections.css','/purify.min.js'].includes(path))return json({error:'Not found'},404);
   const target=new URL(req.url);if(path==='/plaid-return')target.pathname='/';const asset=await env.ASSETS.fetch(new Request(target,req)),response=new Response(asset.body,asset);for(const [k,v]of Object.entries(headers))response.headers.set(k,v);return response;
  }
  async function handle(req){const identity=await sessionIdentity(req);return users.run(identity,()=>handleScoped(req));}
@@ -273,7 +297,7 @@ export function runtime(env,fetcher=fetch){
  return {handle,sync,syncNextAccount,configured,encrypt,decrypt};
 }
 export default {
- async fetch(req,env){try{return await runtime(env).handle(req);}catch(e){return json({error:e.message||'Request failed',...(e.code==='SYNC_BUSY'?{code:e.code}:{})},e.code==='SYNC_BUSY'?409:400);}},
+ async fetch(req,env){try{return await runtime(env).handle(req);}catch(e){return json({error:e.message||'Request failed',...(e.code==='SYNC_BUSY'?{code:e.code}:{})},e.code==='SYNC_BUSY'?409:(Number.isInteger(e.status)&&e.status>=400&&e.status<500?e.status:400));}},
  async scheduled(_event,env,ctx){const app=runtime(env);if(app.configured)ctx.waitUntil(app.syncNextAccount().catch(()=>{/* Connection errors are stored in the private status. Do not log tokens or payloads. */}));}
 };
 
