@@ -20,7 +20,7 @@ test('reports keep failed drafts, retry idempotently, and exclude financial stat
   });
   await openReporter(page);
   await expect(page.locator('#bugReportSignIn')).toBeHidden();await expect(page.locator('#sendBugReport')).toBeEnabled();
-  await page.locator('#bugReportForm [name=title]').fill('<img src=x onerror=alert(1)> Button problem');
+  await page.locator('#bugReportForm [name=reportTitle]').fill('<img src=x onerror=alert(1)> Button problem');
   await page.locator('#bugReportForm [name=details]').fill('The button does not respond after opening Bills.');
   await page.locator('#sendBugReport').click();await expect(page.locator('#bugReportStatus')).toContainText('Your draft is still here');
   await expect(page.locator('#bugReportForm [name=details]')).toHaveValue('The button does not respond after opening Bills.');
@@ -29,7 +29,7 @@ test('reports keep failed drafts, retry idempotently, and exclude financial stat
   expect(Object.keys(sent[1]).sort()).toEqual(['appVersion','area','details','diagnostics','expected','steps','submissionId','title']);
   expect(Object.keys(sent[1].diagnostics).sort()).toEqual(['browser','viewport']);expect(sent[1].appVersion).toBe(APP_RELEASE.id);
   await expect(page.locator('#bugReportList')).toContainText('<img src=x onerror=alert(1)> Button problem');await expect(page.locator('#bugReportList img')).toHaveCount(0);
-  await expect(page.locator('#bugReportForm [name=title]')).toHaveValue('');
+  await expect(page.locator('#bugReportForm [name=reportTitle]')).toHaveValue('');
 });
 
 test('signed-out users cannot submit reports',async({page})=>{

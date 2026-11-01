@@ -39,7 +39,7 @@ function mount(){
     <p id="bugReportSignIn" class="subtle" hidden>Sign in with Google or Microsoft in Settings to send a report.</p>
     <form id="bugReportForm">
       <fieldset id="bugReportFields">
-        <label>Short description<input name="title" maxlength="120" required placeholder="e.g. A button does not respond"></label>
+        <label>Short description<input name="reportTitle" maxlength="120" required placeholder="e.g. A button does not respond"></label>
         <label>Where did it happen?<select name="area">${Object.entries(areas).map(([value,label])=>'<option value="'+value+'">'+label+'</option>').join('')}</select></label>
         <label>What happened?<textarea name="details" maxlength="4000" rows="4" required placeholder="Describe the problem."></textarea></label>
         <details class="bug-extra"><summary>Add more details (optional)</summary>
@@ -94,7 +94,7 @@ function mount(){
 
 async function openReports(){
   if(!reportDialog.open){
-    if(!$('#bugReportForm').elements.title.value&&!$('#bugReportForm').elements.details.value)$('#bugReportForm').elements.area.value=activeArea==='settings'?openedFromArea:activeArea;
+    if(!$('#bugReportForm').elements.reportTitle.value&&!$('#bugReportForm').elements.details.value)$('#bugReportForm').elements.area.value=activeArea==='settings'?openedFromArea:activeArea;
     reportDialog.showModal();
   }
   $('#bugReportFields').disabled=!account?.authenticated||sending;
@@ -109,7 +109,7 @@ async function submitReport(event){
   event.preventDefault();if(sending||!account?.authenticated)return;
   const form=event.currentTarget;if(!form.reportValidity())return;
   const values=Object.fromEntries(new FormData(form));
-  const payload={title:values.title.trim(),details:values.details.trim(),expected:values.expected.trim(),steps:values.steps.trim(),area:values.area,appVersion:APP_RELEASE.id,diagnostics:{browser:navigator.userAgent.slice(0,240),viewport:Math.round(innerWidth)+'x'+Math.round(innerHeight)}};
+  const payload={title:values.reportTitle.trim(),details:values.details.trim(),expected:values.expected.trim(),steps:values.steps.trim(),area:values.area,appVersion:APP_RELEASE.id,diagnostics:{browser:navigator.userAgent.slice(0,240),viewport:Math.round(innerWidth)+'x'+Math.round(innerHeight)}};
   if(!payload.title||!payload.details){$('#bugReportStatus').textContent='Add a description and tell us what happened.';return;}
   const signature=JSON.stringify(payload);if(lastSubmission?.signature!==signature)lastSubmission={signature,id:crypto.randomUUID()};
   sending=true;$('#bugReportFields').disabled=true;$('#bugReportStatus').textContent='Sending report…';
