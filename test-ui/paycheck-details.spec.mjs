@@ -2,6 +2,35 @@ import {test,expect} from '@playwright/test';
 import {fixture,menuGo} from './wallet.fixture.mjs';
 
 const budgetAmounts=page=>page.evaluate(()=>window.getDebtPlan().schedule.slice(0,4).map(row=>row.budgetLineItemsThisCheck.find(item=>item.id===1).amount));
+test('unknown loan interest is unavailable in forecasts while completed interest stays recorded',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const f=await fixture(page,{empty:true,goals:false,ownStart:'2026-10-16'});
+ const initial={...JSON.parse(f.tracker.state.values['app-state']),payoffMethod:'minimum',
+  cards:[
+   {id:1,name:'Example card',balance:1000,apr:24,min:30,monthlyMinimum:60,dueDate:'2026-11-04',interestRules:{profileId:'generic'}},
+   {id:2,name:'Example loan',balance:100,apr:30,min:25,monthlyMinimum:50,interestRules:{profileId:'affirm',balanceBasis:'unknown'}}
+  ],checkedPaychecks:{1:true},debtPaymentHistory:{1:{1:30,2:25}},debtInterestHistory:{1:{1:2.5,2:1.25}},debtFeeHistory:{1:{1:0,2:0}}};
+ f.tracker.state.values['app-state']=JSON.stringify(initial);
+ await page.reload();await page.evaluate(()=>window.classicReady);await menuGo(page,'overview');
+ const upcoming=page.locator('#paycheck-card-2');
+ await expect(upcoming.locator('[data-paycheck-debt="2"] .interest')).toHaveText('Unavailable');
+ await expect(upcoming.locator('.paycheck-interest-summary')).toContainText('Estimated interest (partial)');
+ await expect(upcoming.locator('.paycheck-interest-note')).toContainText('Excludes interest for Example loan');
+ const plan=await page.evaluate(()=>window.getDebtPlan());
+ await expect(upcoming.locator('.paycheck-interest-summary')).toContainText('$'+plan.schedule[1].interestThisCheck.toFixed(2));
+ const completed=page.locator('#paycheck-card-1');
+ await expect(completed.locator('[data-paycheck-debt="2"] .interest')).toHaveText('$1.25');
+ await expect(completed.locator('.paycheck-interest-summary')).toContainText('Interest charged this check');
+ await expect(completed.locator('.paycheck-interest-summary')).toContainText('$3.75');
+ await expect(completed.locator('.paycheck-interest-note')).toHaveCount(0);
+ const afterLoanPayoff=plan.schedule.find(row=>row.balancesBefore[1]<=0.005);
+ expect(afterLoanPayoff).toBeTruthy();
+ await expect(page.locator('#paycheck-card-'+afterLoanPayoff.paycheck+' .paycheck-interest-note')).toHaveCount(0);
+ for(const key of ['debtPaymentHistory','debtInterestHistory','debtFeeHistory'])expect(plan.state[key]).toEqual(initial[key]);
+ expect(plan.state.cards.map(c=>c.balance)).toEqual([1000,100]);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
 async function openBudget(page){await menuGo(page,'settings');await page.locator('#bdHousehold [data-den-go=budget]').click();}
 async function setIncome(page){
  await menuGo(page,'settings');await page.locator('#bdHousehold [data-den-go="income-edit"]').click();

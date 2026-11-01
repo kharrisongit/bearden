@@ -2456,6 +2456,8 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
     const reachedGoalsThisRow = goalsInfo.filter(g => g.reachedPaycheck === row.paycheck);
     const isSavingsGoalCard = reachedGoalsThisRow.length > 0;
     const isChecked = !!checkedPaychecks[row.paycheck];
+    const unavailableInterest=cards.map((c,i)=>!isChecked&&c.interestRules?.balanceBasis==='unknown'&&row.balancesBefore[i]>0.005);
+    const unavailableInterestNames=cards.filter((c,i)=>unavailableInterest[i]).map(c=>c.name);
     const div = document.createElement('div');
     div.id = 'paycheck-card-' + row.paycheck;
 
@@ -2482,7 +2484,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
         <span class="name paycheck-debt-name"><span><button type="button" class="paycheck-creditor" data-paycheck-creditor="${bdEscape(c.id)}" data-paycheck-number="${row.paycheck}" aria-label="Quick view for ${bdEscape(c.name)}" aria-haspopup="dialog" aria-controls="debtProgressDialog">${bdEscape(c.name)}</button>${isPayOverridden ? ' <span class="edited-tag">edited</span>' : ''}${justPaidOff ? '<span class="paidoff-badge">PAID OFF</span>' : ''}</span>${payoffControlsEnabled?`<span class="paycheck-debt-actions"><button type="button" class="slice-payment" aria-pressed="${sliceSelected}" title="${bdEscape(sliceTitle)}" aria-label="${bdEscape(sliceTitle+' for '+c.name)}" data-bd-click="togglePaycheckSlice(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!sliceAllowance.allowed&&!sliceSelected?'disabled':''}>${sliceSelected?'Undo Slice':'Slice'}</button><button type="button" class="slice-payment squash-payment" aria-pressed="${squashSelected}" title="${bdEscape(squashTitle)}" aria-label="${bdEscape(squashTitle+' for '+c.name)}" data-bd-click="togglePaycheckSquash(${bdEscape(JSON.stringify(c.id))}, ${row.paycheck})" ${!squashAllowance.allowed&&!squashSelected?'disabled':''}>${squashSelected?'Undo Squash':'Squash'}</button></span>`:''}</span>
         <div class="paycheck-debt-amounts">
           <div><small>Before</small><span class="balance-before">${money(row.balancesBefore[i])}</span></div>
-          <div><small>Interest</small><span class="interest">${money(row.interestByAccount[i])}</span></div>
+          <div><small>Interest</small><span class="interest"${unavailableInterest[i]?' title="Confirm the loan balance type to estimate interest."':''}>${unavailableInterest[i]?'Unavailable':money(row.interestByAccount[i])}</span></div>
           ${row.feesByAccount?.[i]>0.005?`<div><small>Fees</small><span>${money(row.feesByAccount[i])}</span></div>`:''}
           <label><small>${row.debtTiming?.[i]?.estimatedMinimum?'Est. payment':'Payment'}</small><input type="number" class="${payInputClass}" aria-label="Payment for ${bdEscape(c.name)}" ${row.sliceMode?`readonly title="${payoffControlsEnabled?'Undo Slice or Squash':'Enable Slice / Squash in Settings, then undo the choice'} to edit this paycheck’s payments"`:''} value="${row.payments[i].toFixed(2)}" step="0.01" data-bd-change="updateAccountPayment(${c.id}, ${row.paycheck}, this.value, ${row.naturalPayments[i]})"></label>
           <div><small>After</small><span class="bal">${money(row.balancesAfter[i])}</span></div>
@@ -2569,10 +2571,11 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
     let bottomSection = '';
     if (!isAfterDebtFree) {
       bottomSection += `
-      <div class="line" style="padding:4px 0;">
-        <span>💸 Interest charged this check</span>
+      <div class="line paycheck-interest-summary" style="padding:4px 0;">
+        <span>💸 ${unavailableInterestNames.length?'Estimated interest (partial)':'Interest charged this check'}</span>
         <span style="color:var(--warn);font-weight:600;">${row.carDebt.interest===null?'Unavailable':money(row.interestThisCheck+row.carDebt.interest/100)}</span>
       </div>
+      ${unavailableInterestNames.length?`<p class="subtle paycheck-interest-note">Excludes interest for ${unavailableInterestNames.map(bdEscape).join(', ')}; confirm the loan balance type to include it.</p>`:''}
       <div class="line debt-reduction-line">
         <span>⬇ Debt reduced this check</span>
         <span style="color:var(--accent);font-weight:700;">${row.carDebt.reduction===null?'Unavailable':money(row.debtReduction+row.carDebt.reduction/100)}</span>
