@@ -33,7 +33,7 @@ export function reconcilePayment(receipt,bank,{destinations=[],balanceHistory={}
  const cashReflected=bankPosted&&fresh(bank.balanceSnapshot,after,now);
  const balanceConfirmed=!destinations.length||destinations.some(snapshot=>{
   if(!fresh(snapshot,after,now))return false;
-  if(snapshot.balance===0)return true;
+  if(snapshot.balance<=0)return true;
   // An issuer payment record corroborates the refreshed issuer balance even
   // when new purchases or interest offset the payment's visible decrease.
   if((snapshot.payments||[]).some(p=>!p.pending&&p.amount===receipt.paymentAmount&&time(p.date)>=submitted-86400000&&time(p.date)<=submitted+14*86400000))return true;

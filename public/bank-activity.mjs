@@ -1,6 +1,7 @@
 import {categorizeTransaction} from './transaction-categories.mjs?v=auto-categories1';
 import {transactionAccountId} from './transaction-links.mjs?v=plaid-restore1';
 import {day} from './engine.mjs';
+import {emailAccountStatus,matchesEmail} from './email-model.mjs';
 import {matchesPayment,matchingPayments,paymentOwner,paymentTargets,postedPayment} from './transaction-links.mjs';
 export const transactionKey=t=>JSON.stringify([t.itemId,t.account_id,String(t.name||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()]);
 // Details use every available posted payment, independently of the 30-day
@@ -12,6 +13,65 @@ export function accountPaymentHistory(transactions,target,rules={},links={},toda
   if(!postedPayment(t)||!t.date||t.date>today||!keys.has(transactionKey(t))||paymentTargets(t,links).length||seen.has(t.transaction_id))return false;
   seen.add(t.transaction_id);return true;
  }).sort((a,b)=>b.date.localeCompare(a.date)||String(a.transaction_id).localeCompare(String(b.transaction_id)));
+}
+// Supplement explicit links with corroborated bill evidence. Never save these
+// guesses as merchant rules: corrections and removed transactions must undo them.
+export function inferredBillPaymentHistory(events,transactions,{rules={},links={},emailLinks={},messages=[],accounts=[],funding={},today=new Date().toISOString().slice(0,10),now=Date.now()}={}){
+ const groups=new Map(),result=new Map(),claimed=new Set();
+ transactions=[...new Map((transactions||[]).map(t=>[t.transaction_id,t])).values()];
+ for(const bill of events){
+  if(bill.source==='tracker-debt'||bill.source==='plaid-credit')continue;
+  const target='bill:'+bill.id;
+  if(!groups.has(target))groups.set(target,[]);
+  groups.get(target).push(bill);
+ }
+ for(const target of groups.keys())for(const t of accountPaymentHistory(transactions,target,rules,links,today))claimed.add(t.transaction_id);
+ const noise=new Set('payment payments bill billing receipt reference transaction purchase submitted processing scheduled received posted confirmation online automatic debit credit ach pos card account monthly insurance renters renter rent home policy the for and from com net org email mail noreply www'.split(' '));
+ const merchantMatches=(t,bill,link,receipt)=>{
+  const merchant=normalize(t.name+' '+(t.merchant_name||'')),words=new Set(merchant.split(' '));
+  const identity=normalize([bill.name,link?.name,link?.merchant,receipt?.senderName,receipt?.sender?.split('@')[1],receipt?.subject].filter(Boolean).join(' '));
+  if(identity.split(' ').some(word=>word.length>=4&&!noise.has(word)&&!/^[0-9]+$/.test(word)&&words.has(word)))return true;
+  const kind=categorizeTransaction(t).billKind;
+  if(['rent','electric','insurance','phone-internet','utility'].includes(bill.billKind)&&kind===bill.billKind)return true;
+  return bill.billKind==='rent'&&/\b(?:sun communities|sun homes|suncommunities|sunwebportal)\b/.test(merchant)
+   ||bill.billKind==='insurance'&&/\b(?:assurant|esurance|homesite|lemonade|resident ?shield)\b/.test(merchant);
+ };
+ const candidates=[];
+ for(const [target,bills]of groups){
+  const link=links[target];if(link?.sharedMerchant)continue;
+  const notices=emailLinks[target]?emailAccountStatus(messages,emailLinks[target],{now,creditCard:false}).payments:[];
+  const receipts=notices.filter(p=>p.paymentMade&&!p.confirmed&&Object.values(emailLinks).filter(l=>matchesEmail(p,l)).length===1);
+  for(const t of transactions||[]){
+   if(!postedPayment(t)||!t.date||t.date>today||claimed.has(t.transaction_id)||paymentTargets(t,links).length)continue;
+   const account=accounts.find(a=>a.id===transactionAccountId(t));
+   if(!account||account.accountMissing||account.type!=='depository'||account.currency!=='USD')continue;
+   const rule=rules[transactionKey(t)];if(rule&&(rule.choice!=='bill'||'bill:'+rule.id!==target))continue;
+   const amount=Math.round(t.amount*100);if(link?.amount!=null&&link.amount!==amount)continue;
+   const receipt=receipts.find(p=>{
+    const date=p.paymentDate||(p.submittedAt||p.receivedAt).slice(0,10);
+    return p.paymentAmount===amount&&t.date>=day(date,-1)&&t.date<=day(date,14)&&merchantMatches(t,bills[0],link,p);
+   });
+   const bill=bills.filter(b=>amount===b.amount&&t.date>=day(b.date,b.repeat==='weekly'?-3:-7)&&t.date<=day(b.date,b.repeat==='weekly'?3:14)&&merchantMatches(t,b,link,null))
+    .sort((a,b)=>Math.abs(Date.parse(a.date)-Date.parse(t.date))-Math.abs(Date.parse(b.date)-Date.parse(t.date)))[0];
+   // Statement-only links still allow a posted payment to settle the bill,
+   // while a nearby failure must not be replaced by a scheduled-amount guess.
+   if(!receipt&&!bill||notices.some(p=>p.status==='failed'&&p.paymentAmount===amount&&p.receivedAt.slice(0,10)>=day(t.date,-7)&&p.receivedAt.slice(0,10)<=day(t.date,14)))continue;
+   const evidence=receipt?'receipt:'+(receipt.reference||receipt.id):'cycle:'+bill.key;
+   candidates.push({target,t,evidence,preferred:funding[target]===account.id});
+  }
+ }
+ for(const candidate of candidates){
+  // One bank transaction cannot pay two bills, even if their amounts coincide.
+  if(new Set(candidates.filter(c=>c.t.transaction_id===candidate.t.transaction_id).map(c=>c.target)).size!==1)continue;
+  const peers=candidates.filter(c=>c.target===candidate.target&&c.evidence===candidate.evidence);
+  // Multiple bank feeds can expose the same payment. Prefer the chosen funding
+  // account; otherwise require a single candidate instead of double counting.
+  const preferred=peers.filter(c=>c.preferred),pool=preferred.length?preferred:peers;
+  if(pool.length!==1||pool[0]!==candidate)continue;
+  if(!result.has(candidate.target))result.set(candidate.target,[]);
+  if(!result.get(candidate.target).some(t=>t.transaction_id===candidate.t.transaction_id))result.get(candidate.target).push(candidate.t);
+ }
+ return result;
 }
 const normalize=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 export function classifyBankTransaction(t,preferences={}){

@@ -9,7 +9,7 @@ export {monthlyMinimum} from './debt-payments.mjs?v=credit-rules1';
 import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-portal1';
 import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices,contributionReceipts} from './household-model.mjs?v=early-contributions1';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
-export {reviewBankActivity,transactionKey,billsAccountSpending,accountPaymentHistory} from './bank-activity.mjs?v=payment-history1';
+export {reviewBankActivity,transactionKey,billsAccountSpending,accountPaymentHistory,inferredBillPaymentHistory} from './bank-activity.mjs?v=payment-history1';
 export {creditBills,creditCapacity} from './credit-model.mjs?v=paid-cycle1';
 export {transactionAccountId};
 export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment,paymentOwner,paymentTargets} from './transaction-links.mjs?v=plaid-restore1';

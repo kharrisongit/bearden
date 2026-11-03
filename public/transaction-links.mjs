@@ -41,12 +41,12 @@ export const paymentTarget=bill=>bill.source==='tracker-debt'?'debt:'+bill.track
 
 // Recomputed from posted transactions, so a removed/corrected bank transaction
 // cannot leave a permanent paid flag. One transaction can settle only one date.
-export function matchedBillPayments(events,transactions,links,today,{details=false}={}){
+export function matchedBillPayments(events,transactions,links,today,{details=false,historyForTarget=null}={}){
  const paid=new Set(),groups=new Map();
- for(const event of events){const target=paymentTarget(event);if(!links[target])continue;if(!groups.has(target))groups.set(target,[]);groups.get(target).push(event);}
+ for(const event of events){const target=paymentTarget(event);if(!links[target]&&!historyForTarget)continue;if(!groups.has(target))groups.set(target,[]);groups.get(target).push(event);}
  for(const [target,bills]of groups){
   const totals=new Map(),dates=new Map();
-  for(const transaction of matchingPayments(transactions,links[target],today,links,target)){
+  for(const transaction of historyForTarget?historyForTarget(target):matchingPayments(transactions,links[target],today,links,target)){
    const candidates=bills.filter(b=>{
     const early=b.repeat==='weekly'?3:b.source==='tracker-debt'?6:7,late=b.repeat==='weekly'?3:b.source==='tracker-debt'?7:14;
     const start=b.source==='plaid-credit'&&b.statementDate&&b.statementDate<b.date?day(b.statementDate,1):day(b.date,-early);

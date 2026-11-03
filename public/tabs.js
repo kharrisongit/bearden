@@ -211,9 +211,9 @@
   try{await save();}catch(e){planner.forecastDebtMode=old;await renderIncome();error(e);}
  });
  const linkDrafts={};let pickingLink=null;
- let resolvedDebts={};
+ let resolvedDebts={},inferredPayments=new Map();
  const bankTransactions=()=>window.BearDen.plan?.connections?.transactions||[];
- const accountBankHistory=target=>model?model.accountPaymentHistory(bankTransactions(),target,planner.bankRules,planner.transactionLinks,iso(new Date())):[];
+ const accountBankHistory=target=>model?[...new Map([...model.accountPaymentHistory(bankTransactions(),target,planner.bankRules,planner.transactionLinks,iso(new Date())),...(inferredPayments.get(target)||[])].map(t=>[t.transaction_id,t])).values()].sort((a,b)=>b.date.localeCompare(a.date)):[];
  window.getDebtBankPaymentHistory=id=>accountBankHistory('debt:'+id);
  function bankPaymentHistoryMarkup(history){
   const title='<h4>Bank payment history</h4>';
@@ -292,7 +292,7 @@
   const credit=(connections.creditCards||[]).find(c=>target==='credit:'+c.id||target.startsWith('debt:')&&('plaid-'+c.accountId===planner.debtAccountLinks?.[id]||String(planner.creditCards[c.id]?.trackerCardId)===id));
   const snapshot=a=>({id:a.id,balance:a.balance,currency:a.currency,updated:a.balanceUpdated||a.balanceRetrieved,unavailable:!!(a.balanceUnavailable||a.balanceStale||a.providerUnavailable||a.accountMissing||a.zeroUnconfirmed)});
   const destinations=[];
-  if(target==='bill:'+planner.sunRent?.billId){
+  if(target==='bill:'+planner.sunRent?.billId&&connections.sun?.enabled!==false){
    const sun=connections.sun,reading=sun?.snapshot;
    destinations.push({id:'rent:'+id,balance:reading?.currentBalance,currency:reading?.currency,updated:reading?.checkedAt,unavailable:!sun?.connected||sun?.needsLogin||sun?.enabled===false});
   }else{
@@ -880,7 +880,7 @@
  }
  async function renderIncome(){
   if(!ready||deletingAccount)return;
-  calendarContext=null;billsSavingsContext=null;resetBillsSavings();
+  calendarContext=null;billsSavingsContext=null;inferredPayments=new Map();resetBillsSavings();
   try{
    planner=model.remapConnectedAccountReferences(planner,window.BearDen.plan?.state?.accounts||[]);
    const b=window.BearDen,legacy={...(b.plan?.state||{}),bills:(b.plan?.state?.bills||[]).filter(b=>!planner.deletedBills?.[b.id]&&!planner.manual.some(m=>m.id===b.id))},connections=b.plan?.connections||{},authenticated=b.config?.authenticated;
@@ -930,6 +930,8 @@
    for(const bill of credit)bill.paidByPaycheck=paycheckPaid.has(bill.id+':'+bill.date);
    const paymentsPlanner={...planner,manual:planner.manual.map(b=>rentUpdated(mailModel.emailBillUpdate(b,mailMessages(),planner.emailLinks))),paid:[...new Set([...planner.paid,...paycheckPaid])]};
    const billPlan={...legacy,bills:[...(legacy.bills||[]).filter(b=>b.source!=='gmail'||!Object.values(planner.emailLinks).some(link=>link.sender===b.sender&&(!b.mailboxId||link.mailboxId===b.mailboxId)&&(!link.accountLast4||!b.accountLast4||link.accountLast4===b.accountLast4))).filter(b=>b.source!=='gmail'||b.billKind==='electric'||/consumers\s*energy|@(?:[a-z0-9-]+\.)*consumersenergy\.com/i.test((b.name||'')+' '+(b.sender||''))),...estimates,...credit,...debtBills]};
+   const allBillEvents=model.billEvents({...billPlan,paid:[]},{...paymentsPlanner,paid:[],paymentReservations:{}},linked,modelDay(currentDay,-365),modelDay(currentDay,366));
+   inferredPayments=model.inferredBillPaymentHistory(allBillEvents,connections.transactions||[],{rules:planner.bankRules,links:planner.transactionLinks,emailLinks:planner.emailLinks,messages:mailMessages(),accounts,today:currentDay,funding:Object.fromEntries(allBillEvents.map(b=>['bill:'+b.id,model.sharedBill(b,planner)?planner.household.billsAccountId:planner.household.personalAccountId]))});
    const previousBalances=JSON.stringify([planner.paymentBalanceHistory||{},planner.paymentConfirmations||{}]);
    planner.paymentConfirmations??={};
    planner.paymentBalanceHistory=mailModel.rememberPaymentBalances(planner.paymentBalanceHistory,Object.keys(planner.emailLinks).flatMap(target=>{
@@ -939,8 +941,8 @@
    }));
    planner.paymentConfirmations=Object.fromEntries(Object.entries(planner.paymentConfirmations).sort(([,a],[,b])=>b.submittedAt.localeCompare(a.submittedAt)).slice(0,500));
    if(JSON.stringify([planner.paymentBalanceHistory,planner.paymentConfirmations])!==previousBalances)await b.storage.set('income-planner',JSON.stringify(planner));
-   const allBillEvents=model.billEvents({...billPlan,paid:[]},{...paymentsPlanner,paid:[],paymentReservations:{}},linked,modelDay(currentDay,-365),modelDay(currentDay,366));
-   const bankPaymentDetails=model.matchedBillPayments(allBillEvents.filter(b=>b.source!=='tracker-debt'),connections.transactions||[],planner.transactionLinks,currentDay,{details:true}),bankPaidDates=new Map(bankPaymentDetails.map(p=>[p.key,p.paidDate])),bankPaid=new Set(bankPaidDates.keys());
+
+   const bankPaymentDetails=model.matchedBillPayments(allBillEvents.filter(b=>b.source!=='tracker-debt'),connections.transactions||[],planner.transactionLinks,currentDay,{details:true,historyForTarget:accountBankHistory}),bankPaidDates=new Map(bankPaymentDetails.map(p=>[p.key,p.paidDate])),bankPaid=new Set(bankPaidDates.keys());
    paymentsPlanner.paid=[...new Set([...paymentsPlanner.paid,...bankPaid])];
    const emailBillPayments=mailModel.emailBillPaymentStatuses(allBillEvents,mailMessages(),planner.emailLinks,{statusForTarget:emailStatus}),emailProgress=new Map(emailBillPayments.map(p=>[p.key,p])),emailPaid=new Map(emailBillPayments.filter(p=>p.confirmed).map(p=>[p.key,p]));
    for(const payment of emailBillPayments)if(payment.failed&&!payment.paid)bankPaid.delete(payment.key);

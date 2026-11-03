@@ -87,7 +87,7 @@ export function resolveDebtConnections(planner,accounts,issuers,cards,statements
 
 // Redirect only verified provider-ID aliases; labels never establish identity.
 export function remapConnectedAccountReferences(planner,accounts){
- const pairs=accounts.filter(a=>a.source==='simplefin').flatMap(a=>(a.identityAliases||[]).map(id=>[id,a.id]));
+ const pairs=accounts.filter(a=>['simplefin','lunchflow'].includes(a.source)).flatMap(a=>[...(a.identityAliases||[]).map(id=>[id,a.id]),...(a.transactionIdentityAliases||[])]);
  const aliases=new Map(pairs.filter(([alias,id])=>!accounts.some(a=>a.id===alias)&&!pairs.some(([other,target])=>other===alias&&target!==id)));
  if(!aliases.size)return planner;
  function translate(value){
