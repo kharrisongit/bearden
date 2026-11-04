@@ -2,8 +2,9 @@ import {test,expect} from '@playwright/test';
 import {fixture,menuGo} from './wallet.fixture.mjs';
 import {blank} from '../public/engine.mjs';
 import {emailLink} from '../public/email-model.mjs';
+import {paymentLink} from '../public/transaction-links.mjs';
 
-test('posted rent and insurance leave awaiting confirmation in both cards and tracker without manual transaction links',async({page})=>{
+for(const linked of [false,true])test(`posted rent and insurance leave awaiting confirmation with ${linked?'manual':'inferred'} transaction links and numeric portal timestamps`,async({page})=>{
  const f=await fixture(page);
  await page.goto('about:blank');
  let tracker=structuredClone(f.tracker);
@@ -21,7 +22,8 @@ test('posted rent and insurance leave awaiting confirmation in both cards and tr
  let posted=false;
  const accounts=f.accounts.map(a=>({...a,balanceUpdated:'2026-11-03T17:00:00Z'}));
  const transactions=planner.manual.map(b=>({transaction_id:b.id,account_id:'lunchflow-bills',source:'lunchflow',itemId:'lunchflow',name:b.id==='rent'?'SUN COMMUNITIES':'ASSURANT INSURANCE',amount:b.amount/100,date:'2026-11-02',currency:'USD',pending:false}));
- await page.route('https://bearden.test/api/state',route=>route.fulfill({json:{state:{...blank(),accounts},connections:{items:[],transactions:posted?transactions:[],gmailMessages:messages,creditCards:[],recurringBills:[],sun:{connected:true,enabled:true,snapshot:{currency:'USD',currentBalance:posted?-100:80000,checkedAt:'2026-11-03T17:30:00Z'}}},revision:1}}));
+ if(linked){planner.transactionLinks=Object.fromEntries(transactions.map(t=>['bill:'+t.transaction_id,paymentLink(t)]));tracker.state.values['income-planner']=JSON.stringify(planner);}
+ await page.route('https://bearden.test/api/state',route=>route.fulfill({json:{state:{...blank(),accounts},connections:{items:[],transactions:posted?transactions:[],gmailMessages:messages,creditCards:[],recurringBills:[],sun:{connected:true,enabled:true,snapshot:{currency:'USD',currentBalance:posted?0:80000,checkedAt:Date.parse('2026-11-03T17:30:00Z')}}},revision:1}}));
  await page.goto('https://bearden.test/');await page.evaluate(()=>window.classicReady);await menuGo(page,'bills');
  await expect(page.locator('#billAgenda > [data-account-id=rent]')).toContainText('Awaiting confirmation');
  await expect(page.locator('#billAgenda > [data-account-id=insurance]')).toContainText('Awaiting confirmation');
@@ -30,5 +32,8 @@ test('posted rent and insurance leave awaiting confirmation in both cards and tr
  await expect(page.locator('#billAgenda > [data-account-id=insurance]')).toHaveCount(0);
  await expect(page.locator('#paidBillsList [data-account-id=rent]')).toContainText('Confirmed');
  await expect(page.locator('#paidBillsList [data-account-id=insurance]')).toContainText('Confirmed');
+ await expect(page.locator('#billTrackerUpcoming')).not.toContainText('Awaiting confirmation');
+ await page.reload();await page.evaluate(()=>window.classicReady);await menuGo(page,'bills');
+ await expect(page.locator('#paidBillsList [data-account-id=rent]')).toContainText('Confirmed');
  await expect(page.locator('#billTrackerUpcoming')).not.toContainText('Awaiting confirmation');
 });

@@ -1,10 +1,10 @@
 // Ship this manifest with each user-visible update. Never put private report text here.
 export const APP_RELEASE = Object.freeze({
-  id: '2026-11-03-account-payment-reconciliation-1',
-  title: 'Account sync and payment confirmation fixes',
+  id: '2026-11-04-rent-confirmation-timestamps-1',
+  title: 'Rent payment confirmation fixed',
   notes: [
-    'Removed Lunch Flow accounts leave the active list, and verified reconnects retain account settings and links.',
-    'Rent and insurance payments match posted bank activity more reliably and update bill cards and trackers.'
+    'Posted rent payments now move to Paid when the bank and rent portal balances confirm them.',
+    'Existing linked payments are rechecked automatically when you reopen BearDen.'
   ],
   fixedReportIds: []
 });

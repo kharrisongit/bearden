@@ -1,4 +1,9 @@
-const time=value=>Number.isFinite(Date.parse(value))?Date.parse(value):0;
+// Rent portal readings use epoch milliseconds; bank/email readings use ISO dates.
+// Date.parse coerces numbers to strings and rejects real portal timestamps.
+const time=value=>{
+ const timestamp=typeof value==='number'?value:typeof value==='string'?Date.parse(value):NaN;
+ return Number.isFinite(timestamp)?timestamp:0;
+};
 const usable=s=>s&&Number.isSafeInteger(s.balance)&&s.currency==='USD'&&!s.unavailable;
 const fresh=(s,after,now)=>usable(s)&&time(s.updated)>=after&&time(s.updated)<=now;
 export const paymentIdentity=receipt=>[receipt.mailboxId,receipt.sender,receipt.accountLast4||'',receipt.reference||receipt.id].join(':');

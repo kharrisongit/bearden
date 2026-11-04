@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {emailAccountStatus,emailLink,emailBillPaymentStatuses} from '../public/email-model.mjs';
 import {paymentIdentity,rememberPaymentBalances} from '../public/payment-confirmation.mjs';
 import {parseAccountEmail} from '../email-parser.mjs';
+import {parseSunBalance} from '../sun-rent.mjs';
 import {billEvents,cashForecast} from '../public/income-model.mjs';
 const now=Date.parse('2026-11-02T18:00Z');
 const receipt=parseAccountEmail({id:'mail:receipt',mailboxId:'mail',from:'payments@example.com',subject:'Payment Receipt - Reference # EXAMPLE1',text:'Your payment is pending. Payment amount: $800.00',receivedAt:'2026-10-31T14:00:00Z'});
@@ -24,6 +25,27 @@ test('bank posting and both refreshed balances are required for final rent confi
  assert.equal(state({bankPayments:[{...bank,balanceSnapshot:snapshot()}],destinations:[zero]}).payments[0].confirmed,false);
  assert.equal(state({bankPayments:[bank],destinations:[{...zero,unavailable:true}]}).payments[0].confirmed,false);
  assert.equal(state({bankPayments:[bank],destinations:[zero]}).payments[0].confirmed,true);
+});
+test('rent confirms with the numeric timestamp returned by the portal adapter',()=>{
+ const portal=parseSunBalance({totalDue:0,balance:0,dueDate:'2026-11-01'},'USD',Date.parse('2026-11-02T17:00:00Z'));
+ const destination=snapshot({balance:portal.currentBalance,currency:portal.currency,updated:portal.checkedAt});
+ const options={bankPayments:[bank],destinations:[destination]};
+ assert.equal(state(options).payments[0].confirmed,true);
+ for(const updated of [Date.parse('2026-10-31T13:00Z'),now+1,NaN,Infinity,null,'invalid']){
+  assert.equal(state({...options,destinations:[{...destination,updated}]}).payments[0].confirmed,false);
+ }
+ assert.equal(state({...options,bankPayments:[]}).payments[0].confirmed,false);
+ assert.equal(state({...options,bankPayments:[{...bank,pending:true}]}).payments[0].confirmed,false);
+ assert.equal(state({...options,destinations:[{...destination,unavailable:true}]}).payments[0].confirmed,false);
+});
+test('numeric balance timestamps are retained and compared with ISO balance history',()=>{
+ const before=snapshot({balance:100000,updated:Date.parse('2026-10-31T13:00Z')});
+ const balanceHistory=rememberPaymentBalances({},[before]);
+ assert.equal(balanceHistory.rent?.length,1);
+ const destination=snapshot({balance:20000,updated:'2026-11-02T17:00Z'});
+ const numericBank={...bank,balanceSnapshot:{...bank.balanceSnapshot,updated:Date.parse(bank.balanceSnapshot.updated)}};
+ assert.equal(state({bankPayments:[numericBank],destinations:[destination],balanceHistory}).payments[0].confirmed,true);
+ assert.equal(state({bankPayments:[numericBank],destinations:[{...destination,balance:20001}],balanceHistory}).payments[0].confirmed,false);
 });
 test('loans confirm a payment from a balance reduction without marking the entire debt paid off',()=>{
  const before=snapshot({id:'loan',balance:200000,updated:'2026-10-31T16:00:00Z',pendingPaymentIds:[paymentIdentity(receipt)]});
