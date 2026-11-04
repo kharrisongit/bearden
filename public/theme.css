@@ -2433,3 +2433,17 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 :root #billTracker .bill-tracker-month-label small{font-size:.65rem;line-height:1.3;color:inherit;opacity:.8}
 :root #billTracker [data-bill-tracker-month-move]{display:grid;place-items:center;flex:0 0 36px;min-height:36px;width:36px;padding:0;border-radius:9px}
 :root #billTracker [data-bill-tracker-month-move] svg{width:18px;height:18px}
+
+/* Keep connection failures visible outside collapsed provider details. */
+.connection-attention{padding:16px;margin:12px 0;border:1px solid var(--warn);border-radius:16px;background:var(--warn-soft);color:var(--ink)}
+.connection-attention[hidden]{display:none}
+.connection-attention h3{margin:0 0 10px;font-size:1rem}
+.connection-attention-row+ .connection-attention-row{border-top:1px solid var(--line);margin-top:12px;padding-top:12px}
+.connection-attention-row p{font-size:.85rem;overflow-wrap:anywhere;margin:6px 0 10px}
+:root[data-layout=den] #bdConnections .bd-status.needs-attention{width:auto;height:auto;max-width:110px;border-radius:8px;padding:5px 8px!important;background:var(--warn-soft);color:var(--warn);font-size:.72rem!important;line-height:1.4;box-shadow:none;text-indent:0;overflow:visible;white-space:normal;animation:none}
+:root .bd-status.needs-attention::before,:root .bd-status.needs-attention::after{display:none}
+.paycheck-received{padding:10px 12px;border-radius:10px;background:var(--cash-in-bg);color:var(--cash-in);line-height:1.5;font-weight:600}
+.paycheck-received small{font-weight:400}
+.paycheck-source{overflow-wrap:anywhere}
+
+.connection-attention-row button{font:inherit;font-size:.8rem;font-weight:600;padding:8px 12px;border:1px solid var(--line);border-radius:8px;color:var(--ink);background:var(--card);cursor:pointer}

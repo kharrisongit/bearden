@@ -25,6 +25,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
   const settingsHub=make('div','bd-settings-hub');settingsHub.id='bdSettingsHub';
   const settingsPage=$('#tab-settings');
   settingsPage.prepend(oldSettings.querySelector('.tab-header-peek'),oldSettings.querySelector('.connection-notice'),settingsHub);
+  const attention=$('#connectionAttention');if(attention)settingsHub.before(attention);
   const dialogs=new Map();
   function detail(key,title,nodes){
     const dialog=make('dialog','bd-detail-dialog income-card');dialog.id='bdDetail-'+key;dialog.setAttribute('aria-labelledby',dialog.id+'-title');
@@ -118,8 +119,9 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
     $('#bdSyncAll').disabled=!signed||$('#classicSync').disabled;
     for(const status of $$('[data-bd-status]')){
       const source=$('#'+status.dataset.bdStatus);const connected=source?.dataset.connected==='true';
-      status.textContent=!signed?'Disconnected · Sign in':connected?'Connected':status.dataset.bdStatus==='rentStatus'&&!$('#rentEnabledToggle').checked?'Disconnected · Disabled':/sign in needed/i.test(source?.textContent||'')?'Disconnected · Sign in needed':'Disconnected';
-      status.className='bd-status'+(connected&&signed?' is-connected':'');
+      const attention=source?.dataset.needsAttention==='true';
+      status.textContent=!signed?'Disconnected · Sign in':attention?'Needs attention':connected?'Connected':status.dataset.bdStatus==='rentStatus'&&!$('#rentEnabledToggle').checked?'Disconnected · Disabled':/sign in needed/i.test(source?.textContent||'')?'Disconnected · Sign in needed':'Disconnected';
+      status.className='bd-status'+(attention?' needs-attention':connected&&signed?' is-connected':'');
       status.setAttribute('role','img');status.setAttribute('aria-label',status.textContent);status.title=status.textContent;
     }
     for(const source of $$('.connection-state[data-connected]')){source.setAttribute('role','img');source.setAttribute('aria-label',source.textContent);source.title=source.textContent;}
@@ -128,7 +130,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
     $('#bdHousehold [data-bd-household] .bd-setting-value').textContent=amounts.length===2?(amounts[0]===amounts[1]?amounts[0].replace(/\.00$/,'')+' each':amounts.map(n=>n.replace(/\.00$/,'')).join(' / ')):'Set up';
     $('#bdTimingValue').textContent=$('#debtPaymentTiming').value==='due-date'?'By due date':'Every paycheck';
   }
-  window.addEventListener('bearden-connections',()=>requestAnimationFrame(updateProfile));window.addEventListener('bearden-saved',updateProfile);
+  window.addEventListener('bearden-connections',()=>requestAnimationFrame(updateProfile));window.addEventListener('bearden-saved',updateProfile);window.addEventListener('bearden-connection-health',updateProfile);
   $('#debtPaymentTiming').addEventListener('change',updateProfile);
   // New page headers use only the title and the section's primary actions.
   const originalIncomeControls=$('#tab-income .income-controls-header');
@@ -264,7 +266,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
       const head=$('.paycheck-head',card),number=card.id.replace('paycheck-card-',''),check=$('input[type=checkbox]',head),date=$('.date',head);
       const restoreCheckFocus=document.activeElement===check;
       const title=make('div','bd-paycheck-title','<small>Paycheck '+esc(number)+'</small><strong>'+esc(date.textContent.split('—').slice(1).join('—').trim())+'</strong>');
-      head.replaceChildren(check,title,make('span','bd-paycheck-status',check.checked?'Completed':'Planned'));
+      head.replaceChildren(check,title,make('span','bd-paycheck-status',check.checked?'Completed':$('.paycheck-received',card)?'Received':'Planned'));
       const collapse=make('button','bd-paycheck-collapse',chevron);collapse.type='button';collapse.setAttribute('aria-label','Collapse paycheck '+number);head.append(collapse);
       check.setAttribute('aria-label','Mark paycheck '+number+' plan complete');
       const body=make('div','bd-paycheck-body');[...card.children].filter(n=>n!==head).forEach(n=>body.append(n));card.append(body);

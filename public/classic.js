@@ -499,6 +499,7 @@ function gatherAppState(){
     debtPaymentHistory: window.debtPaymentHistory || {},
     debtInterestHistory: window.debtInterestHistory || {},
     debtFeeHistory: window.debtFeeHistory || {},
+    paycheckIncomeHistory: window.paycheckIncomeHistory || {},
     paycheckOverrides,
     savingsContributionOverrides,
     budgetItemOverrides,
@@ -583,6 +584,7 @@ async function loadAppState(){
     window.debtPaymentHistory = state.debtPaymentHistory || {};
     window.debtInterestHistory = state.debtInterestHistory || {};
     window.debtFeeHistory = state.debtFeeHistory || {};
+    window.paycheckIncomeHistory = state.paycheckIncomeHistory || {};
 
     if (state.cards && state.cards.length) { cardsData = state.cards; cardIdCounter = state.cardIdCounter || cardIdCounter; }
     if (state.budgetItems) { budgetItems = state.budgetItems; budgetItemIdCounter = state.budgetItemIdCounter || budgetItemIdCounter; }
@@ -945,8 +947,11 @@ function calculate(isInitialLoad){
   const carPayoffHorizon=carPayoffDate?new Date(carPayoffDate+'T00:00:00'):null;
   while ((paycheck < incomeHorizon || carPayoffHorizon&&date<=carPayoffHorizon || balances.reduce((a,b)=>a+b,0) > 0.01 || anyGoalStillTracking()) && paycheck < maxPaychecks) {
     paycheck++;
-    const thisCheckTakeHome = paycheckOverrides[paycheck] !== undefined ? paycheckOverrides[paycheck] : takeHome;
-    const bonusThisCheck = appliedBonuses[paycheck] || 0;
+    const completedIncome = checkedPaychecks[paycheck] ? window.paycheckIncomeHistory?.[paycheck] : null;
+    const paycheckReceipt = checkedPaychecks[paycheck] ? completedIncome?.receipt : window.paycheckReceipts?.[paycheck];
+    const thisCheckTakeHome = completedIncome ? completedIncome.takeHome : paycheckOverrides[paycheck] !== undefined ? paycheckOverrides[paycheck] : paycheckReceipt ? paycheckReceipt.amount/100 : takeHome;
+    // A posted paycheck is the entire net deposit, including any payroll bonus.
+    const bonusThisCheck = completedIncome ? completedIncome.bonus : paycheckReceipt ? 0 : appliedBonuses[paycheck] || 0;
 
     // Budget line items are editable per paycheck — most checks just use the
     // default amount, but any can be overridden for that one check.
@@ -1181,7 +1186,7 @@ function calculate(isInitialLoad){
     const newTotal = newBalances.reduce((a,b)=>a+b,0);
 
     schedule.push({
-      paycheck, date: new Date(date), avail,
+      paycheck, date: new Date(date), avail, paycheckReceipt,
       balancesBefore:balances.slice(),sliced,squashed,sliceMode,
       debtTiming:timing,minimumPayments:minApplied.slice(),payoffActionFunds,payoffActionPayments,payoffActionShortfall,payoffActionsPaused,
       cashAfterDebt:availAfterSavings-payments.reduce((sum,n)=>sum+n,0),
@@ -2127,6 +2132,9 @@ function toggleChecked(paycheckNum, checked){
   window.debtFeeHistory??={};
   if(checked&&row)window.debtFeeHistory[paycheckNum]=Object.fromEntries(cardsData.map((c,i)=>[c.id,row.feesByAccount?.[i]||0]));
   else delete window.debtFeeHistory[paycheckNum];
+  window.paycheckIncomeHistory??={};
+  if(checked&&row?.paycheckReceipt)window.paycheckIncomeHistory[paycheckNum]={takeHome:row.takeHomeThisCheck,bonus:row.bonusAmount,receipt:row.paycheckReceipt};
+  else delete window.paycheckIncomeHistory[paycheckNum];
   checkedPaychecks[paycheckNum] = checked;
   window.dispatchEvent(new Event('bearden-plan-changed'));
   performSaveAppState(); // Persist completion before the celebration or leaving animation.
@@ -2184,7 +2192,7 @@ function resetCheckedPaychecks(){
   extraExpenseIdCounter = 0;
   bonusInputOpenForPaycheck = null;
   extraExpenseInputOpenForPaycheck = null;
-  window.debtPaymentHistory={};window.debtInterestHistory={};
+  window.debtPaymentHistory={};window.debtInterestHistory={};window.paycheckIncomeHistory={};
   clearTimeout(saveDebounceTimer);
   performSaveAppState(); // Save the reset before the animation can delay it.
   if (section) {
@@ -2599,9 +2607,10 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
       <div class="paycheck-head">
         <span class="checkbox-wrap">
           <input type="checkbox" id="chk-${row.paycheck}" aria-describedby="check-help-${row.paycheck}" ${isChecked ? 'checked' : ''} data-bd-change="toggleChecked(${row.paycheck}, this.checked)">
-          <span class="date">Paycheck ${row.paycheck} — ${fmtDate(row.date)}${row.isBonus ? '<span class=\"bonus-tag\">Bonus</span>' : ''}</span>
+          <span class="date">Paycheck ${row.paycheck} — ${fmtDate(row.paycheckReceipt?new Date(row.paycheckReceipt.receivedDate+'T12:00:00'):row.date)}${row.isBonus ? '<span class=\"bonus-tag\">Bonus</span>' : ''}</span>
         </span>
       </div>
+      ${row.paycheckReceipt?`<p class="paycheck-received" role="status">Received ${bdEscape(fmtDate(new Date(row.paycheckReceipt.receivedDate+'T12:00:00')))} · ${money(row.paycheckReceipt.amount/100)} deposited<br><small>Scheduled ${fmtDate(row.date)} · ${row.isOverridden?'Using your edited take-home amount':'Using actual take-home pay'}. Future paydays stay on your regular schedule.</small></p>`:''}
       <p class="paycheck-completion-help" id="check-help-${row.paycheck}"><label for="chk-${row.paycheck}">Mark this paycheck’s plan complete</label><small>Records the planned payments and interest as completed. BearDen does not send payments. Uncheck to undo.</small></p>
       <div class="check-summary">
         <div class="check-summary-row editable paycheck-income">
@@ -2614,7 +2623,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
         ${bonusControlsEnabled?`<div style="text-align:right;margin:2px 0 4px;"><span class="remove" data-bd-click="removeBonusFromPaycheck(${row.paycheck})">Remove bonus</span></div>`:''}
         <div class="check-summary-row prominent-row"><span>Total this paycheck (after taxes)</span><span>${money(row.takeHomeThisCheck + row.bonusAmount)}</span></div>
         ` : (
-          !bonusControlsEnabled ? '' : bonusInputOpenForPaycheck === row.paycheck
+          !bonusControlsEnabled || row.paycheckReceipt ? '' : bonusInputOpenForPaycheck === row.paycheck
             ? `<div class="bonus-inline-input">
                  <span>$</span><input type="number" id="bonusInlineAmount-${row.paycheck}" placeholder="Before-tax amount" aria-label="Before-tax bonus" min="0.01" step="0.01">
                  <button data-bd-click="applyBonusToPaycheck(${row.paycheck})">Apply</button>
@@ -7123,7 +7132,7 @@ window.deleteDebtAccounts=async function(ids,nextPlanner){
  cardsData=next.cards;accountPaymentOverrides=next.accountPaymentOverrides||{};
  paycheckSlices=next.paycheckSlices||{};paycheckSquashes=next.paycheckSquashes||{};extraExpenses=next.extraExpenses||{};
  window.debtPaymentHistory=next.debtPaymentHistory||{};window.debtInterestHistory=next.debtInterestHistory||{};
- window.debtFeeHistory=next.debtFeeHistory||{};
+ window.debtFeeHistory=next.debtFeeHistory||{};window.paycheckIncomeHistory=next.paycheckIncomeHistory||{};
  for(const id of ids){if(window.syncedDebtBalances)delete window.syncedDebtBalances[id];if(window.syncedDebtTerms)delete window.syncedDebtTerms[id];}
  currentDetailAccountIdx=null;calculate();clearTimeout(saveDebounceTimer);
 };
@@ -7201,6 +7210,10 @@ document.addEventListener('toggle',event=>{
 },true);
 
 // Accounts publishes bill inputs; a stable signature prevents render/recalculate loops.
+window.setPaycheckReceipts=receipts=>{
+ if(JSON.stringify(receipts)===JSON.stringify(window.paycheckReceipts||{}))return false;
+ window.paycheckReceipts=receipts;calculate();return true;
+};
 let paycheckBillSignature;
 window.setPaycheckBills=(signature,resolve,sharedForecast)=>{
  if(signature===paycheckBillSignature)return false;

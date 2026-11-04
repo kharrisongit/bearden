@@ -47,8 +47,17 @@ test('settings refresh failure stays visible with a recovery action',async({page
  await expect(page.locator('#bearToast .bear-toast-message')).toContainText('need attention');
  await expect(page.locator('#bearToast .bear-toast-action')).toHaveText('Settings');
  await expect(page.locator('#connectionMessage')).toBeEmpty();
+ await expect(page.locator('#connectionAttention')).toContainText('Plaid · Test bank');
+ await expect(page.locator('#connectionAttention')).toContainText('Bank connection failed. Reconnect to continue.');
+ await expect(page.locator('[data-bd-status="classicBankStatus"]')).toHaveText('Needs attention');
+ await page.locator('#connectionAttention [data-bd-detail="plaid"]').click();
+ await expect(page.locator('#bdDetail-plaid')).toBeVisible();
+ await page.getByRole('button',{name:'Close Plaid',exact:true}).click();
  await page.waitForTimeout(3200);await expect(page.locator('#bearToast')).toBeVisible();
  await page.getByRole('button',{name:'Dismiss notification'}).click();await expect(page.locator('#bearToast')).toBeHidden();
+ f.fail=false;await page.locator('#bdSyncAll').click();
+ await expect(page.locator('#connectionAttention')).toBeHidden();
+ await expect(page.locator('[data-bd-status="classicBankStatus"]')).toHaveText('Connected');
 });
 
 test('guided setup reopens above preferences instead of behind its native modal',async({page})=>{
