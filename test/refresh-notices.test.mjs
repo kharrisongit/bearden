@@ -5,9 +5,11 @@ import vm from 'node:vm';
 const source=readFileSync(new URL('../public/connections.js',import.meta.url),'utf8');
 function harness(){
  const notices=[],readouts=[{textContent:'old giant readout'}],settings=[];
- const context={syncNoticeDismissed:false,window:{showBearToast:(text,options)=>notices.push({text,options}),dismissBearToast:id=>settings.push(id),selectBearTab:tab=>settings.push(tab)},document:{querySelectorAll:()=>readouts},message:text=>settings.push(text)};
- vm.createContext(context);vm.runInContext(source.slice(source.indexOf(' function clearRefreshReadouts'),source.indexOf(' async function request')),context);
- return {context,notices,readouts,settings};
+ const nodes=new Map(),element=()=>({textContent:'',innerHTML:'',dataset:{},hidden:false,isConnected:true});
+ const $=selector=>{if(!nodes.has(selector))nodes.set(selector,element());return nodes.get(selector);};
+ const context={$,Event,esc:s=>String(s),config:{authenticated:true},bridge:{},legacy:{connections:{}},syncNoticeDismissed:false,window:{dispatchEvent(){},showBearToast:(text,options)=>notices.push({text,options}),dismissBearToast:id=>settings.push(id),selectBearTab:tab=>settings.push(tab)},document:{querySelectorAll:()=>readouts,addEventListener(){},createElement:element},message:text=>settings.push(text)};
+ vm.createContext(context);vm.runInContext(source.slice(source.indexOf(' const refreshIssues='),source.indexOf(' async function request')),context);
+ return {context,notices,readouts,settings,nodes};
 }
 test('refresh success is concise and clears both old inline readouts',()=>{
  const h=harness();h.context.finishRefreshNotice(['Bank: Updated '+('account '.repeat(90))]);
@@ -28,4 +30,18 @@ test('dismissed progress stays dismissed; final problems still surface',()=>{
 });
 test('progress never repeats a verbose provider status',()=>{
  const h=harness();h.context.syncMessage('Lunch Flow updated '+('account '.repeat(100)));assert.equal(h.notices[0].text,'Refreshing connections…');
+});
+
+test('named connection failures remain in Settings and clear when that connection recovers',()=>{
+ const h=harness();h.context.legacy.connections.items=[{id:'bank',name:'Test bank'}];
+ h.context.recordRefreshIssue('plaid:bank','plaid','Plaid · Test bank','Sign in again.',true);
+ h.context.finishRefreshNotice(['Test bank: Refresh failed']);
+ assert.match(h.notices.at(-1).text,/Plaid · Test bank/);
+ assert.match(h.nodes.get('#connectionAttention').innerHTML,/Sign in again/);
+ assert.equal(h.nodes.get('#classicBankStatus').dataset.needsAttention,'true');
+ h.context.recordRefreshIssue('plaid:bank','plaid','Plaid · Test bank','Updated');
+ h.context.finishRefreshNotice(['Updated']);
+ assert.equal(h.nodes.get('#connectionAttention').hidden,true);
+ assert.equal(h.nodes.get('#classicBankStatus').dataset.connected,'true');
+ assert.equal(h.notices.at(-1).text,'Connections refreshed.');
 });
