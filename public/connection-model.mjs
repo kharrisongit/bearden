@@ -1,5 +1,23 @@
 import {monthlyMinimum,validDueDate} from './debt-payments.mjs?v=credit-rules1';
 import {reviewedTermSource} from './debt-terms.mjs?v=credit-rules1';
+import {transactionAccountId} from './transaction-links.mjs';
+import {personalSpending} from './bank-activity.mjs';
+
+// The settings inventory keeps its original rows so an account can be restored.
+// All planning views receive the same account-scoped projection, including issuer
+// and transaction records that can outlive an account in the balance response.
+export function visibleConnectionPlan(plan,hidden={}){
+ if(!plan||!Object.values(hidden).some(Boolean))return plan;
+ const shown=id=>hidden[id]!==true,connections=plan.connections||{};
+ const transactions=(connections.transactions||[]).filter(t=>shown(transactionAccountId(t)));
+ return {...plan,state:{...plan.state,accounts:(plan.state?.accounts||[]).filter(a=>shown(a.id))},connections:{...connections,
+  transactions,
+  creditCards:(connections.creditCards||[]).filter(c=>shown('plaid-'+c.accountId)),
+  recurringBills:(connections.recurringBills||[]).filter(b=>shown(b.accountId)),
+  personalSpending:personalSpending(transactions,connections.personalSpending?.end)
+ }};
+}
+
 const cents=n=>Number.isSafeInteger(n)&&n>=0?n:null;
 const rate=n=>typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=100?n:null;
 const timestamp=value=>Number.isFinite(Date.parse(value))?Date.parse(value):0;
@@ -14,7 +32,7 @@ export function resolveDebtDetails({card,primary=null,backup=null,issuers=[],sta
   balance:Math.round((Number(card.balance)||0)*100),monthlyMinimum:Math.round(monthlyMinimum(card)*100),apr:rate(Number(card.apr))??0,dueDate:validDueDate(card.dueDate)?card.dueDate:null,creditLimit:cents(manualLimit)
  };
  const candidates={balance:[],monthlyMinimum:[],apr:[],dueDate:[],creditLimit:[]},pastMinimums=[];
- const push=(key,value,source,updated,stale,rank)=>{if(value!==null&&value!==undefined)candidates[key].push({...field(value,source,updated,stale),rank,time:timestamp(updated)});};
+ const push=(key,value,source,updated,stale,rank,accountId)=>{if(value!==null&&value!==undefined)candidates[key].push({...field(value,source,updated,stale),rank,time:timestamp(updated),...(accountId?{accountId}:{})});};
  for(const [i,bank]of banks.entries()){
   if(bank.currency!=='USD')continue;
   const item=items.find(item=>item.id===bank.itemId),updated=bank.balanceUpdated||bank.balanceRetrieved||null;
@@ -23,7 +41,7 @@ export function resolveDebtDetails({card,primary=null,backup=null,issuers=[],sta
   const value=bank.zeroUnconfirmed&&!(bank.balance>0)?null:cents(bank.balance);
   // ELGA and other institutions can return an unconfirmed zero during outages.
   const corroboratedZero=manual.balance===0||statement?.balance===0&&!statement.paymentStatus&&timestamp(statement.receivedAt)>now-62*86400000||banks.some(a=>a.id!==bank.id&&!a.balanceUnavailable&&a.balance===0&&a.currency==='USD'&&timestamp(a.balanceUpdated||a.balanceRetrieved)>now-48*3600000);
-  if(value!==0||corroboratedZero)push('balance',value,source,updated,stale,stale?4:i?1:0);
+  if(value!==0||corroboratedZero)push('balance',value,source,updated,stale,stale?4:i?1:0,bank.id);
   else notes.push(source+' reports zero; keeping another balance until payoff is confirmed.');
   push('creditLimit',cents(bank.creditLimit),source,updated,stale,stale?4:i?1:0);
  }
@@ -38,7 +56,7 @@ export function resolveDebtDetails({card,primary=null,backup=null,issuers=[],sta
    const at=issuer.fieldUpdated?.[original]||updated,old=stale||now-timestamp(at)>48*3600000;
    push(key,value,'Plaid statement',at,old,old?4:rank);
   }
-  if(!banks.some(a=>a.id==='plaid-'+issuer.accountId&&cents(a.balance)!==null&&!a.balanceUnavailable))push('balance',cents(issuer.balance)>0?issuer.balance:null,'Plaid statement',updated,stale,stale?4:1);
+  if(!banks.some(a=>a.id==='plaid-'+issuer.accountId&&cents(a.balance)!==null&&!a.balanceUnavailable))push('balance',cents(issuer.balance)>0?issuer.balance:null,'Plaid statement',updated,stale,stale?4:1,'plaid-'+issuer.accountId);
  }
  if(statement&&!statement.paymentStatus&&timestamp(statement.receivedAt)<=now){
   const updated=statement.receivedAt,stale=!timestamp(updated)||now-timestamp(updated)>62*86400000;
@@ -76,7 +94,7 @@ export function resolveDebtConnections(planner,accounts,issuers,cards,statements
  return Object.fromEntries(cards.map(card=>{
   const mapped=issuers.find(c=>String(planner.creditCards?.[c.id]?.trackerCardId)===String(card.id));
   const primaryId=planner.debtAccountLinks?.[card.id]||(mapped?'plaid-'+mapped.accountId:null);
-  const issuer=issuers.find(c=>'plaid-'+c.accountId===primaryId)||mapped;
+  const issuer=issuers.find(c=>'plaid-'+c.accountId===primaryId);
   const primary=accounts.find(a=>a.id===primaryId)|| (issuer?{id:primaryId,source:'plaid',itemId:issuer.itemId,currency:issuer.currency,balance:issuer.balance,balanceUpdated:issuer.fieldUpdated?.balance||issuer.updated,balanceUnavailable:issuer.stale}:null);
   const preference=issuer?planner.creditCards?.[issuer.id]:null;
   const saved={...card,dueDate:preference?.fallbackDate||card.dueDate||''};

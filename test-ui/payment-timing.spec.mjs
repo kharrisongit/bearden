@@ -157,7 +157,7 @@ test('same-debt backup supplies current balance and email terms update future pa
  const errors=[];page.on('pageerror',e=>errors.push(e.message));const receivedAt=new Date(Date.now()-3600000).toISOString();
  const statement={id:'mail:s',mailboxId:'mail',sender:'bank@example.com',receivedAt,balance:88000,minimum:12500,apr:26,dueDate:'2026-11-15'};
  const accounts=[{id:'plaid-a',itemId:'bank',name:'Visa primary',source:'plaid',type:'credit',currency:'USD',balance:0,balanceUnavailable:true,balanceUpdated:receivedAt},{id:'lunchflow-b',itemId:'lunchflow',name:'Visa backup',source:'lunchflow',type:'credit',currency:'USD',balance:85000,balanceUpdated:receivedAt,include:false}];
- const f=await fixture(page,{accounts,messages:[statement],incomePlanner:{debtAccountLinks:{1:'plaid-a'},emailLinks:{'debt:1':{mailboxId:'mail',sender:'bank@example.com',selectedMessage:statement}}}});
+ const f=await fixture(page,{accounts,messages:[statement],goalContribution:50,incomePlanner:{debtAccountLinks:{1:'plaid-a'},emailLinks:{'debt:1':{mailboxId:'mail',sender:'bank@example.com',selectedMessage:statement}}}});
  await page.locator('#nav-debts').click();await page.locator('[data-edit-debt="1"]').first().click();
  await page.locator('[name="backupDebtAccount"]').selectOption('lunchflow-b');await expect(page.locator('#debtSources')).toContainText('Lunch Flow backup');
  await expect(page.locator('#debtEditorForm [name="minimum"]')).toHaveValue('125.00');await expect(page.locator('#debtEditorForm [name="apr"]')).toHaveValue('26');await expect(page.locator('#debtEditorForm [name="balance"]')).toHaveValue('10000');

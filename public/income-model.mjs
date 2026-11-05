@@ -2,7 +2,7 @@ export {matchPaychecks,postedPaycheck,paycheckOccurrence} from './paycheck-match
 export {removeBillFromPlanner,removeDebtsFromPlanner} from './account-removal.mjs?v=delete-accounts1';
 export {carPaymentLoans} from './car-debt.mjs?v=credit-rules1';
 export {transactionCategories,categorizeTransaction,transactionMerchantKey,setTransactionCategory} from './transaction-categories.mjs?v=auto-categories1';
-export {resolveDebtConnections,resolveDebtDetails,remapConnectedAccountReferences} from './connection-model.mjs?v=credit-rules1';
+export {resolveDebtConnections,resolveDebtDetails,remapConnectedAccountReferences} from './connection-model.mjs?v=account-visibility1';
 import {transactionAccountId,matchingPayments,postedPayment} from './transaction-links.mjs?v=plaid-restore1';
 import {transactionKey} from './bank-activity.mjs?v=payment-history1';
 import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=credit-rules1';
