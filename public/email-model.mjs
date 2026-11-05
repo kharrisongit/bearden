@@ -4,7 +4,16 @@ import {day,occurrences} from './engine.mjs';
 import {paymentTarget} from './transaction-links.mjs?v=plaid-restore1';
 const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 export const emailLink=message=>({mailboxId:message.mailboxId,sender:message.sender,accountLast4:message.accountLast4||'',selectedAt:new Date().toISOString(),selectedMessage:Object.fromEntries(['id','subject','paymentStage','mailboxId','sender','accountLast4','receivedAt','amount','minimum','balance','dueDate','creditLimit','apr','paymentStatus','paymentAmount','paymentDate','reference'].map(key=>[key,message[key]??null]))});
-export const matchesEmail=(message,link)=>!!link&&message.mailboxId===link.mailboxId&&message.sender===link.sender&&(!link.accountLast4||message.accountLast4===link.accountLast4);
+const capitalOneSender=sender=>/^[^@\s]+@(?:[a-z0-9-]+\.)*capitalone\.com$/i.test(sender||'');
+export function matchesEmail(message,link){
+ if(!link||message.mailboxId!==link.mailboxId||link.accountLast4&&message.accountLast4!==link.accountLast4)return false;
+ if(message.sender===link.sender)return true;
+ return !!message.paymentStatus&&/^\d{4}$/.test(link.accountLast4||'')&&capitalOneSender(message.sender)&&capitalOneSender(link.sender);
+}
+export function emailLinksOverlap(a,b){
+ if(a.mailboxId!==b.mailboxId||a.accountLast4&&b.accountLast4&&a.accountLast4!==b.accountLast4)return false;
+ return a.sender===b.sender||!!(a.accountLast4||b.accountLast4)&&capitalOneSender(a.sender)&&capitalOneSender(b.sender);
+}
 export const usableBillAmount=m=>!!m&&!m.paymentStatus&&Number.isSafeInteger(m.amount)&&m.amount>=0;
 export const emailDueDate=m=>m&&!m.paymentStatus&&/^\d{4}-\d{2}-\d{2}$/.test(m.dueDate||'')&&Number.isFinite(Date.parse(m.dueDate+'T12:00:00Z'))&&new Date(m.dueDate+'T12:00:00Z').toISOString().slice(0,10)===m.dueDate?m.dueDate:null;
 export const completeBillStatement=m=>usableBillAmount(m)&&!!emailDueDate(m);
@@ -25,7 +34,14 @@ export function emailAccountStatus(messages,link,{now=Date.now(),bankPayments=[]
  if(matchesEmail(selected||{},link)&&Date.parse(selected.receivedAt)<=now){
   const cached=debtStatements.find(m=>m.id===selected.id);
   if(!cached)debtStatements.push(selected);
-  else if(!emailDueDate(cached)&&emailDueDate(selected))debtStatements[debtStatements.indexOf(cached)]={...cached,dueDate:selected.dueDate};
+  else if(selected.paymentStatus){
+   // A search preview of the same message may omit fields from its full body.
+   const receipt={...cached};
+   for(const key of ['paymentStatus','paymentStage','paymentAmount','paymentDate','reference','dueDate']){
+    if(receipt[key]==null||receipt[key]==='')receipt[key]=selected[key];
+   }
+   debtStatements[debtStatements.indexOf(cached)]=receipt;
+  }else if(!emailDueDate(cached)&&emailDueDate(selected))debtStatements[debtStatements.indexOf(cached)]={...cached,dueDate:selected.dueDate};
  }
  debtStatements.sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt));
  let statement=creditCard||debtAccount?debtStatements.find(m=>!m.paymentStatus&&(emailDueDate(m)||m.balance!=null||m.minimum!=null||m.amount!=null||m.apr!=null||m.creditLimit!=null)):billStatement(messages,link,{now});
@@ -64,6 +80,7 @@ export function emailAccountStatus(messages,link,{now=Date.now(),bankPayments=[]
  }
  return {statement,payments,pending:payments.filter(p=>p.status==='pending').reduce((sum,p)=>sum+(p.paymentAmount||0),0)};
 }
+export const possibleReturn=(payments,receipt)=>payments.some(p=>p.status==='failed'&&(!p.reference||!receipt.reference)&&p.paymentAmount===receipt.paymentAmount&&p.receivedAt>=receipt.receivedAt&&Date.parse(p.receivedAt)-Date.parse(receipt.receivedAt)<=7*86400000);
 export function emailBillUpdate(bill,messages,links){const statement=billStatement(messages,links['bill:'+bill.id]);return statement?{...bill,amount:statement.amount,date:completeBillStatement(statement)?statement.dueDate:bill.date,emailConfirmed:completeBillStatement(statement),emailAmountConfirmed:true,emailDueDate:completeBillStatement(statement)?statement.dueDate:null,emailMessageId:statement.id}:bill;}
 
 // Match submitted receipts to due-date occurrences, not the receipt's calendar month.
@@ -94,7 +111,7 @@ export function emailBillPaymentStatuses(events,messages,links,{now=Date.now(),s
    const identity=receipt.reference||date+':'+receipt.paymentAmount;
    if(seen.has(identity))continue;seen.add(identity);
    // Without a shared reference, a nearby return makes the receipt uncertain.
-   if(receipt.status!=='failed'&&payments.some(p=>p.status==='failed'&&(!p.reference||!receipt.reference)&&p.paymentAmount===receipt.paymentAmount&&p.receivedAt>=receipt.receivedAt&&Date.parse(p.receivedAt)-Date.parse(receipt.receivedAt)<=7*86400000))continue;
+   if(receipt.status!=='failed'&&possibleReturn(payments,receipt))continue;
    const candidates=bills.filter(b=>{
     if(validDate(receipt.dueDate))return b.date===receipt.dueDate;
     const start=b.statementDate&&b.statementDate<b.date?day(b.statementDate,1):day(b.date,b.repeat==='weekly'?-3:-7);

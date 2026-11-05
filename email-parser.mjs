@@ -15,15 +15,18 @@ export function parseAccountEmail({id,mailboxId,from='',subject='',text='',recei
  const reference=content.match(/(?:confirmation|reference|payment)\s*(?:number|no\.?|#|id)\s*:?\s*([a-z0-9-]{5,})/i)?.[1]?.toLowerCase()||'';
  // Prefer the subject. Terms in a generic footer must not turn a statement into
  // a payment receipt. Confirmation without a settlement verb remains pending.
+ const submittedReceipt=/(?:^|[.!?]\s+|\n\s*)(?:(?:thanks|thank you) for (?:making (?:a|your) payment|submitting your payment)|thanks for your payment|you (?:successfully )?made a payment|we(?:['’]ve| have)? received your (?:online )?payment request|your (?:online )?payment request (?:was|has been) received)\b/i;
+ const scheduledReceipt=/(?:^|[.!?]\s+|\n\s*)(?:(?:thanks|thank you) for scheduling|(?:you|we)(?:['’]ve| have)? scheduled) (?:a|your) payment\b/i;
  const statusFor=value=>{
-  if(/\bpayment\b[\s\S]{0,60}\b(failed|declined|returned|reversed|cancelled|canceled|not successful)\b|\b(?:unable|could not|cannot)\s+to\s+process\s+(?:your\s+)?payment\b|\bpayment\b[\s\S]{0,25}\bcould not be processed\b/i.test(value))return 'failed';
+  if(/\bpayment\b[\s\S]{0,60}\b(failed|declined|returned|reversed|cancelled|canceled|not successful)\b|\b(?:unable\s+to|could\s+not|cannot|(?:couldn|can)['’]t)\s+process\s+(?:your\s+)?payment\b|\bpayment\b[\s\S]{0,25}\bcould not be processed\b/i.test(value))return 'failed';
   if(/\bpayment\b[\s\S]{0,35}\b(?:will be|is being|not yet|has not been)\s+(?:received|posted|processed|completed)\b|\b(?:once|when|if)\s+(?:your\s+)?payment\b/i.test(value))return 'pending';
+  if(scheduledReceipt.test(value)||submittedReceipt.test(value))return 'pending';
   if(/\bpayment\b[\s\S]{0,35}\b(posted|received|processed|completed|successful)\b|\bthank you for (?:your )?payment\b|\b(?:we(?:'ve| have)?\s+)?(?:received|processed)\s+your\s+payment\b/i.test(value))return 'posted';
   if(/\bpayment\b[\s\S]{0,45}\b(submitted|scheduled|processing|pending|initiated|confirmation)\b|\b(?:submitted|scheduled)\s+(?:your\s+)?payment\b/i.test(value))return 'pending';
   return null;
  };
  let paymentStatus=statusFor(subject);
- if(!paymentStatus&&!/\b(statement|bill|invoice|balance|amount due|minimum due)\b/i.test(subject))paymentStatus=statusFor(text.slice(0,1800));
+ if(!paymentStatus&&!/\b(statement|bill|invoice|balance|amount due|minimum due|payment (?:is )?due|payment reminder)\b/i.test(subject))paymentStatus=statusFor(text.slice(0,1800));
  if(!paymentStatus&&/\bpayment receipt\b/i.test(subject))paymentStatus='pending';
  // A generic confirmation subject may describe either scheduling or completion.
  if(/\bpayment\s+(?:confirmation|receipt)\b/i.test(subject)&&!statusFor(subject.replace(/\bpayment\s+(?:confirmation|receipt)\b/ig,'')))paymentStatus=statusFor(text.slice(0,1800))||paymentStatus;
@@ -31,10 +34,10 @@ export function parseAccountEmail({id,mailboxId,from='',subject='',text='',recei
  // future autopay schedule. Keep failure and negative notices authoritative.
  const stageText=subject+'\n'+text.slice(0,1800);
  const paymentStage=!paymentStatus?null:paymentStatus==='failed'?'failed':paymentStatus==='posted'?'submitted':
-  /\bschedul(?:ed|ing)\b|\bnot (?:yet )?received\b|\bhas not been received\b/i.test(subject)||/\b(?:payment|autopay)\b[\s\S]{0,45}\b(?:is |has been )?scheduled\b|\bpayment has not been received\b/i.test(text.slice(0,500))?'scheduled':
-  /\bpayment receipt\b|\bsubmitted\b|\bprocessing\b|\binitiated\b/i.test(subject)?'submitted':
+  scheduledReceipt.test(stageText)||/\bschedul(?:ed|ing)\b|\bnot (?:yet )?received\b|\bhas not been received\b/i.test(subject)||/\b(?:payment|autopay)\b[\s\S]{0,45}\b(?:is |has been )?scheduled\b|\bpayment has not been received\b/i.test(text.slice(0,500))?'scheduled':
+  submittedReceipt.test(subject)||/\bpayment receipt\b|\bsubmitted\b|\bprocessing\b|\binitiated\b/i.test(subject)?'submitted':
   /\b(?:once|when|if)\s+(?:your\s+)?payment\b/i.test(text.slice(0,500))?'unknown':
-  /\bsubmitted\b|\bprocessing\b|\binitiated\b/i.test(stageText)?'submitted':'unknown';
+  submittedReceipt.test(text.slice(0,1800))||/\bsubmitted\b|\bprocessing\b|\binitiated\b/i.test(stageText)?'submitted':'unknown';
  let paymentAmount=uniqueAmount(content,/(?:payment\s+(?:of|amount)|amount\s+(?:paid|received))\s*(?:is\s*)?:?\s*\$\s*([\d,]+(?:\.\d{2})?)(?!\d|\.\d)/gi);
  if(paymentStatus&&paymentAmount===null)paymentAmount=uniqueAmount(content,/\$\s*([\d,]+(?:\.\d{2})?)(?!\d|\.\d)/g);
  const dueDate=parseBill(content,{referenceDate:receivedAt}).date;

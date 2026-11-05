@@ -1,0 +1,30 @@
+import {test,expect} from '@playwright/test';
+import {fixture,menuGo} from './wallet.fixture.mjs';
+import {blank} from '../public/engine.mjs';
+import {emailLink} from '../public/email-model.mjs';
+
+test('a likely unlinked payment opens a filtered picker and only Save card commits the selection',async({page})=>{
+ const f=await fixture(page),planner=JSON.parse(f.tracker.state.values['income-planner']);
+ const receipt={id:'mail:1',mailboxId:'mail',senderName:'Capital One',sender:'payments@capitalone.com',subject:'Payment received',accountLast4:'1234',paymentStatus:'posted',paymentAmount:6300,receivedAt:'2026-10-27T12:00:00Z'};
+ const claimed={...receipt,id:'other:1',mailboxId:'other'};
+ const messages=[receipt,claimed,{...receipt,id:'wrong-card',accountLast4:'6789'},{...receipt,id:'expired',receivedAt:'2026-09-01T12:00:00Z'}];
+ planner.emailLinks={'bill:rent':emailLink(claimed)};
+ const seed=structuredClone(f.tracker);seed.state.values['income-planner']=JSON.stringify(planner);
+ await page.route('https://bearden.test/api/classic',route=>route.request().method()==='GET'?route.fulfill({json:seed}):route.fallback());
+ const card={id:'c1',accountId:'a1',itemId:'bank',name:'Capital One',institution:'Capital One',mask:'1234',currency:'USD',balance:33000,minimum:2500,dueDate:'2026-11-08',payments:[]};
+ await page.route('https://bearden.test/api/state',route=>route.fulfill({json:{state:{...blank(),accounts:f.accounts},connections:{items:[],transactions:[],creditCards:[card],emailConnected:true,gmailMessages:messages,recurringBills:[]},revision:0}}));
+ await page.route('https://bearden.test/api/gmail/message',route=>route.fulfill({json:{message:receipt}}));
+ await page.reload();await menuGo(page,'debts');
+ const button=page.locator('[data-pick-payment-email="credit:c1"]');
+ await button.click();const choices=page.locator('#emailLinkChoices [data-link-email]');
+ await expect(choices).toHaveCount(1);await expect(choices).toHaveAttribute('data-link-email','mail:1');
+ await page.locator('#closeEmailLinkPicker').click();
+ await expect(page.locator('#creditEditor').getByRole('tab',{name:'Connections'})).toHaveAttribute('aria-selected','true');
+ await page.locator('#closeCreditEditor').click();await expect(button).toBeVisible();
+ await button.click();await choices.click();
+ await expect(page.locator('#emailLinkPicker')).not.toBeVisible();
+ expect(JSON.parse(f.tracker.state.values['income-planner']).emailLinks?.['credit:c1']).toBeUndefined();
+ await page.locator('#creditEditorForm button[type=submit]').click();
+ await expect(button).toHaveCount(0);
+ await expect.poll(()=>JSON.parse(f.tracker.state.values['income-planner']).emailLinks['credit:c1']?.selectedMessage?.id).toBe('mail:1');
+});

@@ -127,3 +127,22 @@ test('payment receipts and invalid dates never autofill a debt due date',async()
  assert.equal(emailDueDate({dueDate:'2026-02-30'}),null);assert.equal(emailDueDate({dueDate:'2026-11-15'}),'2026-11-15');
  const m=mail({text:'Payment amount: $50.00 Due date: November 15, 2026.'});assert.equal(emailAccountStatus([],emailLink(m),{debtAccount:true,now:Date.parse('2026-10-27')}).statement,undefined);
 });
+
+test('card payment acknowledgments remain distinct from reminders, schedules, and returns',()=>{
+ const details='Payment amount: $75.25. Card ending in 4321. Confirmation number TEST123.';
+ for(const [subject,body,status,stage] of [
+  ['Thanks for making your payment','','pending','submitted'],
+  ['Payment confirmation','You made a payment.','pending','submitted'],
+  ['We’ve received your payment request','','pending','submitted'],
+  ['Thanks for scheduling your payment','','pending','scheduled'],
+  ['Your payment is due soon','You made a payment.',null,null],
+  ['Payment reminder','If you made a payment, please disregard this message.',null,null],
+  ['Your payment was processed','','posted','submitted'],
+  ['We couldn’t process your payment','','failed','failed'],
+  ['Capital One payment returned','','failed','failed']
+ ]){
+  const m=mail({subject,from:'Capital One <alerts@example.com>',text:body+' '+details});
+  assert.deepEqual([m.paymentStatus,m.paymentStage],[status,stage],subject);
+  assert.equal(m.paymentAmount,7525);assert.equal(m.accountLast4,'4321');assert.equal(m.reference,'test123');
+ }
+});

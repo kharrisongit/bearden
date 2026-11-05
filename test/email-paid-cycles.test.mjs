@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseAccountEmail} from '../email-parser.mjs';
-import {emailLink,emailBillPaymentStatuses,matchedEmailBillPayments,emailDebtPaymentStatus} from '../public/email-model.mjs';
+import {emailLink,emailLinksOverlap,emailBillPaymentStatuses,matchedEmailBillPayments,emailDebtPaymentStatus} from '../public/email-model.mjs';
 import {billEvents,billTrackerSummary} from '../public/income-model.mjs';
 const now=Date.parse('2026-10-31T18:00:00Z');
 const receipt=(changes={})=>parseAccountEmail({id:'m:paid',mailboxId:'m',from:'receipts@example.com',subject:'Payment received',text:'Payment amount: $100.00 Payment date: October 31, 2026. Confirmation number ABC123',receivedAt:'2026-10-31T12:00:00Z',...changes});
@@ -66,4 +66,32 @@ test('receipt wording recognizes received payments and reads generic confirmatio
  assert.equal(receipt({subject:'Payment confirmation',text:'Your payment has been successfully processed. Payment amount: $100.00'}).paymentStatus,'posted');
  assert.equal(receipt({subject:'Payment receipt',text:'We received your payment of $100.00.'}).paymentStatus,'posted');
  for(const text of ['Your payment is scheduled. It will be processed tomorrow.','Once your payment is processed, a receipt will arrive.','Your payment has not been received.'])assert.equal(receipt({subject:'Payment confirmation',text}).paymentStatus,'pending');
+});
+
+test('a matched Capital One receipt from a different alert address applies only to its mailbox and card',()=>{
+ const m={...receipt(),sender:'payments@notification.capitalone.com',accountLast4:'1234'};
+ const source={...m,id:'statement',sender:'statements@capitalone.com',paymentStatus:null};
+ const links={'debt:1':emailLink(source),'debt:2':emailLink({...source,accountLast4:'5678'})};
+ const status=(messages,target='debt:1')=>emailDebtPaymentStatus(messages,links,target,{now,amount:10000,dueDate:'2026-11-04'});
+ assert.equal(status([m]).paid,true);
+ assert.equal(status([m],'debt:2'),null);
+ for(const change of [{mailboxId:'other'},{accountLast4:''},{sender:'alerts@fakecapitalone.com'},{sender:'alerts@capitalone.com.example.org'}])assert.equal(status([{...m,...change}]),null);
+});
+
+test('an inbox preview of a linked full receipt retains its amount and original cycle',()=>{
+ const m=receipt({text:'Payment amount: $100.00 Due date: November 1, 2026. Confirmation number ABC123'});
+ const preview={...m,paymentAmount:null,dueDate:null,reference:''};
+ const links={'bill:bill':emailLink(m)};
+ assert.equal(statuses([event()],[preview],links)[0].paid,true);
+ assert.deepEqual(statuses([event({date:'2026-11-03'})],[preview],links),[]);
+});
+
+test('link conflicts include alternate Capital One senders whose payment masks could overlap',()=>{
+ const a={mailboxId:'mail',sender:'statements@capitalone.com',accountLast4:'1234'};
+ const b={...a,sender:'payments@alerts.capitalone.com'};
+ assert.equal(emailLinksOverlap(a,b),true);
+ assert.equal(emailLinksOverlap({...a,accountLast4:''},b),true);
+ assert.equal(emailLinksOverlap(a,{...b,accountLast4:'5678'}),false);
+ assert.equal(emailLinksOverlap(a,{...b,mailboxId:'other'}),false);
+ assert.equal(emailLinksOverlap(a,{...b,sender:'alerts@other.test'}),false);
 });

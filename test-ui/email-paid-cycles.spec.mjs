@@ -6,7 +6,10 @@ import {emailLink} from '../public/email-model.mjs';
 import {paymentLink,transactionKey} from '../public/income-model.mjs';
 
 async function setup(page,{pending=false,reconcile=false}={}){
- const f=await fixture(page,{now:'2026-10-31T18:00:00Z'}),planner=JSON.parse(f.tracker.state.values['income-planner']);
+ const f=await fixture(page,{now:'2026-10-31T18:00:00Z'});
+ // Finish the initial app's autosave before seeding the mocked server.
+ await page.evaluate(()=>window.flushBearDenState());await page.goto('about:blank');
+ const planner=JSON.parse(f.tracker.state.values['income-planner']);
  planner.manual=planner.manual.map(b=>({...b,date:'2026-11-01'}));planner.paid=[];planner.showCarPaymentsInDebt=true;
  planner.creditCards={'credit-visa':{tracking:true}};
  const app=JSON.parse(f.tracker.state.values['app-state']);
@@ -30,7 +33,7 @@ async function setup(page,{pending=false,reconcile=false}={}){
   apiState.state.accounts.find(a=>a.id==='lunchflow-bills').balanceUpdated='2026-10-31T10:00:00Z';
   f.tracker.state.values['income-planner']=JSON.stringify(planner);
  }
- await page.reload();await expect(page.locator('#configureHousehold')).toBeEnabled();
+ await page.goto('https://bearden.test/');await expect(page.locator('#configureHousehold')).toBeEnabled();
  return {f,planner,apiState};
 }
 
@@ -94,4 +97,36 @@ test('receipt, bank posting, and balance updates advance rent and debt confirmat
  await expect(page.locator('#paidBillsList [data-account-id="rent"]')).toHaveCount(1);
  await menuGo(page,'debts');await expect(page.locator('#debtAccounts [data-account-id="credit-visa"]')).toContainText('Paid · Confirmed');
  await expect(page.locator('#debtAccounts [data-account-id="credit-visa"]')).not.toHaveClass(/is-paid-off/);
+ await expect(page.locator('#debtAccounts [data-account-id="credit-visa"] .debt-payment-notice')).toHaveCount(0);
+});
+
+for(const stage of ['submitted','scheduled'])test(`Capital One shows a ${stage} payment from a linked email on the collapsed debt card`,async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const {f,planner,apiState}=await setup(page);
+ await page.evaluate(()=>window.flushBearDenState());await page.goto('about:blank');
+ const submitted=stage==='submitted',subject=submitted?'Thanks for making a payment':'Your payment is scheduled';
+ const dateLine=submitted?'Payment date: October 31, 2026.':'Scheduled for: November 2, 2026.';
+ const notice=(id,last4,amount)=>parseAccountEmail({id,mailboxId:'m',from:'Capital One <payments@notification.capitalone.com>',subject,text:`Card ending in ${last4}. Payment amount: $${amount}. ${dateLine} Confirmation number ${id}.`,receivedAt:'2026-10-31T14:00:00Z'});
+ const pending=notice('test123','4242','63.27'),other=notice('test456','3131','21.19');
+ const statement=parseAccountEmail({id:'statement',mailboxId:'m',from:'Capital One <statements@capitalone.com>',subject:'Your statement is ready',text:'Card ending in 4242.',receivedAt:'2026-10-27T10:00:00Z'});
+ planner.emailLinks['debt:1']=emailLink(submitted?statement:pending);
+ if(submitted){
+  const app=JSON.parse(f.tracker.state.values['app-state']);delete app.cards[0].dueDate;
+  f.tracker.state.values['app-state']=JSON.stringify(app);
+ }
+ f.tracker.state.values['income-planner']=JSON.stringify(planner);
+ apiState.connections.gmailMessages=[statement,pending,other];
+ await page.goto('https://bearden.test/');await expect(page.locator('#configureHousehold')).toBeEnabled();await menuGo(page,'debts');
+ const card=page.locator('#debtAccounts [data-tracker-account="1"]');
+ await card.locator('[data-show-debt-details]').click();
+ await expect(page.locator('#debtProgressDialog')).toContainText('$63.27');
+ await page.locator('#closeDebtProgress').click();await expect(page.locator('#debtProgressDialog')).toBeHidden();
+ const noticeRow=card.locator('.debt-payment-notice');
+ await expect(noticeRow).toBeVisible();await expect(noticeRow).toContainText('$63.27');await expect(noticeRow).toContainText(submitted?/awaiting confirmation/i:/scheduled/i);
+ expect(await card.innerText()).not.toContain('$21.19');await expect(card).not.toContainText('Paid · Confirmed');
+ await expect(card.locator('.den-date-stamp.is-paid')).toHaveCount(0);
+ await expect(card.locator('.bd-account-amount')).toContainText('$3,420');
+ apiState.connections.gmailMessages.unshift({...pending,id:'later-return',subject:'Payment returned',receivedAt:'2026-10-31T15:00:00Z',paymentStatus:'failed',paymentStage:'failed'});
+ await page.reload();await expect(page.locator('#configureHousehold')).toBeEnabled();await menuGo(page,'debts');
+ await expect(card).toBeVisible();await expect(noticeRow).toHaveCount(0);
 });
