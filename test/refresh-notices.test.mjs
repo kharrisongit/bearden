@@ -8,7 +8,9 @@ function harness(){
  const nodes=new Map(),element=()=>({textContent:'',innerHTML:'',dataset:{},hidden:false,isConnected:true});
  const $=selector=>{if(!nodes.has(selector))nodes.set(selector,element());return nodes.get(selector);};
  const context={$,Event,esc:s=>String(s),config:{authenticated:true},bridge:{},legacy:{connections:{}},syncNoticeDismissed:false,window:{dispatchEvent(){},showBearToast:(text,options)=>notices.push({text,options}),dismissBearToast:id=>settings.push(id),selectBearTab:tab=>settings.push(tab)},document:{querySelectorAll:()=>readouts,addEventListener(){},createElement:element},message:text=>settings.push(text)};
- vm.createContext(context);vm.runInContext(source.slice(source.indexOf(' const refreshIssues='),source.indexOf(' async function request')),context);
+ vm.createContext(context);
+ vm.runInContext(source.slice(source.indexOf(' function visiblePlaidItem('),source.indexOf(' function plaidRefreshStatus(')),context);
+ vm.runInContext(source.slice(source.indexOf(' const refreshIssues='),source.indexOf(' async function request')),context);
  return {context,notices,readouts,settings,nodes};
 }
 test('refresh success is concise and clears both old inline readouts',()=>{
