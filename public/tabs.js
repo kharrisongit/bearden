@@ -899,8 +899,8 @@
    const personalAccount=model.personalChecking(accounts,planner.household),personalTransactions=model.personalCheckingTransactions(connections.transactions||[],personalAccount);
    window.setPaycheckReceipts(model.matchPaychecks({state:plan.state,transactions:connections.transactions||[],accountId:personalAccount?.id,link:planner.paycheckLink,today:observedToday}));
    plan=window.getDebtPlan();
-   const personalChoices=accounts.filter(a=>a.type==='depository'&&(a.subtype==='checking'||/checking/i.test(a.name))&&a.id!==planner.household.billsAccountId&&(accountShown(a.id)||a.id===personalAccount?.id));
-   $('#personalSpendingAccount').innerHTML='<option value="">Choose personal checking</option>'+personalChoices.map(a=>'<option value="'+esc(a.id)+'">'+esc(connectedAccountName(a))+'</option>').join('');$('#personalSpendingAccount').value=personalAccount?.id||'';
+   const personalChoices=accounts.filter(a=>(a.currency||'USD')==='USD'&&a.type==='depository'&&(a.subtype==='checking'||/checking/i.test(a.name))&&a.id!==planner.household.billsAccountId&&(accountShown(a.id)||a.id===personalAccount?.id));
+   $('#personalSpendingAccount').innerHTML='<option value="">Choose personal checking</option>'+personalChoices.map(a=>'<option value="'+esc(a.id)+'">'+esc(connectedAccountName(a)+' · '+(a.source==='plaid'?'Plaid':'Lunch Flow'))+'</option>').join('');$('#personalSpendingAccount').value=personalAccount?.id||'';
    const visible=accounts.filter(a=>accountShown(a.id)&&(planner.accountVisibility[a.id]??(a.source==='plaid'&&!connections.lunchflow?.connected&&/^checking(?:\s|$)/i.test(a.name))));
    const currentDay=iso(new Date()),upcoming=model.paydayEvents(plan,currentDay,modelDay(currentDay,90),{excludeReceived:true})[0];
    const usd=visible.filter(a=>(a.currency||'USD')==='USD'&&!['credit','loan'].includes(a.type)&&(!['simplefin','lunchflow'].includes(a.source)||a.type==='depository'));
@@ -913,7 +913,7 @@
     (secondary.length?'<div class="income-secondary-accounts" role="list" aria-label="Other selected accounts">'+secondary.map(a=>'<div class="income-account-balance" role="listitem"><span>'+esc(connectedAccountName(a))+'<small class="account-balance-status">'+esc(accountBalanceStatus(a))+'</small></span><strong>'+esc(accountBalance(a))+'</strong></div>').join('')+'</div>':'')+
     (upcoming?'<div class="income-next-payday"><span>Next payday</span><strong>'+esc(paydayLabel)+'</strong></div>':'<p class="income-payday-empty">Set your first payday in Income to see it here.</p>')+
     (plan.state.startDate?'<p class="subtle income-schedule-anchor">Every two weeks from '+esc(dateLabel(plan.state.startDate))+'. Next payday shows the next upcoming date, not the schedule start.</p>':'');
-   const paycheckSource='<p class="subtle paycheck-source">'+(planner.paycheckLink?'Paycheck source: '+esc(planner.paycheckLink.name)+' <button type="button" data-unlink-paycheck>Clear paycheck source</button>':'Paychecks are matched from posted payroll deposits in personal checking. For an unrecognized deposit, choose Use as my paycheck in transactions.')+'</p>';
+   const paycheckSource='<div class="paycheck-source"><button type="button" data-open-paycheck-link="" aria-haspopup="dialog" aria-controls="paycheckLinkPicker">Link paycheck</button>'+(planner.paycheckLink?'<p class="subtle">Paycheck source: '+esc(planner.paycheckLink.name)+' <button type="button" data-unlink-paycheck>Clear paycheck source</button></p>':'')+'</div>';
    $('#debtIncomeSummary').innerHTML=summary;$('#incomeSummary').innerHTML=summary+paycheckSource;
    const balanceNote=usd.length?'':'<p class="subtle">'+(accounts.length?'Choose a bank account to show your balance.':authenticated?'Connect your bank in Settings to see your balance.':'Sign in and connect your bank in Settings.')+'</p>';
    $('#debtIncomeBalances').innerHTML=balanceNote;
@@ -1447,23 +1447,67 @@
   finally{savingTransactionCategory=false;button.disabled=false;}
  };
 
+ const paycheckPicker=$('#paycheckLinkPicker'),paycheckAccountSelect=$('#paycheckLinkAccount');
+ const paycheckAccount=(id=planner.household.personalAccountId)=>model.personalChecking(
+  (window.BearDen.plan?.state?.accounts||[]).filter(a=>['plaid','lunchflow'].includes(a.source)),
+  {...planner.household,personalAccountId:id}
+ );
+ function renderPaycheckChoices(){
+  const {state}=window.getDebtPlan(),scheduled=paycheckPicker.dataset.scheduled,today=iso(new Date());
+  const accountId=paycheckAccountSelect.value;
+  const note=scheduled?'Choose the deposit for your '+longDate(scheduled)+' paycheck.':'Choose a deposit to link to its scheduled payday.';
+  $('#paycheckLinkNote').textContent=note+' BearDen will remember the source for future paychecks.'+
+   (accountId&&accountId!==$('#personalSpendingAccount').value?' Linking will also set this account as your personal checking.':'');
+  const rows=bankTransactions().filter(t=>accountId&&model.transactionAccountId(t)===accountId&&model.postedPaycheck(t)&&t.date<=today)
+   .map(t=>({t,occurrence:model.paycheckOccurrence(state.startDate,t.date)}))
+   .filter(({occurrence})=>occurrence&&(!scheduled||occurrence.scheduledDate===scheduled)&&!state.checkedPaychecks?.[occurrence.paycheck])
+   .sort((a,b)=>b.t.date.localeCompare(a.t.date));
+  $('#paycheckLinkChoices').innerHTML=rows.map(({t,occurrence})=>
+   '<button type="button" class="transaction-choice" data-match-paycheck="'+esc(t.transaction_id)+'"><span><strong>'+esc(t.name)+'</strong><b>'+money(Math.round(-t.amount*100))+'</b></span><small>Posted '+esc(longDate(t.date))+' · Payday '+esc(longDate(occurrence.scheduledDate))+'</small></button>'
+  ).join('');
+  let status='';
+  if(paycheckAccountSelect.options.length<2)status='Connect a personal checking account in Settings to see its deposits.';
+  else if(!accountId)status='Choose the checking account where your paycheck was deposited.';
+  else if(!state.startDate)status='Set your first paycheck date in the Income editor.';
+  else if(!rows.length)status='No posted deposits within three days of '+(scheduled?'this payday':'an open payday')+'. Check the account above or refresh your bank after the deposit posts.';
+  $('#paycheckLinkStatus').textContent=status;
+ }
+ $('#closePaycheckLink').onclick=()=>paycheckPicker.close();
+ paycheckAccountSelect.onchange=renderPaycheckChoices;
+ let savingPaycheckLink=false;
  document.addEventListener('click',async e=>{
-  const button=e.target.closest('[data-match-paycheck],[data-unlink-paycheck]');if(!button)return;
-  const old=planner.paycheckLink;button.disabled=true;
+  const opener=e.target.closest('[data-open-paycheck-link]');
+  if(opener){
+   if(!ready)await initialize();
+   if(!ready){window.showBearToast?.('Income could not load. Reload BearDen to link a paycheck.');return;}
+   const personalSelect=$('#personalSpendingAccount');
+   paycheckAccountSelect.replaceChildren(...Array.from(personalSelect.options,o=>o.cloneNode(true)));
+   paycheckAccountSelect.value=personalSelect.value;paycheckPicker.dataset.scheduled=opener.dataset.openPaycheckLink;
+   renderPaycheckChoices();paycheckPicker.showModal();return;
+  }
+  const button=e.target.closest('[data-match-paycheck],[data-unlink-paycheck]');if(!button||savingPaycheckLink)return;
+  const fromPicker=paycheckPicker.contains(button),old=planner.paycheckLink,oldPersonalId=planner.household.personalAccountId;
+  savingPaycheckLink=true;button.disabled=true;
   try{
    if(button.hasAttribute('data-unlink-paycheck'))delete planner.paycheckLink;
    else{
-    const account=model.personalChecking(window.BearDen.plan?.state?.accounts||[],planner.household);
+    const account=fromPicker?paycheckAccount(paycheckAccountSelect.value):paycheckAccount();
     const t=bankTransactions().find(t=>t.transaction_id===button.dataset.matchPaycheck&&model.transactionAccountId(t)===account?.id);
     const plan=window.getDebtPlan(),occurrence=t&&model.paycheckOccurrence(plan.state.startDate,t.date);
-    if(!model.postedPaycheck(t)||t.date>iso(new Date())||!occurrence)throw Error('Choose a posted deposit within three days of a scheduled payday. Check your first paycheck date in Income.');
+    if(!model.postedPaycheck(t)||t.date>iso(new Date())||!occurrence||(fromPicker&&paycheckPicker.dataset.scheduled&&occurrence.scheduledDate!==paycheckPicker.dataset.scheduled))throw Error('Choose a posted deposit within three days of the scheduled payday. Check your first paycheck date in Income.');
     if(plan.state.checkedPaychecks?.[occurrence.paycheck])throw Error('This paycheck plan is already complete. Uncheck it first if you need to update its income.');
     const {merchantIdentity}=await import('./transaction-links.mjs?v=plaid-restore1');
     const merchant=merchantIdentity(t.name),assignments=old?.accountId===account.id&&old.merchant===merchant?old.assignments||{}:{};
     planner.paycheckLink={accountId:account.id,merchant,name:t.name,assignments:{...assignments,[occurrence.scheduledDate]:t.transaction_id}};
+    planner.household.personalAccountId=account.id;
    }
-   await save(button.hasAttribute('data-unlink-paycheck')?'Paycheck source cleared':'Paycheck source saved. Future deposits from this source will be matched automatically.');
-  }catch(err){planner.paycheckLink=old;await renderIncome();error(err);}finally{button.disabled=false;}
+   await save(button.hasAttribute('data-unlink-paycheck')?'Paycheck source cleared':'Paycheck linked. Future deposits from this source will be matched automatically.');
+   if(fromPicker)paycheckPicker.close();
+  }catch(err){
+   planner.paycheckLink=old;planner.household.personalAccountId=oldPersonalId;await renderIncome();error(err);
+   if(fromPicker)$('#paycheckLinkStatus').textContent=err.message;
+   else window.showBearToast?.(err.message);
+  }finally{savingPaycheckLink=false;button.disabled=false;}
  });
  document.addEventListener('click',async e=>{
   const button=e.target.closest('[data-match-contribution]');if(!button)return;

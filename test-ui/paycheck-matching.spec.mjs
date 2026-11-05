@@ -24,9 +24,55 @@ test('early payroll updates actual schedule, allocations and forecast without sh
 test('user can identify an uncategorized paycheck source once and change the amount on refresh',async({page})=>{
  const transactions=[{...deposit,name:'Employer direct deposit'}];const f=await fixture(page,{transactions});
  await expect(page.locator('#paycheck-card-1 .paycheck-income .amount-input')).toHaveValue('1845.00');
- await menuGo(page,'income');await page.locator('#incomeTransactionsToggleBtn').click();await page.locator('[data-match-paycheck="payroll"]').click();
+ await menuGo(page,'income');await expect(page.locator('#bdRecentRows')).toContainText('Employer direct deposit');
+ await page.locator('#incomeTransactionsToggleBtn').click();await page.locator('[data-match-paycheck="payroll"]').click();
  await expect(page.locator('#paycheck-card-1 .paycheck-income .amount-input')).toHaveValue('1923.47');
  expect(JSON.parse(f.tracker.state.values['income-planner']).paycheckLink.merchant).toBe('employer direct deposit');
  transactions[0].amount=-1999.23;await page.reload();await page.evaluate(()=>window.classicReady);
  await expect(page.locator('#paycheck-card-1 .paycheck-income .amount-input')).toHaveValue('1999.23');
+});
+
+test('mobile paycheck card links a posted deposit from this check and account',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const first={...deposit,date:'2026-10-15'};
+ const transactions=[
+  {...first,name:'Employer direct deposit'},
+  {...deposit,transaction_id:'next',name:'Following check deposit'},
+  {...first,transaction_id:'pending',name:'Pending deposit',pending:true},
+  {...first,transaction_id:'other',name:'Household deposit',account_id:'lunchflow-bills'},
+  {...first,transaction_id:'debit',name:'Grocery purchase',amount:27}
+ ];
+ const f=await fixture(page,{transactions,ownStart:'2026-10-16'});
+ await menuGo(page,'overview');
+ const card=page.locator('#paycheck-card-1');
+ await card.getByRole('button',{name:'Link paycheck',exact:true}).click();
+ const picker=page.locator('#paycheckLinkPicker');
+ await expect(picker).toBeVisible();
+ for(const name of ['Following check deposit','Pending deposit','Household deposit','Grocery purchase'])await expect(picker).not.toContainText(name);
+ await picker.getByRole('button',{name:/Employer direct deposit/i}).click();
+ await expect(picker).toBeHidden();
+ await expect(card.locator('.paycheck-income .amount-input')).toHaveValue('1923.47');
+ await expect.poll(()=>JSON.parse(f.tracker.state.values['income-planner']).paycheckLink?.assignments?.['2026-10-16']).toBe('payroll');
+});
+
+test('Income can link a deposit when multiple providers make personal checking ambiguous',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const extraAccounts=[{id:'lunchflow-pay',source:'lunchflow',type:'depository',subtype:'checking',name:'Personal checking',balance:128462,currency:'USD'}];
+ const f=await fixture(page,{transactions:[{...deposit,account_id:'lunchflow-pay',name:'Employer ACH'}],extraAccounts,personalAccountId:''});
+ const saved=()=>JSON.parse(f.tracker.state.values['income-planner']);
+ await menuGo(page,'income');
+ const open=page.locator('#tab-income').getByRole('button',{name:'Link paycheck',exact:true});
+ await open.click();
+ const picker=page.locator('#paycheckLinkPicker'),account=picker.getByRole('combobox',{name:'Personal checking',exact:true});
+ await expect(picker).toBeVisible();
+ await account.selectOption('plaid-personal');await expect(picker).toContainText(/deposit/i);
+ await expect(picker.getByRole('button',{name:/Employer ACH/i})).toHaveCount(0);
+ await picker.getByRole('button',{name:'Close paycheck picker'}).click();await expect(picker).toBeHidden();
+ expect(saved().household.personalAccountId).toBeFalsy();
+ await open.click();await account.selectOption('lunchflow-pay');
+ await picker.getByRole('button',{name:/Employer ACH/i}).click();
+ await expect(picker).toBeHidden();
+ await expect.poll(()=>saved().household.personalAccountId).toBe('lunchflow-pay');
+ expect(saved().paycheckLink.accountId).toBe('lunchflow-pay');
+ await expect(page.locator('#paycheck-card-1 .paycheck-income .amount-input')).toHaveValue('1923.47');
 });
