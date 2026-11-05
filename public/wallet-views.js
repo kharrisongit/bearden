@@ -276,7 +276,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
       const takehome=make('section','bd-paycheck-section bd-takehome','<h4>Take-home pay</h4>'),budget=make('section','bd-paycheck-section bd-paycheck-budget','<h4>Budget &amp; bills</h4>'),savings=make('section','bd-paycheck-section bd-paycheck-savings','<h4>Savings</h4>');
       let stage='income';
       for(const n of children){
-        if(n.matches('.paycheck-income,.paycheck-tax-button')){takehome.append(n);continue;}
+        if(n.matches('.paycheck-income,.paycheck-tax-button,.paycheck-link-button')){takehome.append(n);continue;}
         const action=n.getAttribute('data-bd-click')||'',isBonus=/Bonus/.test(action)||/bonus/.test(n.className);
         const saving=!!$('[data-bd-change^="updateSavingsContribution"]',n)||/after savings/i.test(n.textContent);
         if(saving)stage='savings';
@@ -303,8 +303,8 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
     if(card.innerHTML!==html)card.innerHTML=html;
     if(transactionToggle.getAttribute('aria-expanded')!=='true')transactionToggle.textContent='View all transactions';
     const selected=$('#personalSpendingAccount').value;
-    const transactions=(window.BearDen?.plan?.connections?.transactions||[]).filter(t=>!selected||t.account_id===selected).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3);
-    const recentHtml=transactions.map(t=>'<button type="button" class="bd-recent-row" data-bd-transactions>'+svg('debts')+'<span><strong>'+esc(t.name||'Transaction')+'</strong><small>'+esc(t.date)+'</small></span><strong>'+money(Math.round(-Number(t.amount)*100))+'</strong>'+chevron+'</button>').join('')||'<p class="bd-empty">Your recent purchases will appear here when your bank sends transactions.</p>';
+    const transactions=(window.BearDen?.plan?.connections?.transactions||[]).filter(t=>!selected||t.account_id===selected||'plaid-'+t.account_id===selected).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3);
+    const recentHtml=transactions.map(t=>'<button type="button" class="bd-recent-row" data-bd-transactions>'+svg('debts')+'<span><strong>'+esc(t.name||'Transaction')+'</strong><small>'+esc(t.date)+'</small></span><strong>'+money(Math.round(-Number(t.amount)*100))+'</strong>'+chevron+'</button>').join('')||'<p class="bd-empty">Your recent deposits and payments will appear here when your bank sends transactions.</p>';
     if($('#bdRecentRows').innerHTML!==recentHtml)$('#bdRecentRows').innerHTML=recentHtml;
     const chart=$('#forecastChart .forecast-chart');if(chart&&!$('.bd-chart-explore',chart)){
       const scrubber=$('.chart-scrubber',chart),output=$('output',chart);
@@ -354,7 +354,7 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
     debtProgressDialog:['Debt','debts'],debtHistoryDialog:['Debt','debts'],debtEditor:['Debt','debts'],creditEditor:['Debt','debts'],addDebtPaymentDialog:['Paycheck','debts'],
     billEditor:['Bills','bills'],billShareDialog:['Bills','bills'],householdEditor:['Household','people'],
     accountTypePicker:['Your wallet','stack'],accountPicker:['Income','income'],accountOrderEditor:['Your wallet','stack'],connectedAccountNameEditor:['Income','income'],
-    emailLinkPicker:['Connected sources','mail'],transactionLinkPicker:['Connected sources','stack'],transactionCategoryEditor:['Transactions','chart'],colorPickerDialog:['Appearance','sun'],
+    emailLinkPicker:['Connected sources','mail'],transactionLinkPicker:['Connected sources','stack'],paycheckLinkPicker:['Income','income'],transactionCategoryEditor:['Transactions','chart'],colorPickerDialog:['Appearance','sun'],
   };
   function stylePopup(dialog){
     if(dialog.classList.contains('bd-popup')||['denMenu','expandedAccountView','rentBrowser','forecastReportDialog'].includes(dialog.id))return;

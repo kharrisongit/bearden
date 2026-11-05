@@ -2617,6 +2617,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
           <span>Paycheck amount (after taxes)${row.isOverridden ? ' <span class="edited-tag">edited</span>' : ''}</span>
           <span class="amount-input-wrap">$<input type="number" class="amount-input" value="${row.takeHomeThisCheck.toFixed(2)}" step="0.01" data-bd-change="updatePaycheckAmount(${row.paycheck}, this.value)"></span>
         </div>
+        ${isChecked?'':`<button type="button" class="paycheck-link-button" data-open-paycheck-link="${dateKey(row.date)}" aria-haspopup="dialog" aria-controls="paycheckLinkPicker">Link paycheck</button>`}
         <button type="button" class="paycheck-tax-button" data-paycheck-taxes="${row.paycheck}" aria-haspopup="dialog" aria-controls="paycheckTaxDialog">Taxes &amp; withholding</button>
         ${row.bonusAmount > 0 ? `
         <div class="check-summary-row bonus-row"><span>🎁 + Bonus (after taxes)</span><span>${money(row.bonusAmount)}</span></div>
