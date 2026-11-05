@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {resolveDebtDetails,resolveDebtConnections,purchaseAPR} from '../public/connection-model.mjs';
+import {resolveDebtDetails,resolveDebtConnections,purchaseAPR,visibleConnectionPlan} from '../public/connection-model.mjs';
 import {emailAccountStatus,emailLink} from '../public/email-model.mjs';
 import {mergeSimplefinTransactions,simplefinAccountId} from '../simplefin.mjs';
 import {transactionAccountId,paymentLink,matchingPayments} from '../public/transaction-links.mjs';
@@ -89,4 +89,19 @@ test('an older email cannot replace a more recently reported balance or minimum 
  assert.equal(r.balance.value,90000);assert.equal(r.balance.stale,true);assert.equal(r.monthlyMinimum.value,8000);assert.equal(r.monthlyMinimum.stale,true);
  const ancientIssuer={...issuer,updated:new Date(now-90*86400000).toISOString()},lessOldMail={...statement,receivedAt:new Date(now-70*86400000).toISOString()};
  assert.equal(resolveDebtDetails({card,primary,issuers:[ancientIssuer],statement:lessOldMail,now}).monthlyMinimum.value,9500);
+});
+
+test('hiding accounts excludes their provider data and stale issuer records while preserving the restore inventory',()=>{
+ const day='2026-11-04',accounts=[{id:'plaid-checking'},{id:'plaid-bills'},{id:'plaid-card'},{id:'lunchflow-card'}];
+ const transactions=['checking','bills','card','missing','lunchflow-card'].map(account_id=>({account_id,name:'Bakery',amount:5,currency:'USD',date:day}));
+ const plan={state:{accounts},connections:{transactions,creditCards:[{accountId:'card'},{accountId:'missing'}],recurringBills:[{accountId:'plaid-card'},{accountId:'lunchflow-card'}],personalSpending:{end:day}}};
+ const hidden={'plaid-card':true,'plaid-missing':true},view=visibleConnectionPlan(plan,hidden);
+ assert.deepEqual(view.state.accounts.map(a=>a.id),['plaid-checking','plaid-bills','lunchflow-card']);
+ assert.deepEqual(view.connections.transactions.map(t=>t.account_id),['checking','bills','lunchflow-card']);
+ assert.deepEqual(view.connections.creditCards,[]);
+ assert.deepEqual(view.connections.recurringBills,[{accountId:'lunchflow-card'}]);
+ assert.equal(view.connections.personalSpending.total,1500);
+ assert.equal(visibleConnectionPlan(plan,{}),plan);
+ assert.equal(plan.state.accounts.length,4);
+ assert.equal(plan.connections.transactions.length,5);
 });

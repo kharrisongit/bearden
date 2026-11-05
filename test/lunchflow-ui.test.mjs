@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {fileURLToPath} from 'node:url';
 import {readFileSync} from 'node:fs';
 
 test('Lunch Flow controls clear the token, refresh imported accounts, and save explicit debt interpretation',async()=>{
@@ -19,7 +20,8 @@ test('Lunch Flow controls clear the token, refresh imported accounts, and save e
   if(path==='/api/lunchflow/disconnect'){connections.lunchflow=null;state.accounts=[];return Response.json({status:'Disconnected'});}
   throw Error('Unexpected API '+path);
  }};
- vm.runInNewContext(readFileSync('public/connections.js','utf8'),context);await window.BearDen.ready;
+ const filename=fileURLToPath(new URL('../public/connections.js',import.meta.url));
+ vm.runInNewContext(readFileSync(filename,'utf8'),context,{filename,importModuleDynamically:vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER});await window.BearDen.ready;
  element('#lunchflowToken').value='only-once';await element('#lunchflowConnectForm').onsubmit({preventDefault(){}});
  assert.equal(element('#lunchflowToken').value,'');assert.equal(element('#lunchflowActions').hidden,false);assert.match(element('#lunchflowAccounts').innerHTML,/Indigo/);assert.match(element('#lunchflowAccounts').innerHTML,/218.45 owed/);
  const status=element('accountStatus'),button=element('accountButton'),form={dataset:{lunchflowAccount:'lunchflow-one'},elements:{kind:{value:'credit'},debtSign:{value:'negative'}},querySelector:s=>s==='button[type=submit]'?button:status};

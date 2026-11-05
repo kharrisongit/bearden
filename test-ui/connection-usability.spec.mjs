@@ -69,3 +69,42 @@ test('guided setup reopens above preferences instead of behind its native modal'
  await expect(page.locator('#setupTitle')).toHaveText('Welcome to BearDen');
  await page.locator('#setupLater').click();await expect(page.locator('#setupWizard')).toBeHidden();
 });
+
+test('hiding a Plaid account removes its activity and keeps the Lunch Flow copy and checking accounts available',async({page})=>{
+ const f=await fixture(page);await page.goto('about:blank');
+ const account=(id,name,type,source,balance)=>({id,name,type,source,balance,currency:'USD',itemId:source==='plaid'?'bank':'lunchflow',subtype:type==='depository'?'checking':type,balanceUpdated:'2026-10-28T12:00:00Z'});
+ const accounts=[account('plaid-personal','Personal checking','depository','plaid',10000),account('plaid-bills','Bills checking','depository','plaid',20000),
+  account('plaid-card','Card via Plaid','credit','plaid',30000),account('plaid-loan','Loan via Plaid','loan','plaid',0),account('lunchflow-card','Card via Lunch Flow','credit','lunchflow',45600)];
+ const transactions=[['bank','personal','Checking purchase'],['bank','card','Plaid card purchase'],['lunchflow','lunchflow-card','Lunch Flow card purchase']].map(([itemId,account_id,name])=>({itemId,account_id,transaction_id:name,name,amount:12,currency:'USD',date:'2026-10-27'}));
+ const connections={items:[{id:'bank',name:'Test bank',liabilitiesError:'PRODUCT_NOT_READY'}],creditCards:[{id:'issuer',accountId:'card',itemId:'bank',name:'Plaid issuer card',currency:'USD',balance:30000}],lunchflow:{connected:true,status:'Connected'},transactions};
+ const values=f.tracker.state.values,planner=JSON.parse(values['income-planner']),state=JSON.parse(values['app-state']);
+ state.cards=[{id:1,name:'Tracked card',debtKind:'credit-card',balance:200,apr:0,min:60,monthlyMinimum:130}];values['app-state']=JSON.stringify(state);
+ planner.household.billsAccountId='plaid-bills';planner.accountVisibility['plaid-bills']=true;
+ planner.hiddenConnectedAccounts={'plaid-loan':true};planner.debtAccountLinks={1:'plaid-card'};planner.debtBackupLinks={1:'lunchflow-card'};
+ values['income-planner']=JSON.stringify(planner);
+ await page.route('https://bearden.test/api/state',r=>r.fulfill({json:{state:{...blank(),accounts},connections,revision:0}}));
+ await page.goto('https://bearden.test/');await expect(page.locator('#accountChoices')).toContainText('Card via Plaid');
+ await expect(page.locator('#plaidAccountSummary')).toHaveText('Plaid accounts (3 shown)');
+ await menuGo(page,'settings');await page.locator('#bdSettingsHub [data-bd-detail="plaid"]').click();
+ await page.locator('#plaidAccountSummary').click();await page.locator('[data-hide-connected-account="plaid-card"]').click();
+ const checkHidden=async()=>{
+  await expect(page.locator('#plaidAccountSummary')).toHaveText('Plaid accounts (2 shown)');
+  await expect(page.locator('#connectionAttention')).toBeHidden();
+  await expect(page.locator('#accountChoices')).not.toContainText('Card via Plaid');
+  await expect(page.locator('#accountChoices')).not.toContainText('Loan via Plaid');
+  await expect(page.locator('#accountChoices')).toContainText('Card via Lunch Flow');
+  await expect(page.locator('#incomeSummary')).toContainText('Personal checking');
+  await expect(page.locator('#incomeSummary')).toContainText('Bills checking');
+  await expect(page.locator('#transactionAccountFilter option[value="card"]')).toHaveCount(0);
+  await expect(page.locator('#transactionAccountFilter option[value="lunchflow-card"]')).toHaveCount(1);
+  await expect(page.locator('#debtAccounts')).not.toContainText('Plaid issuer card');
+  await expect(page.locator('#debtAccounts')).toContainText('Connected Via Lunch Flow');
+  await expect(page.locator('#debtAccounts')).toContainText('$456');
+ };
+ await checkHidden();await page.reload();await checkHidden();
+ await menuGo(page,'settings');await page.locator('#bdSettingsHub [data-bd-detail="plaid"]').click();
+ await page.locator('#plaidAccountSummary').click();await page.locator('#classicBalances .hidden-connection-accounts summary').click();
+ await page.locator('[data-show-connected-account="plaid-card"]').click();
+ await expect(page.locator('#plaidAccountSummary')).toHaveText('Plaid accounts (3 shown)');
+ await expect(page.locator('#transactionAccountFilter option[value="card"]')).toHaveCount(1);
+});

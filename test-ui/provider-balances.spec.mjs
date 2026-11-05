@@ -108,3 +108,15 @@ test('an internal zero placeholder is not described as a zero reported by Plaid'
  const {errors}=await fixture(page,{account:{reportedCurrent:null,reportedLiveCurrent:null,reportedCachedCurrent:null,reportedAvailable:null}});
  const card=await openLoanDetails(page);await expect(card.locator('details')).toContainText('General account balance reported by Plaid: Not supplied');await expect(card.locator('details')).toContainText('Loan principal from Plaid Liabilities: No principal observation saved');await expect(card).not.toContainText('Plaid reports zero');await expect(card).not.toContainText('response reported $0');await expect(card).not.toContainText('$0.00');expect(errors).toEqual([]);
 });
+
+test('a hidden loan does not flag a successful refresh, but a checking connection failure still does',async({page})=>{
+ const balanceWarning='0 account(s) missing from this response; 1 returned without a usable balance. Last known amounts and links are kept.',liabilitiesStatus='Card / loan details need attention: PRODUCT_NOT_READY. Previous details are kept; retry or update card access in Settings.';
+ const checking={id:'plaid-check',itemId:'bank',source:'plaid',type:'depository',subtype:'checking',currency:'USD',name:'Checking',balance:12300,balanceSource:'live'};
+ const {bank}=await fixture(page,{extraAccounts:[checking],lunchflow:null,item:{balanceWarning,liabilitiesStatus,liabilitiesError:'PRODUCT_NOT_READY'}});
+ await page.route('https://bearden.test/api/bank/refresh',r=>r.fulfill({json:{itemId:'bank',status:`Bank synced. ${liabilitiesStatus} ${balanceWarning}`,balanceWarning}}));
+ await page.locator('#configurePlaid').click();await page.locator('#plaidAccountSummary').click();await page.locator('[data-hide-connected-account="plaid-auto"]').click();
+ await expect(page.locator('#connectionAttention')).toBeHidden();await expect(page.locator('#plaidConnections')).not.toContainText('usable balance');
+ await page.locator('#classicSync').click();await expect(page.locator('#bearToast .bear-toast-message')).toHaveText('Connections refreshed.');
+ bank.transactionsError='ITEM_LOGIN_REQUIRED';await page.locator('#classicSync').click();await expect(page.locator('#connectionAttention')).toContainText('ITEM_LOGIN_REQUIRED');
+ await expect(page.locator('#bearToast .bear-toast-message')).toContainText('need attention');
+});

@@ -5,6 +5,9 @@ window.BearDen=(()=>{
  let config={},values={},revision=0,legacy=null,queue=Promise.resolve(),blocked=false,rentLoginUrl=null,requestQueue=Promise.resolve();
  const bridge={loaded:false,storage:{},ready:null};
  const accountHidden=id=>{try{return JSON.parse(values['income-planner']||'{}').hiddenConnectedAccounts?.[id]===true;}catch{return false;}};
+ let connectionModel;
+ const publishPlan=()=>{bridge.plan=connectionModel.visibleConnectionPlan(legacy,JSON.parse(values['income-planner']||'{}').hiddenConnectedAccounts);};
+ bridge.settingsAccount=id=>legacy?.state?.accounts?.find(a=>a.id===id);
  const accountName=a=>{try{return JSON.parse(values['income-planner']||'{}').accountNames?.[a.id]||a.name;}catch{return a.name;}};
  const connectionTime=value=>{if(!value||!['number','string'].includes(typeof value))return null;const date=new Date(value);return Number.isFinite(date.getTime())?date.toLocaleString():null;};
  const loanConsentRequired=item=>item?.liabilitiesError==='ADDITIONAL_CONSENT_REQUIRED';
@@ -29,11 +32,34 @@ window.BearDen=(()=>{
   const previous=!!item?.liabilitiesError||['account-not-returned','details-not-returned','principal-unavailable'].includes(account.liabilityStatus);
   return '<br>Loan principal from Plaid Liabilities: '+principal+(previous&&Number.isSafeInteger(account.liabilityPrincipal)?' (previous observation)':'')+'<br>Current balance from Plaid Liabilities: '+current+'<br>Loan principal observed: '+esc(Number.isSafeInteger(account.liabilityPrincipal)?connectionTime(account.liabilityUpdated)||'No observation time saved':'No principal observation saved')+'<br>Latest loan-details attempt: '+esc(connectionTime(item?.liabilitiesAttempt)||'No attempt time saved')+'<br>Latest successful loan-details request: '+esc(connectionTime(item?.liabilitiesUpdated)||connectionTime(account.liabilityCheckedAt)||connectionTime(account.liabilityUpdated)||'No successful response recorded');
  }
+ function visiblePlaidItem(item){
+  const all=(legacy?.state?.accounts||[]).filter(a=>a.source==='plaid'&&a.itemId===item.id),accounts=all.filter(a=>!accountHidden(a.id));
+  let balanceWarning=item.balanceWarning||'',liabilitiesStatus=item.liabilitiesStatus,liabilitiesError=item.liabilitiesError;
+  const debt=a=>a.type==='loan'||a.type==='credit',showLiabilities=!all.length||accounts.some(debt);
+  if(!showLiabilities){liabilitiesStatus=null;liabilitiesError=null;}
+  if(accounts.length!==all.length){
+   // These two saved summaries describe individual accounts. Keep bank-wide failures verbatim.
+   const cached=accounts.filter(a=>a.balanceSource==='cached').length,missing=accounts.filter(a=>a.accountMissing).length,unavailable=accounts.filter(a=>a.balanceUnavailable&&!a.accountMissing).length;
+   balanceWarning=balanceWarning.replace(/\d+ account\(s\) use cached bank balances because live data was incomplete\./,cached?`${cached} account(s) use cached bank balances because live data was incomplete.`:'')
+    .replace(/\d+ account\(s\) missing from this response; \d+ returned without a usable balance\. Last known amounts and links are kept\./,missing||unavailable?`${missing} account(s) missing from this response; ${unavailable} returned without a usable balance. Last known amounts and links are kept.`:'').trim();
+   if(!liabilitiesError&&all.some(a=>debt(a)&&accountHidden(a.id)))liabilitiesStatus=null;
+  }
+  return {...item,accounts,balanceWarning,liabilitiesStatus,liabilitiesError,showLiabilities};
+ }
+ function plaidRefreshStatus(result,id){
+  const raw=legacy?.connections?.items?.find(i=>i.id===id);
+  if(!raw||!result.status)return result.status;
+  const item=visiblePlaidItem(raw);
+  let status=result.status;
+  for(const key of ['balanceWarning','liabilitiesStatus'])if(raw[key]&&raw[key]!==item[key])status=status.replace(raw[key],()=>item[key]||'');
+  // The local server wraps its list of issues in this heading, even if every issue was hidden.
+  return status.replace(/^Sync needs attention — [\s·]*$/,'').trim()||'Bank refreshed.';
+ }
  function plaidDiagnosticMarkup(item){
   const d=item.diagnostics;if(!d)return '';
   const line=(label,value)=>'<p><strong>'+label+'</strong> '+esc(value||'Not supplied')+'</p>';
   const errors=[d.errorCode,item.balanceError&&'Balance: '+item.balanceError,item.transactionsError&&'Transactions: '+item.transactionsError,item.liabilitiesError&&'Loan details: '+item.liabilitiesError].filter(Boolean);
-  return '<div class="provider-diagnostics">'+line('Connection',errors.join(' · ')||'No connection error reported')+line('Loan details',item.liabilitiesError?'Latest request failed: '+item.liabilitiesError:d.loanDetailsSupported?(item.liabilities?'Enabled in BearDen':'Available; use Enable / repair loan details'):'Plaid does not list Liabilities for this connection')+line('Consented products',d.consentedProducts?.join(', '))+line('Last bank transaction update',d.lastTransactionUpdate?new Date(d.lastTransactionUpdate).toLocaleString():null)+'<details><summary>Troubleshooting identifiers</summary><div>'+line('Item ID',d.itemId)+line('Institution ID',d.institutionId)+line('Diagnostic request',d.requestId)+line('Live balance request',item.balanceChecks?.live?.requestId)+line('Loan details request',item.liabilitiesRequestId)+'</div></details></div>';
+  return '<div class="provider-diagnostics">'+line('Connection',errors.join(' · ')||'No connection error reported')+(item.showLiabilities?line('Loan details',item.liabilitiesError?'Latest request failed: '+item.liabilitiesError:d.loanDetailsSupported?(item.liabilities?'Enabled in BearDen':'Available; use Enable / repair loan details'):'Plaid does not list Liabilities for this connection'):'')+line('Consented products',d.consentedProducts?.join(', '))+line('Last bank transaction update',d.lastTransactionUpdate?new Date(d.lastTransactionUpdate).toLocaleString():null)+'<details><summary>Troubleshooting identifiers</summary><div>'+line('Item ID',d.itemId)+line('Institution ID',d.institutionId)+line('Diagnostic request',d.requestId)+line('Live balance request',item.balanceChecks?.live?.requestId)+(item.showLiabilities?line('Loan details request',item.liabilitiesRequestId):'')+'</div></details></div>';
  }
  const renameAccountButton=a=>'<button type="button" class="rename-account-button" data-rename-connected-account="'+esc(a.id)+'" aria-label="Rename '+esc(accountName(a))+'" title="Rename account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg></button>';
  const hideAccountButton=a=>'<span class="connection-account-actions">'+renameAccountButton(a)+'<button type="button" class="hide-account-button" data-hide-connected-account="'+esc(a.id)+'" aria-label="Hide '+esc(accountName(a))+'">Hide</button></span>';
@@ -57,7 +83,7 @@ window.BearDen=(()=>{
  function renderConnectionAttention(){
   const c=legacy?.connections||{},issues=new Map(refreshIssues);
   const add=(key,provider,label,message)=>{if(message)issues.set(key,{key,provider,label,message});};
-  for(const item of c.items||[])add('plaid:'+item.id,'plaid','Plaid · '+(item.name||'Bank'),[item.balanceError,item.balanceWarning,item.transactionsError,item.liabilitiesError].filter(Boolean).join(' · '));
+  for(const item of (c.items||[]).map(visiblePlaidItem))add('plaid:'+item.id,'plaid','Plaid · '+(item.name||'Bank'),[item.balanceError,item.balanceWarning,item.transactionsError,item.liabilitiesError].filter(Boolean).join(' · '));
   if(c.lunchflow&&needsAttention(c.lunchflow.status))add('lunchflow','lunchflow','Lunch Flow',c.lunchflow.status);
   for(const a of c.mailAccounts||c.gmailAccounts||[])if(needsAttention(a.status))add('email:'+a.id,'email',a.email||'Email account',a.status);
   if(c.sun?.enabled!==false&&(c.sun?.needsLogin||needsAttention(c.sun?.status)))add('rent','rent','Rent portal',c.sun.status||'Sign in again to refresh rent.');
@@ -118,21 +144,20 @@ window.BearDen=(()=>{
   queue=operation;return operation;
  }
  bridge.storage.get=async key=>{await bridge.ready;if(blocked)throw Error('Tracker could not load safely. Reload to try again.');return values[key]===undefined?null:{key,value:values[key],shared:false};};
- bridge.storage.set=async(key,value)=>{await bridge.ready;if(!keys.has(key))return null;const previous=values[key],next=String(value);values[key]=next;try{await persist();return {key,value,shared:false};}catch(error){if(values[key]===next){if(previous===undefined)delete values[key];else values[key]=previous;}throw error;}};
+ bridge.storage.set=async(key,value)=>{await bridge.ready;if(!keys.has(key))return null;const previous=values[key],next=String(value);values[key]=next;try{await persist();if(key==='income-planner')publishPlan();return {key,value,shared:false};}catch(error){if(values[key]===next){if(previous===undefined)delete values[key];else values[key]=previous;}throw error;}};
  bridge.storage.setMany=async changes=>{
   await bridge.ready;
   const entries=Object.entries(changes);if(entries.some(([key])=>!keys.has(key)))throw Error('Invalid saved setting.');
   const previous=Object.fromEntries(entries.map(([key])=>[key,values[key]])),next=Object.fromEntries(entries.map(([key,value])=>[key,String(value)]));
   Object.assign(values,next);
-  try{await persist();return true;}catch(error){for(const [key,value]of Object.entries(next))if(values[key]===value){if(previous[key]===undefined)delete values[key];else values[key]=previous[key];}throw error;}
+  try{await persist();if(Object.hasOwn(next,'income-planner'))publishPlan();return true;}catch(error){for(const [key,value]of Object.entries(next))if(values[key]===value){if(previous[key]===undefined)delete values[key];else values[key]=previous[key];}throw error;}
  };
  bridge.storage.delete=async key=>{await bridge.ready;if(!keys.has(key)||values[key]===undefined)return {key,deleted:true};delete values[key];await persist();return {key,deleted:true};};
  bridge.resetSetup=async state=>{await bridge.ready;await queue;const previous=values;values={...values,'app-state':JSON.stringify(state),'income-planner':JSON.stringify({}),'linked-bills':JSON.stringify({}),onboarding:JSON.stringify({version:1,step:0,started:true,completed:false})};try{await persist();}catch(e){values=previous;throw e;}};
  function requireLogin(){if(config.authenticated)return true;message('Sign in with Google or Microsoft in Settings to connect an account.');window.selectBearTab?.('settings');return false;}
  async function reconcileAccountReferences(){
   if(!values['income-planner'])return;
-  const {remapConnectedAccountReferences}=await import('./connection-model.mjs?v=lunchflow1');
-  const before=values['income-planner'],planner=JSON.parse(before),next=remapConnectedAccountReferences(planner,legacy?.state?.accounts||[]);
+  const before=values['income-planner'],planner=JSON.parse(before),next=connectionModel.remapConnectedAccountReferences(planner,legacy?.state?.accounts||[]);
   if(next!==planner){values['income-planner']=JSON.stringify(next);try{await persist();}catch(e){values['income-planner']=before;throw e;}}
  }
  async function refresh(){await queue;legacy=await api('/api/state');await reconcileAccountReferences();renderConnections();}
@@ -145,15 +170,15 @@ window.BearDen=(()=>{
  function renderConnections(){
   $('#accountMode').textContent=config.authenticated?'You are signed in with '+(config.email||'your BearDen')+' account. Your budget, accounts, and income update to the cloud securely via your account.':'Not signed in. Tracker changes are saved on this device.';
   $('#classicLogin').hidden=!!config.authenticated||!config.googleConfigured;$('#classicMicrosoftLogin').hidden=!!config.authenticated||!config.microsoftConfigured;$('#microsoftSetupStatus').hidden=!!config.authenticated||!!config.microsoftConfigured;$('#classicGmail').disabled=!config.googleConfigured;$('#classicOutlook').disabled=!config.microsoftConfigured;$('#classicOutlook').title=config.microsoftConfigured?'':'Microsoft inbox connections are being set up.';$('#classicLogout').hidden=!config.authenticated;$('#classicSync').hidden=!config.authenticated;document.querySelectorAll('[data-refresh-bank],[data-refresh-debts]').forEach(b=>b.hidden=!config.authenticated);$('#privateConnections').hidden=!config.authenticated;$('#rentTrackingOption').hidden=!config.authenticated;
-  bridge.config=config;bridge.plan=legacy;window.dispatchEvent(new Event('bearden-connections'));
+  bridge.config=config;publishPlan();window.dispatchEvent(new Event('bearden-connections'));
   if(!config.authenticated){renderConnectionAttention();return;}
   const c=legacy?.connections||{},s=legacy?.state;
   for(const [id,label,count]of [['plaidAccountSummary','Plaid accounts',(s?.accounts||[]).filter(a=>a.source==='plaid').length],['gmailAccountSummary','Email accounts',(c.mailAccounts||c.gmailAccounts||[]).length]])$('#'+id).textContent=label+' ('+count+')';
   $('#classicBank').hidden=false;$('#classicBank').disabled=!config.plaidConfigured;$('#classicBank').textContent=c.items?.length?'Add another bank':'Connect bank with Plaid';$('#disconnectPlaid').hidden=!c.items?.length;
   $('#classicBankStatus').textContent=c.items?.length?'Connected':'Not connected';$('#classicBankStatus').dataset.connected=String(!!c.items?.length);$('#refreshPlaid').hidden=!c.items?.length;
   const plaidAccounts=(s?.accounts||[]).filter(a=>a.source==='plaid');
-  $('#plaidConnections').innerHTML=(c.items||[]).map(item=>{
-   const accounts=plaidAccounts.filter(a=>a.itemId===item.id),count=(c.transactions||[]).filter(t=>t.itemId===item.id).length;
+  $('#plaidConnections').innerHTML=(c.items||[]).map(visiblePlaidItem).map(item=>{
+   const accounts=item.accounts,count=(bridge.plan?.connections?.transactions||[]).filter(t=>t.itemId===item.id).length;
    const history=item.transactionsError?'Transactions need attention: '+item.transactionsError:item.transactionsPending?'Transaction history is loading.':item.transactionsLoading?'Plaid is preparing transaction history.':count+' saved transaction(s)'+(item.transactionsUpdated?' · Checked '+new Date(item.transactionsUpdated).toLocaleString():'');
    return '<div class="connection-row"><strong>'+esc(item.name)+'</strong><small>'+accounts.length+' account(s) · '+accounts.filter(a=>!a.balanceUnavailable).length+' with reported balances</small><small>'+esc(history)+'</small>'+(item.balanceError||item.balanceWarning?'<small>'+esc(item.balanceError||item.balanceWarning)+'</small>':'')+'<button type="button" data-bank-update="'+esc(item.id)+'">Choose / repair accounts</button><button type="button" data-bank-diagnose="'+esc(item.id)+'">Check balance connection</button>'+(accounts.some(a=>a.type==='loan')?'<button type="button" data-bank-loans="'+esc(item.id)+'">Enable / repair loan details</button>':'')+(item.liabilitiesStatus?'<small>'+esc(item.liabilitiesStatus)+'</small>':'')+plaidDiagnosticMarkup(item)+'</div>';
   }).join('');
@@ -260,7 +285,7 @@ window.BearDen=(()=>{
   if(!window.Plaid)await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://cdn.plaid.com/link/v2/stable/link-initialize.js';s.onload=resolve;s.onerror=()=>reject(Error('Could not load Plaid.'));document.head.append(s);});
   const handler=window.Plaid.create({token,...(resume?{receivedRedirectUri:location.href}:{}),onSuccess:async(public_token,metadata)=>{try{
    let r=options.itemId?await api('/api/plaid/updated',{itemId:options.itemId,kind:options.kind}):await api('/api/plaid/exchange',{public_token,name:metadata.institution?.name||'Bank',kind:options.kind});
-   sessionStorage.removeItem('bearden-link-token');sessionStorage.removeItem('bearden-link-context');sessionStorage.removeItem('bearden-link-account');history.replaceState(null,'','/');await refresh();r=await finishBankHistory(r,message);await refresh();message(r.status||'Account connected.');
+   sessionStorage.removeItem('bearden-link-token');sessionStorage.removeItem('bearden-link-context');sessionStorage.removeItem('bearden-link-account');history.replaceState(null,'','/');await refresh();r=await finishBankHistory(r,message);await refresh();r.status=plaidRefreshStatus(r,r.itemId||options.itemId);message(r.status||'Account connected.');
    if(options.kind==='loan')window.selectBearTab('settings');
    else if(options.kind==='credit'||options.itemId){window.selectBearTab('debts');window.dispatchEvent(new CustomEvent('bearden-credit-connected',{detail:{options,status:r.status}}));}
   }catch(e){message(e.message);if(options.fromAccount)window.dispatchEvent(new CustomEvent('bearden-credit-cancelled',{detail:{options,error:e.message}}));else window.selectBearTab('settings');}finally{handler.destroy();}},onExit:error=>{handler.destroy();const detail=error?(error.display_message||error.error_message||'Plaid could not connect this account.'):'';if(options.fromAccount)window.dispatchEvent(new CustomEvent('bearden-credit-cancelled',{detail:{options,error:detail}}));else if(error){message(detail);window.selectBearTab('settings');}}});handler.open();
@@ -271,7 +296,7 @@ window.BearDen=(()=>{
   const repair=e.target.closest('[data-bank-update]');if(repair){repair.disabled=true;try{await connectBank(false,{kind:'bank',itemId:repair.dataset.bankUpdate});}catch(error){message(error.message);}finally{repair.disabled=false;}return;}
   const b=e.target.closest('[data-connect-credit],[data-credit-update],[data-refresh-credit]');if(!b)return;b.disabled=true;if(b.hasAttribute('data-refresh-credit'))b.setAttribute('aria-busy','true');
   const loanRefresh=b.hasAttribute('data-refresh-loan-details'),status=document.querySelector(loanRefresh?'#plaidConfigStatus':'#creditStatus'),report=text=>{if(status)status.textContent=text;if(loanRefresh)message(text);},options={kind:'credit',...(b.dataset.creditUpdate?{itemId:b.dataset.creditUpdate}:{}),...(b.hasAttribute('data-account-connect')?window.prepareDebtConnection():{})};try{
-   if(b.hasAttribute('data-refresh-credit')){report(loanRefresh?'Refreshing loan details…':'Refreshing card…');let r=await api('/api/cards/refresh',{itemId:b.dataset.refreshCredit});r=await finishBankHistory(r,report);await refresh();if(loanRefresh)window.selectBearTab('settings');report(r.status||(loanRefresh?'Loan details refresh complete.':'Card refreshed.'));}
+   if(b.hasAttribute('data-refresh-credit')){report(loanRefresh?'Refreshing loan details…':'Refreshing card…');let r=await api('/api/cards/refresh',{itemId:b.dataset.refreshCredit});r=await finishBankHistory(r,report);await refresh();if(loanRefresh)window.selectBearTab('settings');report(plaidRefreshStatus(r,b.dataset.refreshCredit)||(loanRefresh?'Loan details refresh complete.':'Card refreshed.'));}
    else await connectBank(false,options);
   }catch(e){message(e.message);if(status)status.textContent=e.message;if(options.fromAccount)window.dispatchEvent(new CustomEvent('bearden-credit-cancelled',{detail:{options,error:e.message}}));else window.selectBearTab('settings');}finally{b.disabled=false;b.removeAttribute('aria-busy');}
  });
@@ -300,8 +325,17 @@ window.BearDen=(()=>{
    await queue;await refresh();refreshIssues.delete('account');const items=[...(legacy?.connections?.items||[])];
    for(const [index,item] of items.entries()){
     report('Refreshing '+item.name+' ('+(index+1)+' of '+items.length+')…');
-    try{await queue;let result=await api(creditDetails?'/api/cards/refresh':'/api/bank/refresh',{itemId:item.id});result=await finishBankHistory(result,report);recordRefreshIssue('plaid:'+item.id,'plaid','Plaid · '+item.name,result.status,!!(result.balanceError||result.balanceWarning)||!result.status);results.push(item.name+': '+(result.status||'No refresh status returned.'));results.needsAttention||=!result.status||!!(result.balanceError||result.balanceWarning);results.pending||=!!(result.transactionsPending||result.transactionsLoading);}catch(error){recordRefreshIssue('plaid:'+item.id,'plaid','Plaid · '+item.name,error.message,true);results.needsAttention=true;results.push(item.name+': Refresh failed — '+error.message);}
-    await refresh();
+    try{
+     await queue;let result=await api(creditDetails&&visiblePlaidItem(item).showLiabilities?'/api/cards/refresh':'/api/bank/refresh',{itemId:item.id});
+     result=await finishBankHistory(result,report);await refresh();
+     const status=plaidRefreshStatus(result,item.id),saved=legacy?.connections?.items?.find(i=>i.id===item.id);
+     // Saved per-product issues are recomputed when a user hides or restores an account.
+     // Only keep request failures separately when the saved item does not explain them.
+     const savedIssue=saved&&(saved.balanceWarning||saved.balanceError||saved.liabilitiesError||saved.transactionsError);
+     recordRefreshIssue('plaid:'+item.id,'plaid','Plaid · '+item.name,savedIssue&&status?'':status,!status);
+     results.push(item.name+': '+(status||'No refresh status returned.'));
+     results.needsAttention||=!status;results.pending||=!!(result.transactionsPending||result.transactionsLoading);
+    }catch(error){recordRefreshIssue('plaid:'+item.id,'plaid','Plaid · '+item.name,error.message,true);results.needsAttention=true;results.push(item.name+': Refresh failed — '+error.message);}
    }
 
    if(includeLunchflow&&legacy?.connections?.lunchflow){report('Refreshing Lunch Flow…');try{const r=await finishLunchflow(await api('/api/lunchflow/refresh',{}),report);recordRefreshIssue('lunchflow','lunchflow','Lunch Flow',r.status,!!r.needsAttention);results.push(r.status);results.needsAttention||=!!r.needsAttention;results.pending||=!!r.pending;results.cached||=!!r.cached;}catch(e){recordRefreshIssue('lunchflow','lunchflow','Lunch Flow',e.message,true);results.needsAttention=true;results.push('Lunch Flow: '+e.message);}await refresh();}
@@ -335,7 +369,7 @@ window.BearDen=(()=>{
  $('#classicBank').onclick=run(()=>connectBank());$('#classicGmail').onclick=()=>{if(requireLogin())location.href='/auth/google?gmail=1&account='+encodeURIComponent(config.accountId);};
  $('#classicOutlook').onclick=()=>{if(requireLogin()&&config.microsoftConfigured)location.href='/auth/microsoft?mail=1&account='+encodeURIComponent(config.accountId);};
  bridge.billShare=async(action,body={})=>{await bridge.ready;await queue;if(!config.authenticated)throw Error('Sign in to BearDen to share or import bills.');return api('/api/bills/share/'+action,body);};
- bridge.readGmailMessage=async message=>{await queue;const result=await api('/api/gmail/message',{mailboxId:message.mailboxId,id:message.id});if(!result.message)throw Error('Could not read the selected email. Try again.');legacy.connections.gmailMessages=[...(legacy.connections.gmailMessages||[]).filter(m=>m.id!==result.message.id),result.message];return result.message;};
+ bridge.readGmailMessage=async message=>{await queue;const result=await api('/api/gmail/message',{mailboxId:message.mailboxId,id:message.id});if(!result.message)throw Error('Could not read the selected email. Try again.');legacy.connections.gmailMessages=[...(legacy.connections.gmailMessages||[]).filter(m=>m.id!==result.message.id),result.message];publishPlan();return result.message;};
  bridge.searchGmail=async query=>{await queue;const accounts=legacy?.connections?.mailAccounts||legacy?.connections?.gmailAccounts||[];let result;const errors=[];for(const account of accounts.length?accounts:[null]){try{result=await api('/api/gmail/search',{query:String(query||'').slice(0,100),...(account?{mailboxId:account.id}:{})});Object.assign(legacy.connections,result);recordRefreshIssue('email:'+account?.id,'email',account?.email||'Email account',(result.mailAccounts||[]).find(a=>a.id===account?.id)?.status||'Email checked.');}catch(error){recordRefreshIssue('email:'+account?.id,'email',account?.email||'Email account',error.message,true);errors.push((account?.email||'Email')+': '+error.message);}}renderConnections();if(errors.length)throw Error(errors.join(' · '));return result;};
  $('#checkGmailAccounts').onclick=run(async()=>{$('#gmailFeedback').textContent='Checking email…';try{await bridge.searchGmail('');$('#gmailFeedback').textContent='Email checked.';}catch(error){$('#gmailFeedback').textContent=error.message;}});
  document.addEventListener('click',async e=>{const button=e.target.closest('[data-gmail-disconnect]');if(!button)return;const account=(legacy?.connections?.mailAccounts||legacy?.connections?.gmailAccounts)?.find(a=>a.id===button.dataset.gmailDisconnect);if(!account||!confirm('Disconnect '+account.email+' and stop watching its bill emails?'))return;button.disabled=true;try{await api('/api/gmail/disconnect',{id:account.id});await refresh();}catch(e){message(e.message);}finally{button.disabled=false;}});
@@ -345,7 +379,7 @@ window.BearDen=(()=>{
   if(b.dataset.reviewAccept){const id=b.dataset.reviewAccept,c=legacy.connections.candidates.find(c=>c.id===id),row=b.closest('.connection-review'),raw=row.querySelector('[data-review-amount]').value,amount=Math.round(Number(raw)*100),date=row.querySelector('[data-review-date]').value;if(raw===''||!Number.isSafeInteger(amount)||amount<0||!date)throw Error('Enter the bill amount and due date.');await refresh();const state=structuredClone(legacy.state);if(!state.bills.some(x=>x.sourceId===id))state.bills.push({id:crypto.randomUUID(),name:c.name||c.sender,amount,date,repeat:'once',source:'gmail',sourceId:id,sourceKey:c.sourceKey});await api('/api/state',{state,revision:legacy.revision});await refresh();}
   if(b.dataset.useBill){const bill=legacy.state.bills.find(x=>x.id===b.dataset.useBill),d=b.closest('.connection-row').querySelector('[data-bill-date]').value;const n=window.addConnectedBill(bill,d);const linked=JSON.parse(values['linked-bills']||'{}');linked[bill.id]=n;await bridge.storage.set('linked-bills',JSON.stringify(linked));await window.performSaveAppState();renderConnections();message('Bill added to paycheck '+n+'.');}
  }catch(err){message(err.message);}finally{b.disabled=false;}});
- bridge.ready=(async()=>{try{const response=await fetch('/api/config');if(response.status===404)config={};else{if(!response.ok)throw Error('Sign-in status could not be checked. Reload to try again.');config=await response.json();}if(config.authenticated){const [tracker,plan]=await Promise.all([api('/api/classic'),api('/api/state')]);values=tracker.state.values;revision=tracker.revision;legacy=plan;if(!values['app-state']&&(plan.state.debts.length||plan.state.income.length||plan.state.goals.length)){const {migrateLegacy}=await import('./classic-migrate.mjs?v=debt-timing1');values['app-state']=JSON.stringify(migrateLegacy(plan.state,new Date().toLocaleDateString('en-CA')));await persist();message('Your existing debt, income, budget, and savings were copied into the original tracker. Monthly amounts are converted to this tracker’s two-week schedule. Review dates and per-check edits before using the copied plan.');}}else for(const key of keys){const value=localStorage.getItem('bearden:classic:'+key);if(value!==null)values[key]=value;}await reconcileAccountReferences();bridge.isNew=!values['app-state']||!(()=>{try{const s=JSON.parse(values['app-state']);return s.cards?.length||s.budgetItems?.length||Number(s.takeHome)>0||s.startDate;}catch{return true;}})();renderConnections();}catch(e){blocked=true;message(e.message);window.selectBearTab('settings');}})();
+ bridge.ready=(async()=>{try{const [response,model]=await Promise.all([fetch('/api/config'),import('./connection-model.mjs?v=account-visibility1')]);connectionModel=model;if(response.status===404)config={};else{if(!response.ok)throw Error('Sign-in status could not be checked. Reload to try again.');config=await response.json();}if(config.authenticated){const [tracker,plan]=await Promise.all([api('/api/classic'),api('/api/state')]);values=tracker.state.values;revision=tracker.revision;legacy=plan;if(!values['app-state']&&(plan.state.debts.length||plan.state.income.length||plan.state.goals.length)){const {migrateLegacy}=await import('./classic-migrate.mjs?v=debt-timing1');values['app-state']=JSON.stringify(migrateLegacy(plan.state,new Date().toLocaleDateString('en-CA')));await persist();message('Your existing debt, income, budget, and savings were copied into the original tracker. Monthly amounts are converted to this tracker’s two-week schedule. Review dates and per-check edits before using the copied plan.');}}else for(const key of keys){const value=localStorage.getItem('bearden:classic:'+key);if(value!==null)values[key]=value;}await reconcileAccountReferences();bridge.isNew=!values['app-state']||!(()=>{try{const s=JSON.parse(values['app-state']);return s.cards?.length||s.budgetItems?.length||Number(s.takeHome)>0||s.startDate;}catch{return true;}})();renderConnections();}catch(e){blocked=true;message(e.message);window.selectBearTab('settings');}})();
  bridge.ready.then(()=>{if(new URLSearchParams(location.search).has('oauth_state_id'))connectBank(true).catch(e=>message(e.message));if(new URLSearchParams(location.search).has('connected')){history.replaceState(null,'','/');window.selectBearTab('settings');}});
  return bridge;
 })();
