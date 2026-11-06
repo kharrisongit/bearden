@@ -34,15 +34,19 @@ export function rememberPaymentBalances(previous={},snapshots=[]){
 export function reconcilePayment(receipt,bank,{destinations=[],balanceHistory={},confirmations={},now=Date.now()}={}){
  const bankPaymentId=bank?.id||bank?.transaction_id||null;
  if(bankPaymentId&&confirmations[paymentIdentity(receipt)]?.bankPaymentId===bankPaymentId)return {bankPaymentId,bankPosted:true,cashReflected:true,balanceConfirmed:true,confirmed:true,awaiting:null};
- const submitted=time(receipt.submittedAt||receipt.receivedAt),after=Math.max(submitted,time(bank?.date)),bankPosted=!!bank;
+ const submitted=time(receipt.submittedAt||receipt.receivedAt),paymentDay=time(receipt.paymentDate||new Date(submitted).toISOString().slice(0,10));
+ // If an issuer sends the notice later, a balance read after the payment and
+ // its bank posting is still valid. On the submission day preserve its time.
+ const effective=paymentDay===time(new Date(submitted).toISOString().slice(0,10))?submitted:paymentDay;
+ const after=Math.max(effective,time(bank?.date)),bankPosted=!!bank;
  const cashReflected=bankPosted&&fresh(bank.balanceSnapshot,after,now);
  const balanceConfirmed=!destinations.length||destinations.some(snapshot=>{
   if(!fresh(snapshot,after,now))return false;
   if(snapshot.balance<=0)return true;
   // An issuer payment record corroborates the refreshed issuer balance even
   // when new purchases or interest offset the payment's visible decrease.
-  if((snapshot.payments||[]).some(p=>!p.pending&&p.amount===receipt.paymentAmount&&time(p.date)>=submitted-86400000&&time(p.date)<=submitted+14*86400000))return true;
-  const prior=[...(balanceHistory[snapshot.id]||[]),...(snapshot.history||[])].filter(p=>usable({...p,currency:'USD'})&&time(p.updated||p.date)<time(snapshot.updated)&&(time(p.updated||p.date)<submitted||(p.paymentIds||[]).includes(paymentIdentity(receipt))));
+  if((snapshot.payments||[]).some(p=>!p.pending&&p.amount===receipt.paymentAmount&&time(p.date)>=paymentDay-86400000&&time(p.date)<=Math.min(paymentDay+14*86400000,time(snapshot.updated))))return true;
+  const prior=[...(balanceHistory[snapshot.id]||[]),...(snapshot.history||[])].filter(p=>usable({...p,currency:'USD'})&&time(p.updated||p.date)<time(snapshot.updated)&&(time(p.updated||p.date)<effective||(p.paymentIds||[]).includes(paymentIdentity(receipt))));
   const before=prior.sort((a,b)=>time(b.updated||b.date)-time(a.updated||a.date))[0];
   return !!before&&before.balance-snapshot.balance>=receipt.paymentAmount;
  });

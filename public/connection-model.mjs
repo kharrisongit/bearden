@@ -128,3 +128,22 @@ export function remapConnectedAccountReferences(planner,accounts){
  }
  const next=remap(planner);return JSON.stringify(next)===JSON.stringify(planner)?planner:next;
 }
+
+
+// A tracker and issuer may store different evidence for the same card. Only
+// cross that boundary when both ends have exactly one explicitly mapped peer.
+export function pairedPaymentTarget(target,planner,issuers){
+ if(!/^(credit|debt):/.test(target))return null;
+ const accountLinks=[...Object.entries(planner.debtAccountLinks||{}),...Object.entries(planner.debtBackupLinks||{})];
+ const peers=new Map();
+ const connect=(a,b)=>{if(!peers.has(a))peers.set(a,new Set());peers.get(a).add(b);};
+ for(const issuer of issuers){
+  const credit='credit:'+issuer.id,tracker=planner.creditCards?.[issuer.id]?.trackerCardId;
+  const ids=new Set(accountLinks.filter(([,account])=>account==='plaid-'+issuer.accountId).map(([id])=>id));
+  if(tracker!=null&&tracker!=='')ids.add(String(tracker));
+  for(const id of ids){const debt='debt:'+id;connect(credit,debt);connect(debt,credit);}
+ }
+ const matches=peers.get(target);
+ if(matches?.size!==1)return null;
+ const [other]=matches;return peers.get(other).size===1?other:null;
+}

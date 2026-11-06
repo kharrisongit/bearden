@@ -214,7 +214,14 @@
  let resolvedDebts={},inferredPayments=new Map();
  const bankTransactions=()=>window.BearDen.plan?.connections?.transactions||[];
  const accountBankHistory=target=>model?[...new Map([...model.accountPaymentHistory(bankTransactions(),target,planner.bankRules,planner.transactionLinks,iso(new Date())),...(inferredPayments.get(target)||[])].map(t=>[t.transaction_id,t])).values()].sort((a,b)=>b.date.localeCompare(a.date)):[];
- window.getDebtBankPaymentHistory=id=>accountBankHistory('debt:'+id);
+ const pairedTarget=target=>model?.pairedPaymentTarget(target,planner,window.BearDen.plan?.connections?.creditCards||[]);
+ const cardEmailTarget=(target,peer=pairedTarget(target))=>!planner.emailLinks[target]&&peer&&planner.emailLinks[peer]?peer:target;
+ function combinedBankHistory(target,peer=pairedTarget(target)){
+  const own=accountBankHistory(target);
+  if(!peer)return own;
+  return [...new Map([...own,...accountBankHistory(peer)].map(t=>[t.transaction_id,t])).values()].sort((a,b)=>b.date.localeCompare(a.date));
+ }
+ window.getDebtBankPaymentHistory=id=>combinedBankHistory('debt:'+id);
  function bankPaymentHistoryMarkup(history){
   const title='<h4>Bank payment history</h4>';
   if(!history.length)return '<section class="linked-bank-history">'+title+'<p class="subtle">No matched bank payments yet. Link a payment transaction in Edit to recognize payments for this account.</p></section>';
@@ -301,22 +308,23 @@
  function isCreditTarget(target){if(target.startsWith('credit:'))return true;if(target.startsWith('debt:')){const card=window.getDebtPlan().state.cards.find(c=>String(c.id)===target.slice(5));return !!card&&(!card.debtKind||card.debtKind==='credit-card');}return [...planner.manual,...review.bills].some(b=>'bill:'+b.id===target&&b.billKind==='credit-card');}
  function paymentSources(target){
   const connections=window.BearDen.plan?.connections||{},accounts=window.BearDen.plan?.state?.accounts||[],id=target.slice(target.indexOf(':')+1);
-  const credit=(connections.creditCards||[]).find(c=>target==='credit:'+c.id||target.startsWith('debt:')&&('plaid-'+c.accountId===planner.debtAccountLinks?.[id]||String(planner.creditCards[c.id]?.trackerCardId)===id));
+  const peer=pairedTarget(target),debtId=target.startsWith('debt:')?id:peer?.startsWith('debt:')?peer.slice(5):null;
+  const credit=(connections.creditCards||[]).find(c=>target==='credit:'+c.id||peer==='credit:'+c.id);
   const snapshot=a=>({id:a.id,balance:a.balance,currency:a.currency,updated:a.balanceUpdated||a.balanceRetrieved,unavailable:!!(a.balanceUnavailable||a.balanceStale||a.providerUnavailable||a.accountMissing||a.zeroUnconfirmed)});
   const destinations=[];
   if(target==='bill:'+planner.sunRent?.billId&&connections.sun?.enabled!==false){
    const sun=connections.sun,reading=sun?.snapshot;
    destinations.push({id:'rent:'+id,balance:reading?.currentBalance,currency:reading?.currency,updated:reading?.checkedAt,unavailable:!sun?.connected||sun?.needsLogin||sun?.enabled===false});
   }else{
-   const ids=target.startsWith('debt:')?[planner.debtAccountLinks?.[id],planner.debtBackupLinks?.[id]]:target.startsWith('bill:')?[planner.loanLinks?.[id]]:[];
+   const ids=debtId?[planner.debtAccountLinks?.[debtId],planner.debtBackupLinks?.[debtId]]:target.startsWith('bill:')?[planner.loanLinks?.[id]]:[];
    if(credit)ids.push('plaid-'+credit.accountId);
    for(const accountId of new Set(ids.filter(Boolean))){
     const account=accounts.find(a=>a.id===accountId),issuer=credit&&accountId==='plaid-'+credit.accountId?credit:null;
     const balance=account?snapshot(account):{id:accountId,balance:issuer?.balance,currency:issuer?.currency,updated:issuer?.fieldUpdated?.balance||issuer?.updated,unavailable:!issuer||issuer.stale};
-    destinations.push({...balance,payments:issuer?.payments||[],history:issuer?.history||[]});
+    destinations.push({...balance,payments:issuer?.payments||model.debtAccountPayments(account,connections.transactions),history:issuer?.history||[]});
    }
   }
-  const bankPayments=accountBankHistory(target).map(t=>({...t,id:t.transaction_id,amount:Math.round(t.amount*100),balanceSnapshot:accounts.find(a=>a.id===model.transactionAccountId(t))?snapshot(accounts.find(a=>a.id===model.transactionAccountId(t))):null}));
+  const bankPayments=combinedBankHistory(target,peer).map(t=>({...t,id:t.transaction_id,amount:Math.round(t.amount*100),balanceSnapshot:accounts.find(a=>a.id===model.transactionAccountId(t))?snapshot(accounts.find(a=>a.id===model.transactionAccountId(t))):null}));
   return {destinations,bankPayments};
  }
  function emailStatus(target,link=planner.emailLinks[target]){
@@ -324,14 +332,14 @@
   return mailModel.emailAccountStatus(mailMessages(),link,{...sources,balanceHistory:planner.paymentBalanceHistory||{},confirmations:planner.paymentConfirmations||{},creditCard:isCreditTarget(target),debtAccount:target.startsWith('debt:')});
  }
  const paidStage=payment=>payment?.confirmed?'Paid · Confirmed':'Paid · Awaiting confirmation';
- const mailPaymentLabel=p=>p.status==='failed'?'Failed / returned':p.confirmed?'Paid · Confirmed':p.bankPosted?'Bank posted · Awaiting balance update':p.paymentMade?'Paid · Awaiting confirmation':p.paymentStage==='scheduled'||/scheduled/i.test(p.subject||'')?'Scheduled':'Awaiting payment receipt';
- function debtPaymentNotice(status){
+ const bankPostedLabel=p=>p.awaiting==='bank balance'?'Bank posted · Waiting for funding account balance':'Bank posted · Waiting for receiving account balance';
+ const mailPaymentLabel=p=>p.status==='failed'?'Failed / returned':p.confirmed?'Paid · Confirmed':p.bankPosted?bankPostedLabel(p):p.paymentMade?'Paid · Awaiting confirmation':p.paymentStage==='scheduled'||/scheduled/i.test(p.subject||'')?'Scheduled':'Awaiting payment receipt';
+ function debtPaymentNotice(status,cycle){
   const since=modelDay(iso(new Date()),-31),links=Object.values(planner.emailLinks);
-  const p=status.payments.find(receipt=>!receipt.confirmed&&receipt.status!=='failed'&&receipt.receivedAt.slice(0,10)>=since&&
-   !mailModel.possibleReturn(status.payments,receipt)&&links.filter(link=>mailModel.matchesEmail(receipt,link)).length===1);
-  if(!p)return '';
+  const p=status.payments.find(receipt=>receipt.receivedAt.slice(0,10)>=since&&links.filter(link=>mailModel.matchesEmail(receipt,link)).length===1);
+  if(!p||p.status==='failed'||mailModel.possibleReturn(status.payments,p)||p.confirmed&&cycle?.confirmed)return '';
   const scheduled=p.paymentStage==='scheduled'||(!p.paymentMade&&p.paymentDate>iso(new Date()));
-  const label=p.bankPosted?'Bank posted · Awaiting balance update':scheduled?'Payment scheduled':p.paymentMade?'Payment submitted · Awaiting confirmation':'Payment notice · Awaiting receipt';
+  const label=p.confirmed?'Payment confirmed':p.bankPosted?bankPostedLabel(p):scheduled?'Payment scheduled':p.paymentMade?'Payment submitted · Awaiting confirmation':'Payment notice · Awaiting receipt';
   const amount=Number.isSafeInteger(p.paymentAmount)?money(p.paymentAmount)+' · ':'';
   const date=p.postedDate||p.paymentDate||p.receivedAt.slice(0,10);
   return '<div class="debt-payment-notice"><strong>'+esc(label)+'</strong><span>'+esc(amount+longDate(date))+'</span></div>';
@@ -505,6 +513,8 @@
   const linkedCards=(connections.creditCards||[]).map(emailCredit),matched=new Set(linkedCards.filter(c=>accountShown('plaid-'+c.accountId)).map(c=>planner.creditCards[c.id]?.trackerCardId).filter(Boolean).map(String));
   const value=(n,c)=>n===null||n===undefined?'Not shared':money(n,c.currency||'USD');
   const badge=text=>'<span class="debt-paid-badge">✓ '+esc(text)+'</span>';
+  // The detailed receipt notice already shows the pending stage, amount and date.
+  const cycleBadge=(cycle,notice)=>cycle.confirmed||!notice?badge(paidStage(cycle)):'';
   const connected=linkedCards.filter(c=>accountShown('plaid-'+c.accountId)&&![...Object.values(planner.debtAccountLinks||{}),...Object.values(planner.debtBackupLinks||{})].includes('plaid-'+c.accountId)).map(c=>{
    const p=planner.creditCards[c.id]||{},balance=c.emailBalance?c.balance:accounts.find(a=>a.id==='plaid-'+c.accountId)?.balance??c.balance;
    const status=model.trackerDebtStatus(plan,p.trackerCardId),paidOff=status?.paidOff||balance!==null&&balance<=0;
@@ -513,15 +523,15 @@
    const capacity=model.creditCapacity({card:c,account:accounts.find(a=>a.id==='plaid-'+c.accountId),enteredLimit:p.fallbackLimit??planner.debtCreditLimits?.[p.trackerCardId],balance});
    const util=balance!==null&&capacity.limit>0?Math.max(0,balance/capacity.limit*100):null;
    const due=payments.find(b=>b.id===c.id),history=c.payments||[],dueDate=c.dueDate||p.fallbackDate;
-   const creditTarget='credit:'+c.id,trackerTarget='debt:'+p.trackerCardId;
-   const emailTarget=planner.emailLinks[creditTarget]||!planner.emailLinks[trackerTarget]?creditTarget:trackerTarget;
+   const creditTarget='credit:'+c.id,trackerTarget=pairedTarget(creditTarget);
+   const emailTarget=cardEmailTarget(creditTarget,trackerTarget);
    const receiptStatus=emailStatus(emailTarget);
-   const notice=planner.emailLinks[emailTarget]?debtPaymentNotice(receiptStatus):linkPaymentEmailButton(creditTarget,p.name||c.name,c.mask);
    const emailCycle=mailModel.emailDebtPaymentStatus(mailMessages(),planner.emailLinks,emailTarget,{amount:c.minimum>0?c.minimum:c.lastPositiveMinimum?.amount??p.fallbackAmount,dueDate,statementDate:c.statementDate,statusForTarget:()=>receiptStatus});
+   const notice=planner.emailLinks[emailTarget]?debtPaymentNotice(receiptStatus,emailCycle):linkPaymentEmailButton(creditTarget,p.name||c.name,c.mask);
    const paid=paidPayments.find(b=>b.id===c.id)||(emailCycle?.confirmed?{paidByEmail:true,emailPayment:emailCycle}:null);
-   const bankHistory=[...new Map([...accountBankHistory('credit:'+c.id),...(p.trackerCardId?accountBankHistory('debt:'+p.trackerCardId):[])].map(t=>[t.transaction_id,t])).values()].sort((a,b)=>b.date.localeCompare(a.date));
-   const state=paidOff?badge(status?.paidOff?'Paid off in plan':'Paid off'):paid?badge(paid.paidByEmail?paidStage(paid.emailPayment):'Payment paid'):emailCycle?.paid?badge(paidStage(emailCycle)):emailCycle?.failed?badge('Payment failed / returned'):emailCycle?badge('Partial payment · Email'):'';
-   const paymentLabel=paid?.paidByPaycheck?'Paid from checked paychecks':paid?.paidByBank?'Matched bank payment':paid?.paidByEmail?paidStage(paid.emailPayment):paid?'Marked paid':emailCycle?.paid?paidStage(emailCycle):emailCycle?.failed?'Payment failed / returned':emailCycle?'Email payment '+money(emailCycle.paidAmount)+' · '+money(emailCycle.remaining)+' still due':c.minimum===0?'No minimum due':dueDate?'Due '+dateLabel(dueDate)+(c.emailDue?' · Email':c.dueDate?'':' (est.)'):'Due date not shared';
+   const bankHistory=combinedBankHistory(creditTarget,trackerTarget);
+   const state=paidOff?badge(status?.paidOff?'Paid off in plan':'Paid off'):paid?(paid.paidByEmail?cycleBadge(paid.emailPayment,notice):badge('Payment paid')):emailCycle?.paid?cycleBadge(emailCycle,notice):emailCycle?.failed?badge('Payment failed / returned'):emailCycle?badge('Partial payment · Email'):'';
+   const paymentLabel=paid?.paidByPaycheck?'Paid from checked paychecks':paid?.paidByBank?'Matched bank payment':paid&&!paid.paidByEmail?'Marked paid':emailCycle?.failed?'Payment failed / returned':emailCycle&&!emailCycle.paid?'Email payment '+money(emailCycle.paidAmount)+' · '+money(emailCycle.remaining)+' still due':c.minimum===0?'No minimum due':dueDate?'Due '+dateLabel(dueDate)+(c.emailDue?' · Email':c.dueDate?'':' (est.)'):'Due date not shared';
    const action=emailCycle?.paid&&!emailCycle.confirmed?'':paid?.paidByPaycheck||paid?.paidByBank||paid?.paidByEmail||status?.paidOff?'':!p.tracking?'<button data-edit-credit="'+esc(c.id)+'">Track payment</button>':paid?'<button data-bill-unpaid="'+esc(paid.key)+'">Mark unpaid</button>':due?'<button data-bill-paid="'+esc(due.key)+'">✓ Mark paid</button>':'';
    let spark='';if(c.history?.length>1){const values=c.history.map(p=>p.balance),low=Math.min(...values),range=Math.max(...values)-low||1,points=values.map((v,i)=>(i/(values.length-1)*280+5).toFixed(1)+','+(52-(v-low)/range*40).toFixed(1)).join(' ');spark='<svg class="credit-spark" viewBox="0 0 290 60" role="img" aria-label="Balance history since connection"><title>Balance history since connection</title><polyline points="'+points+'" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>';}
    return {sortKey:'credit:'+c.id,sortDate:dueDate,currency:c.currency,amount:displayBalance,name:p.name||c.name,html:'<article class="debt-account connected-debt'+(paidOff?' is-paid-off':'')+'" data-account-id="'+esc(c.id)+'">'+walletDueStamp(dueDate,paidOff||!!paid)
@@ -540,16 +550,15 @@
   const manual=(plan.state.cards||[]).flatMap(c=>{
    if(matched.has(String(c.id))&&!planner.debtAccountLinks?.[c.id])return [];
    const status=model.trackerDebtStatus(plan,c.id),next=payments.find(b=>b.source==='tracker-debt'&&b.trackerCardId===String(c.id));
-   const trackerTarget='debt:'+c.id,issuer=linkedCards.find(card=>[planner.debtAccountLinks?.[c.id],planner.debtBackupLinks?.[c.id]].includes('plaid-'+card.accountId));
-   const issuerTarget=issuer&&'credit:'+issuer.id;
-   const emailTarget=planner.emailLinks[trackerTarget]||!planner.emailLinks[issuerTarget]?trackerTarget:issuerTarget;
+   const trackerTarget='debt:'+c.id,issuerTarget=pairedTarget(trackerTarget),issuer=linkedCards.find(card=>issuerTarget==='credit:'+card.id);
+   const emailTarget=cardEmailTarget(trackerTarget,issuerTarget);
    const receiptStatus=emailStatus(emailTarget),statement=receiptStatus.statement,minimum=resolvedDebts[c.id]?.monthlyMinimum.value??statement?.minimum??issuer?.minimum,dueDate=resolvedDebts[c.id]?.dueDate.value||c.dueDate;
    const emailCycle=mailModel.emailDebtPaymentStatus(mailMessages(),planner.emailLinks,emailTarget,{amount:minimum>0?minimum:issuer?.lastPositiveMinimum?.amount??(c.lastPositiveMonthlyMinimum>0?Math.round(c.lastPositiveMonthlyMinimum*100):Math.round(model.monthlyMinimum(c)*100)),dueDate,statementDate:issuer?.statementDate,statusForTarget:()=>receiptStatus});
-   const bankHistory=accountBankHistory('debt:'+c.id);
+   const bankHistory=combinedBankHistory(trackerTarget,issuerTarget);
    const synced=plan.syncedDebtBalances?.[c.id];
    const displayBalance=status.balance;totalBalances.push({name:c.name,amount:displayBalance,startingBalance:Math.round(c.balance*100)});
    const account=debtBalanceAccount(c.id,accounts)||accounts.find(a=>a.id===planner.debtAccountLinks?.[c.id]),isCredit=c.debtKind==='credit-card'||account?.type==='credit'||!!issuer;
-   const notice=planner.emailLinks[emailTarget]?debtPaymentNotice(receiptStatus):linkPaymentEmailButton(trackerTarget,c.name,issuer?.mask||account?.mask);
+   const notice=planner.emailLinks[emailTarget]?debtPaymentNotice(receiptStatus,emailCycle):linkPaymentEmailButton(trackerTarget,c.name,issuer?.mask||account?.mask);
    const capacityAccount=resolvedDebts[c.id]?.balance.stale?null:debtBalanceAccount(c.id,accounts);
    const capacity=isCredit?model.creditCapacity({account:capacityAccount,enteredLimit:resolvedDebts[c.id]?.creditLimit.value??planner.debtCreditLimits?.[c.id]??planner.creditCards[issuer?.id]?.fallbackLimit,balance:displayBalance}):null;
    const forecast=model.trackerDebtForecast(plan,c.id);
@@ -557,10 +566,10 @@
    const minimumEstimated=!!nextTiming?.estimatedMinimum&&Number.isFinite(nextTiming.forecastMonthlyMinimum);
    const displayedMinimum=status.paidOff?0:minimumEstimated?Math.round(nextTiming.forecastMonthlyMinimum*100):minimum??Math.round(model.monthlyMinimum(c)*100);
    const starting=Math.round(c.balance*100),progress=starting>0?Math.min(100,Math.max(0,(starting-status.balance)/starting*100)):100;
-   return {sortKey:'debt:'+c.id,sortDate:status.paidOff?null:dueDate||next?.date,currency:account?.currency,amount:displayBalance,name:c.name,html:'<article class="debt-account manual-debt'+(status.paidOff?' is-paid-off':'')+'" data-tracker-account="'+esc(c.id)+'">'+walletDueStamp(emailCycle?.dueDate||dueDate,status.paidOff||emailCycle?.confirmed)+'<div class="debt-card-header"><div class="debt-account-tools"><button type="button" class="bill-icon-button" data-show-debt-details="debt:'+esc(c.id)+'" aria-label="Details and progress for '+esc(c.name)+'" aria-haspopup="dialog" aria-controls="debtProgressDialog">'+detailsIcon+'</button><button type="button" class="bill-icon-button account-edit" data-edit-debt="'+esc(c.id)+'" aria-label="Edit '+esc(c.name)+'">'+pencil+'</button></div><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(c.name)+'</h4><small>'+esc(debtKinds[c.debtKind]||'Debt')+'</small>'+(status.paidOff?badge('Paid off'):emailCycle?.paid?badge(paidStage(emailCycle)):emailCycle?.failed?badge('Payment failed / returned'):emailCycle?badge('Partial payment · Email'):status.lastPayment?badge('Payment paid · '+dateLabel(status.lastPayment.date)):bankHistory.length?badge('Bank payment · '+dateLabel(bankHistory[0].date)):'')+'</div></div></div>'
+   return {sortKey:'debt:'+c.id,sortDate:status.paidOff?null:dueDate||next?.date,currency:account?.currency,amount:displayBalance,name:c.name,html:'<article class="debt-account manual-debt'+(status.paidOff?' is-paid-off':'')+'" data-tracker-account="'+esc(c.id)+'">'+walletDueStamp(emailCycle?.dueDate||dueDate,status.paidOff||emailCycle?.confirmed)+'<div class="debt-card-header"><div class="debt-account-tools"><button type="button" class="bill-icon-button" data-show-debt-details="debt:'+esc(c.id)+'" aria-label="Details and progress for '+esc(c.name)+'" aria-haspopup="dialog" aria-controls="debtProgressDialog">'+detailsIcon+'</button><button type="button" class="bill-icon-button account-edit" data-edit-debt="'+esc(c.id)+'" aria-label="Edit '+esc(c.name)+'">'+pencil+'</button></div><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(c.name)+'</h4><small>'+esc(debtKinds[c.debtKind]||'Debt')+'</small>'+(status.paidOff?badge('Paid off'):emailCycle?.paid?cycleBadge(emailCycle,notice):emailCycle?.failed?badge('Payment failed / returned'):emailCycle?badge('Partial payment · Email'):status.lastPayment?badge('Payment paid · '+dateLabel(status.lastPayment.date)):bankHistory.length?badge('Bank payment · '+dateLabel(bankHistory[0].date)):'')+'</div></div></div>'
     +'<div class="debt-key-amounts"><div><span>'+(synced?(synced.stale?'Last reported balance':'Current balance'):statement?.balance!=null&&!status.paidOff?'Statement balance · Email':'Remaining balance')+'</span><strong>'+money(displayBalance)+'</strong></div><div class="minimum-due"><span>'+(minimumEstimated?'Est. monthly due':minimum!=null||Number.isFinite(c.monthlyMinimum)?'Monthly due':'Est. monthly due')+'</span><strong>'+money(displayedMinimum)+'</strong></div></div>'
     +notice+debtForecastMarkup(forecast)
-    +'<div class="debt-account-footer"><span class="debt-due-date">'+esc(status.paidOff?'Paid from checked paychecks':emailCycle?.paid?paidStage(emailCycle)+' · '+dateLabel(emailCycle.dueDate):emailCycle?.failed?'Payment failed / returned':emailCycle?'Email payment '+money(emailCycle.paidAmount)+' · '+money(emailCycle.remaining)+' still due':dueDate?'Due '+dateLabel(dueDate):next?'Next payment '+dateLabel(next.date):'Set up paydays in Income')+'</span></div>'
+    +'<div class="debt-account-footer"><span class="debt-due-date">'+esc(status.paidOff?'Paid from checked paychecks':emailCycle?.paid?'Due '+dateLabel(emailCycle.dueDate):emailCycle?.failed?'Payment failed / returned':emailCycle?'Email payment '+money(emailCycle.paidAmount)+' · '+money(emailCycle.remaining)+' still due':dueDate?'Due '+dateLabel(dueDate):next?'Next payment '+dateLabel(next.date):'Set up paydays in Income')+'</span></div>'
     +debtAccountMarkup(c.id)+'<template class="debt-detail-template">'+debtOverviewMarkup({balance:displayBalance,minimum:displayedMinimum,minimumEstimated,dueDate,apr:resolvedDebts[c.id]?.apr.value??c.apr,capacity,forecast,paid:status.paid,progress,trackerId:c.id})
     +bankPaymentHistoryMarkup(bankHistory)
     +detailSection('Other payment records',paymentMarkup(emailTarget,receiptStatus)+'<button type="button" data-debt-history="'+esc(c.id)+'">Checked payment history</button>',true)
@@ -571,7 +580,7 @@
   const carPayments=(window.carDebtForecast||[]).map(loan=>{
    totalBalances.push({name:loan.name,amount:loan.balance,startingBalance:loan.startingBalance,currency:loan.currency});
    const due=payments.find(b=>b.id===loan.id),paid=paidPayments.find(b=>b.id===loan.id),date=paid?.date||due?.date,emailPayment=paid?.emailPayment||due?.emailPayment,bill={...loan,billKind:'car-payment'};
-   return {sortKey:'car:'+loan.id,sortDate:date,currency:loan.currency,name:loan.name,amount:loan.balance,html:'<article class="debt-account car-payment-debt" data-car-payment="'+esc(loan.id)+'" data-vehicle-name="'+esc(vehicleLogoName(loan.id))+'">'+walletDueStamp(date,loan.balance===0||!!paid)+'<div class="debt-card-header"><div class="debt-account-tools"><button type="button" class="bill-icon-button account-edit" data-edit-bill="'+esc(loan.id)+'" aria-label="Edit '+esc(loan.name)+'">'+pencil+'</button></div><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(loan.name)+'</h4><small>Car loan</small>'+(emailPayment?.paid?badge(paidStage(emailPayment)):paid?badge('Payment paid'):'')+'</div></div></div><div class="debt-key-amounts"><div><span>Remaining balance</span><strong>'+esc(loan.balance===null?'Not set':money(loan.balance,loan.currency))+'</strong></div><div class="minimum-due"><span>'+esc(({monthly:'Monthly',biweekly:'Biweekly',weekly:'Weekly',once:'Scheduled'})[loan.repeat]||'Scheduled')+' payment</span><strong>'+money(loan.amount)+'</strong></div></div>'+debtForecastMarkup({date:loan.payoffDate,interest:loan.interest,paidOff:loan.balance===0,reason:loan.needsDetails?'Add loan details':'No payoff in forecast'},loan.currency)+'<div class="debt-account-footer"><span class="debt-due-date">'+esc(paid?(paid.paidByEmail?paidStage(paid.emailPayment)+' · ':'Payment paid · ')+dateLabel(paid.date):emailPayment?.paid?paidStage(emailPayment)+' · '+dateLabel(due.date):due?'Due '+dateLabel(due.date):loan.balance===0?'Paid off':'Payment scheduled')+'</span></div>'+(loan.needsDetails?'<button type="button" data-edit-bill="'+esc(loan.id)+'">Add loan details</button>':'')+cardFooterMarkup('bill:'+loan.id,bill)+'</article>'};
+   return {sortKey:'car:'+loan.id,sortDate:date,currency:loan.currency,name:loan.name,amount:loan.balance,html:'<article class="debt-account car-payment-debt" data-car-payment="'+esc(loan.id)+'" data-vehicle-name="'+esc(vehicleLogoName(loan.id))+'">'+walletDueStamp(date,loan.balance===0||!!paid)+'<div class="debt-card-header"><div class="debt-account-tools"><button type="button" class="bill-icon-button account-edit" data-edit-bill="'+esc(loan.id)+'" aria-label="Edit '+esc(loan.name)+'">'+pencil+'</button></div><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(loan.name)+'</h4><small>Car loan</small>'+(emailPayment?.paid?badge(paidStage(emailPayment)):paid?badge('Payment paid'):'')+'</div></div></div><div class="debt-key-amounts"><div><span>Remaining balance</span><strong>'+esc(loan.balance===null?'Not set':money(loan.balance,loan.currency))+'</strong></div><div class="minimum-due"><span>'+esc(({monthly:'Monthly',biweekly:'Biweekly',weekly:'Weekly',once:'Scheduled'})[loan.repeat]||'Scheduled')+' payment</span><strong>'+money(loan.amount)+'</strong></div></div>'+debtForecastMarkup({date:loan.payoffDate,interest:loan.interest,paidOff:loan.balance===0,reason:loan.needsDetails?'Add loan details':'No payoff in forecast'},loan.currency)+'<div class="debt-account-footer"><span class="debt-due-date">'+esc(date?'Due '+dateLabel(date):loan.balance===0?'Paid off':'Payment scheduled')+'</span></div>'+(loan.needsDetails?'<button type="button" data-edit-bill="'+esc(loan.id)+'">Add loan details</button>':'')+cardFooterMarkup('bill:'+loan.id,bill)+'</article>'};
   });
   const all=sortedAccountRows('debts',[...connected,...manual,...paymentOnly,...carPayments]);$('#debtAccounts').innerHTML=all.map(account=>account.html).join('')||'<p class="subtle">Add a debt to track a balance, or link a Plaid or Lunch Flow account.</p>';$('#debtAccountCount').textContent=all.length;
   const debtBalances=[...totalBalances,...paymentOnly.map(()=>({amount:null}))];
@@ -980,7 +989,10 @@
    const electricLabel=$('#electricBillSelection');if(electricLabel)electricLabel.textContent=electricRule?'Linked bill: '+electricRule.name:'Choose Electric and enable email updates in a bill’s details to link it.';
    const estimates=review.bills.map(b=>rentUpdated(mailModel.emailBillUpdate({...b,...planner.estimates[b.id],paidByCard:accounts.some(a=>a.type==='credit'&&a.id===model.transactionAccountId(JSON.parse(b.groupKey)[1]))},mailMessages(),planner.emailLinks)));
    const credit=model.creditBills((connections.creditCards||[]).filter(c=>![...Object.values(planner.debtAccountLinks||{}),...Object.values(planner.debtBackupLinks||{})].includes('plaid-'+c.accountId)).map(emailCredit),planner.creditCards);
-   for(const bill of credit)bill.statementDate=(connections.creditCards||[]).map(emailCredit).find(c=>c.id===bill.id)?.statementDate;
+   for(const bill of credit){
+    bill.statementDate=(connections.creditCards||[]).map(emailCredit).find(c=>c.id===bill.id)?.statementDate;
+    bill.emailTarget=cardEmailTarget('credit:'+bill.id);
+   }
    for(const bill of credit)if(planner.creditCards[bill.id]?.trackerCardId&&plan.state.cards?.some(c=>String(c.id)===planner.creditCards[bill.id].trackerCardId))bill.covered=true;
    const debtBills=model.trackerDebtBills(plan,credit,planner.creditCards,{includePaid:true});
    const paycheckPaid=new Set(model.paycheckPaidCreditBills(plan,credit,(connections.creditCards||[]).map(emailCredit),planner.creditCards));
@@ -1000,9 +1012,10 @@
    planner.paymentConfirmations=Object.fromEntries(Object.entries(planner.paymentConfirmations).sort(([,a],[,b])=>b.submittedAt.localeCompare(a.submittedAt)).slice(0,500));
    if(JSON.stringify([planner.paymentBalanceHistory,planner.paymentConfirmations])!==previousBalances)await b.storage.set('income-planner',JSON.stringify(planner));
 
-   const bankPaymentDetails=model.matchedBillPayments(allBillEvents.filter(b=>b.source!=='tracker-debt'),connections.transactions||[],planner.transactionLinks,currentDay,{details:true,historyForTarget:accountBankHistory}),bankPaidDates=new Map(bankPaymentDetails.map(p=>[p.key,p.paidDate])),bankPaid=new Set(bankPaidDates.keys());
-   paymentsPlanner.paid=[...new Set([...paymentsPlanner.paid,...bankPaid])];
    const emailBillPayments=mailModel.emailBillPaymentStatuses(allBillEvents,mailMessages(),planner.emailLinks,{statusForTarget:emailStatus}),emailProgress=new Map(emailBillPayments.map(p=>[p.key,p])),emailPaid=new Map(emailBillPayments.filter(p=>p.confirmed).map(p=>[p.key,p]));
+   const receiptCycles=new Map(emailBillPayments.flatMap(p=>p.bankPaymentIds.map(id=>[id,p.key])));
+   const bankPaymentDetails=model.matchedBillPayments(allBillEvents.filter(b=>b.source!=='tracker-debt'),connections.transactions||[],planner.transactionLinks,currentDay,{details:true,historyForTarget:accountBankHistory,receiptCycles}),bankPaidDates=new Map(bankPaymentDetails.map(p=>[p.key,p.paidDate])),bankPaid=new Set(bankPaidDates.keys());
+   paymentsPlanner.paid=[...new Set([...paymentsPlanner.paid,...bankPaid])];
    for(const payment of emailBillPayments)if(payment.failed&&!payment.paid)bankPaid.delete(payment.key);
    paymentsPlanner.paid=paymentsPlanner.paid.filter(key=>!emailProgress.get(key)?.failed||emailProgress.get(key)?.paid||planner.paid.includes(key)||paycheckPaid.has(key));
    const forecastReservations=Object.fromEntries(emailBillPayments.map(p=>[p.key,Math.max(0,allBillEvents.find(b=>b.key===p.key).amount-p.cashReflectedAmount)]));

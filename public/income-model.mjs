@@ -2,7 +2,7 @@ export {matchPaychecks,postedPaycheck,paycheckOccurrence} from './paycheck-match
 export {removeBillFromPlanner,removeDebtsFromPlanner} from './account-removal.mjs?v=delete-accounts1';
 export {carPaymentLoans} from './car-debt.mjs?v=credit-rules1';
 export {transactionCategories,categorizeTransaction,transactionMerchantKey,setTransactionCategory} from './transaction-categories.mjs?v=auto-categories1';
-export {resolveDebtConnections,resolveDebtDetails,remapConnectedAccountReferences} from './connection-model.mjs?v=account-visibility1';
+export {resolveDebtConnections,resolveDebtDetails,remapConnectedAccountReferences,pairedPaymentTarget} from './connection-model.mjs?v=account-visibility1';
 import {transactionAccountId,matchingPayments,postedPayment} from './transaction-links.mjs?v=plaid-restore1';
 import {transactionKey} from './bank-activity.mjs?v=payment-history1';
 import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=credit-rules1';
@@ -11,7 +11,7 @@ import {rentSchedule,rentOccurrence,rentPaidKey} from './rent-model.mjs?v=rent-p
 import {householdEnabled,sharedBill,spouseEvents,householdForecast,householdBillChoices,contributionReceipts} from './household-model.mjs?v=early-contributions1';
 export {householdEnabled,sharedBill,spouseEvents,householdBillChoices};
 export {reviewBankActivity,transactionKey,billsAccountSpending,accountPaymentHistory,inferredBillPaymentHistory} from './bank-activity.mjs?v=payment-history1';
-export {creditBills,creditCapacity} from './credit-model.mjs?v=paid-cycle1';
+export {creditBills,creditCapacity,debtAccountPayments} from './credit-model.mjs?v=paid-cycle1';
 export {transactionAccountId};
 export {paymentLink,matchesPayment,matchingPayments,linkConflict,matchedBillPayments,postedPayment,paymentOwner,paymentTargets} from './transaction-links.mjs?v=plaid-restore1';
 import {day,occurrences} from './engine.mjs';

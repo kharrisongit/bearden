@@ -2,7 +2,7 @@ import {categorizeTransaction} from './transaction-categories.mjs?v=auto-categor
 import {transactionAccountId} from './transaction-links.mjs?v=plaid-restore1';
 import {day} from './engine.mjs';
 import {emailAccountStatus,matchesEmail} from './email-model.mjs';
-import {matchesPayment,matchingPayments,paymentOwner,paymentTargets,postedPayment} from './transaction-links.mjs';
+import {paymentTarget,matchesPayment,matchingPayments,paymentOwner,paymentTargets,postedPayment} from './transaction-links.mjs';
 export const transactionKey=t=>JSON.stringify([t.itemId,t.account_id,String(t.name||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()]);
 // Details use every available posted payment, independently of the 30-day
 // activity view or selected bill month. Explicit links/assignments take priority.
@@ -14,18 +14,44 @@ export function accountPaymentHistory(transactions,target,rules={},links={},toda
   seen.add(t.transaction_id);return true;
  }).sort((a,b)=>b.date.localeCompare(a.date)||String(a.transaction_id).localeCompare(String(b.transaction_id)));
 }
-// Supplement explicit links with corroborated bill evidence. Never save these
+// Receipt-backed matches tolerate changing ACH descriptors. Match the creditor's
+// identity as whole words so Capital One and Credit One cannot overlap.
+const words=value=>String(value||'').toLowerCase()
+ .replace(/\b(?:capital\s*(?:one|1)|cap\s*(?:one|1))\b/g,'capitalone')
+ .replace(/\bcredit\s*one(?:bank)?\b/g,'creditone')
+ .replace(/[^a-z0-9]+/g,' ').trim().split(/\s+/);
+const generic=new Set('account accounts alerts alert ach american autopay auto bank banking bill billing card cards cash center checking com company confirmation corp credit customer debit debt email financial financing info insurance lender lending loan mobile monthly mortgage my net notice notification notifications online org pay payment payments pending personal platinum processing pymt pmt receipt rewards scheduled service services statement submitted support thank transfer visa your'.split(' '));
+function debtReceiptMerchant(t,identities,last4){
+ const description=[t.name,t.merchant_name].filter(Boolean).join(' ');
+ if(/\b(?:refund|reward|cashback|return(?:ed)?|reversal|reversed|failed|declined)\b/i.test(description)||!(/\b(?:payment|pymt|pmt|autopay|epay|e-?payment)\b/i.test(description)||/LOAN_PAYMENTS/.test(t.category||'')))return false;
+ const suffix=description.match(/(?:\bending\s+(?:in\s+)?|\bcard\s+(?:no\.?\s*)?|\bx{2,}|\*{2,})(\d{4})\b/i)?.[1];
+ if(suffix&&last4&&suffix!==last4)return false;
+ const merchant=new Set(words(description));
+ return identities.some(identity=>words(identity).some(word=>word.length>=4&&!generic.has(word)&&!/^\d+$/.test(word)&&merchant.has(word)));
+}
+function conflictingDebtLink(t,target,links){
+ return Object.entries(links).some(([other,link])=>other!==target&&link.accountId===t.account_id&&link.itemId===t.itemId&&(link.amount==null||link.amount===Math.round(t.amount*100))&&debtReceiptMerchant(t,[link.merchant,link.targetName]));
+}
+
+// Supplement explicit links with corroborated payment evidence. Never save these
 // guesses as merchant rules: corrections and removed transactions must undo them.
 export function inferredBillPaymentHistory(events,transactions,{rules={},links={},emailLinks={},messages=[],accounts=[],funding={},today=new Date().toISOString().slice(0,10),now=Date.now()}={}){
  const groups=new Map(),result=new Map(),claimed=new Set();
  transactions=[...new Map((transactions||[]).map(t=>[t.transaction_id,t])).values()];
  for(const bill of events){
-  if(bill.source==='tracker-debt'||bill.source==='plaid-credit')continue;
-  const target='bill:'+bill.id;
+  const target=paymentTarget(bill);
+  if(/^(debt|credit):/.test(target)&&!emailLinks[target])continue;
   if(!groups.has(target))groups.set(target,[]);
   groups.get(target).push(bill);
  }
- for(const target of groups.keys())for(const t of accountPaymentHistory(transactions,target,rules,links,today))claimed.add(t.transaction_id);
+ // A debt can have a receipt even when it has no scheduled minimum.
+ for(const target of Object.keys(emailLinks))if(/^(debt|credit):/.test(target)&&!groups.has(target))groups.set(target,[]);
+ const linkedHistory=new Map();
+ for(const target of groups.keys()){
+  const history=accountPaymentHistory(transactions,target,rules,links,today);
+  linkedHistory.set(target,history);
+  for(const t of history)claimed.add(t.transaction_id);
+ }
  const noise=new Set('payment payments bill billing receipt reference transaction purchase submitted processing scheduled received posted confirmation online automatic debit credit ach pos card account monthly insurance renters renter rent home policy the for and from com net org email mail noreply www'.split(' '));
  const merchantMatches=(t,bill,link,receipt)=>{
   const merchant=normalize(t.name+' '+(t.merchant_name||'')),words=new Set(merchant.split(' '));
@@ -38,20 +64,24 @@ export function inferredBillPaymentHistory(events,transactions,{rules={},links={
  };
  const candidates=[];
  for(const [target,bills]of groups){
-  const link=links[target];if(link?.sharedMerchant)continue;
-  const notices=emailLinks[target]?emailAccountStatus(messages,emailLinks[target],{now,creditCard:false}).payments:[];
-  const receipts=notices.filter(p=>p.paymentMade&&!p.confirmed&&Object.values(emailLinks).filter(l=>matchesEmail(p,l)).length===1);
+  const debt=/^(debt|credit):/.test(target),link=links[target];if(link?.sharedMerchant)continue;
+  const bankPayments=debt?linkedHistory.get(target).map(t=>({...t,id:t.transaction_id,amount:Math.round(t.amount*100)})):[];
+  const notices=emailLinks[target]?emailAccountStatus(messages,emailLinks[target],{now,bankPayments,creditCard:false}).payments:[];
+  const receipts=notices.filter(p=>p.paymentMade&&!p.bankPosted&&Object.values(emailLinks).filter(l=>matchesEmail(p,l)).length===1);
   for(const t of transactions||[]){
    if(!postedPayment(t)||!t.date||t.date>today||claimed.has(t.transaction_id)||paymentTargets(t,links).length)continue;
    const account=accounts.find(a=>a.id===transactionAccountId(t));
    if(!account||account.accountMissing||account.type!=='depository'||account.currency!=='USD')continue;
+   if(debt&&link&&(link.itemId!==t.itemId||transactionAccountId(link.accountId)!==account.id))continue;
    const rule=rules[transactionKey(t)];if(rule&&(rule.choice!=='bill'||'bill:'+rule.id!==target))continue;
    const amount=Math.round(t.amount*100);if(link?.amount!=null&&link.amount!==amount)continue;
-   const receipt=receipts.find(p=>{
+   const matchingReceipts=receipts.filter(p=>{
     const date=p.paymentDate||(p.submittedAt||p.receivedAt).slice(0,10);
-    return p.paymentAmount===amount&&t.date>=day(date,-1)&&t.date<=day(date,14)&&merchantMatches(t,bills[0],link,p);
+    return p.paymentAmount===amount&&t.date>=day(date,-1)&&t.date<=day(date,14)&&(debt?debtReceiptMerchant(t,[bills[0]?.name,link?.targetName,p.senderName,p.sender?.split('@')[1]],emailLinks[target].accountLast4||p.accountLast4):merchantMatches(t,bills[0],link,p));
    });
-   const bill=bills.filter(b=>amount===b.amount&&t.date>=day(b.date,b.repeat==='weekly'?-3:-7)&&t.date<=day(b.date,b.repeat==='weekly'?3:14)&&merchantMatches(t,b,link,null))
+   if(debt&&matchingReceipts.length!==1)continue;
+   const receipt=matchingReceipts[0];
+   const bill=debt?null:bills.filter(b=>amount===b.amount&&t.date>=day(b.date,b.repeat==='weekly'?-3:-7)&&t.date<=day(b.date,b.repeat==='weekly'?3:14)&&merchantMatches(t,b,link,null))
     .sort((a,b)=>Math.abs(Date.parse(a.date)-Date.parse(t.date))-Math.abs(Date.parse(b.date)-Date.parse(t.date)))[0];
    // Statement-only links still allow a posted payment to settle the bill,
    // while a nearby failure must not be replaced by a scheduled-amount guess.
@@ -63,6 +93,7 @@ export function inferredBillPaymentHistory(events,transactions,{rules={},links={
  for(const candidate of candidates){
   // One bank transaction cannot pay two bills, even if their amounts coincide.
   if(new Set(candidates.filter(c=>c.t.transaction_id===candidate.t.transaction_id).map(c=>c.target)).size!==1)continue;
+  if(/^(debt|credit):/.test(candidate.target)&&conflictingDebtLink(candidate.t,candidate.target,links))continue;
   const peers=candidates.filter(c=>c.target===candidate.target&&c.evidence===candidate.evidence);
   // Multiple bank feeds can expose the same payment. Prefer the chosen funding
   // account; otherwise require a single candidate instead of double counting.

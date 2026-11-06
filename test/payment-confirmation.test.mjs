@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {emailAccountStatus,emailLink,emailBillPaymentStatuses} from '../public/email-model.mjs';
 import {paymentIdentity,rememberPaymentBalances} from '../public/payment-confirmation.mjs';
+import {debtAccountPayments} from '../public/credit-model.mjs';
 import {parseAccountEmail} from '../email-parser.mjs';
 import {parseSunBalance} from '../sun-rent.mjs';
 import {billEvents,cashForecast} from '../public/income-model.mjs';
@@ -77,4 +78,31 @@ test('forecast reserves the payment until cash is reflected and releases only re
  const bill={id:'rent',name:'Rent',date:'2026-11-01',amount:80000,repeat:'monthly',source:'manual'},base={manual:[bill],paid:[]};
  const total=reservation=>cashForecast([{balance:200000,include:true,currency:'USD'}],[],billEvents({}, {...base,paymentReservations:{'rent:2026-11-01':reservation}}, {},'2026-10-31','2026-11-02'),'2026-10-31').outgoing;
  assert.equal(total(80000),80000);assert.equal(total(30000),30000);assert.equal(total(0),0);
+});
+
+test('a delayed receipt can use a posted credit and balance on the linked Lunch Flow card',()=>{
+ const account={id:'lunchflow-card',type:'credit',currency:'USD'};
+ const credit={transaction_id:'issuer-credit',account_id:account.id,name:'MOBILE PYMT',date:'2026-11-02',amount:-800,currency:'USD'};
+ const destination=snapshot({id:account.id,balance:95000,updated:'2026-11-02T16:00:00Z'});
+ const later={...receipt,receivedAt:'2026-11-02T17:00:00Z',paymentDate:'2026-11-01'};
+ const check=(rows,changes={})=>emailAccountStatus([later],emailLink(later),{now,bankPayments:[bank],destinations:[{...destination,payments:debtAccountPayments(account,rows),...changes}]}).payments[0];
+ assert.equal(check([credit]).confirmed,true);
+ for(const patch of [{account_id:'lunchflow-other'},{pending:true},{name:'PAYMENT RETURNED'},{name:'PAYMENT REFUND'},{amount:800},{date:'2026-11-03'}]){
+  assert.equal(check([{...credit,...patch}]).confirmed,false);
+ }
+ assert.equal(check([credit],{unavailable:true}).confirmed,false);
+});
+test('a completion email without an amount keeps the amount from the referenced submission',()=>{
+ const completion={...receipt,id:'completed',paymentStatus:'posted',paymentAmount:null,receivedAt:'2026-11-02T17:00:00Z'};
+ const result=state({bankPayments:[bank]},[receipt,completion]).payments;
+ assert.equal(result.length,1);assert.equal(result[0].paymentAmount,receipt.paymentAmount);assert.equal(result[0].confirmed,true);
+ const unrelated={...receipt,id:'another',reference:'different'};
+ assert.equal(state({bankPayments:[bank]},[unrelated,{...completion,reference:'new'}]).payments[0].confirmed,false);
+});
+
+test('a new equal receipt cannot reuse an earlier confirmed withdrawal',()=>{
+ const newer={...receipt,id:'new-receipt',reference:'other-confirmation',receivedAt:'2026-11-02T13:00:00Z'};
+ const confirmations={[paymentIdentity(receipt)]:{bankPaymentId:bank.id}};
+ const result=state({bankPayments:[bank],confirmations},[receipt,newer]).payments;
+ assert.deepEqual(result.map(p=>[p.id,p.confirmed]),[[newer.id,false],[receipt.id,true]]);
 });

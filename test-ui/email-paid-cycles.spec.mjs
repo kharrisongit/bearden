@@ -54,7 +54,7 @@ test('all bill and debt card types keep submitted receipts in the unpaid list wi
  await page.getByRole('button',{name:'Next bill month',exact:true}).click();await expect(page.locator('#denBillsPaidCount')).toHaveText('0 of 4 paid');
  await menuGo(page,'debts');
  for(const selector of ['[data-tracker-account="1"]','[data-tracker-account="2"]','[data-account-id="credit-visa"]','[data-car-payment="car"]','.payment-only-debt']){
-  const card=page.locator('#debtAccounts '+selector);await expect(card).toContainText('Paid · Awaiting confirmation');await expect(card).not.toHaveClass(/is-paid-off/);await expect(card.locator('.den-date-stamp')).not.toHaveClass(/is-paid/);
+  const card=page.locator('#debtAccounts '+selector);await expect(card).toBeVisible();expect((await card.innerText()).match(/awaiting confirmation/gi)).toHaveLength(1);await expect(card).not.toHaveClass(/is-paid-off/);await expect(card.locator('.den-date-stamp')).not.toHaveClass(/is-paid/);
  }
  await expect(page.locator('[data-tracker-account="1"] .bd-account-amount')).toContainText('$3,420');
  expect(JSON.parse(f.tracker.state.values['income-planner']).paid).toEqual([]);
@@ -78,7 +78,7 @@ test('receipt, bank posting, and balance updates advance rent and debt confirmat
  await expect(page.locator('#billTrackerRemaining')).toHaveText('$1,285.00');
  await expect(page.locator('#paidBillsList')).toHaveCount(0);
  apiState.connections.transactions=[{transaction_id:'rent-posted',itemId:'lunchflow',account_id:'lunchflow-bills',name:'Example Rent',date:'2026-10-31',amount:800,currency:'USD',pending:false},{transaction_id:'card-posted',itemId:'lunchflow',account_id:'lunchflow-bills',name:'Visa Payment',date:'2026-10-31',amount:50,currency:'USD',pending:false}];
- await refresh();await expect(rent).toContainText('Bank posted · Awaiting balance update');
+ await refresh();await expect(rent).toContainText('Bank posted · Waiting for funding account balance');
  await expect(rent).toContainText('Reserved in your forecast');
  const funding=apiState.state.accounts.find(a=>a.id==='lunchflow-bills');funding.balance-=85000;funding.balanceUpdated='2026-10-31T16:00:00Z';
  await refresh();await expect(rent).toContainText('waiting for the account balance to update');
@@ -114,6 +114,8 @@ for(const stage of ['submitted','scheduled'])test(`Capital One shows a ${stage} 
   const app=JSON.parse(f.tracker.state.values['app-state']);delete app.cards[0].dueDate;
   f.tracker.state.values['app-state']=JSON.stringify(app);
  }
+ const posted={transaction_id:'posted-mobile',itemId:'lunchflow',account_id:'lunchflow-bills',name:'Capital One Mobile Payment',date:'2026-10-31',amount:63.27,currency:'USD',pending:false};
+ planner.transactionLinks={'debt:1':paymentLink(posted)};
  f.tracker.state.values['income-planner']=JSON.stringify(planner);
  apiState.connections.gmailMessages=[statement,pending,other];
  await page.goto('https://bearden.test/');await expect(page.locator('#configureHousehold')).toBeEnabled();await menuGo(page,'debts');
@@ -126,7 +128,69 @@ for(const stage of ['submitted','scheduled'])test(`Capital One shows a ${stage} 
  expect(await card.innerText()).not.toContain('$21.19');await expect(card).not.toContainText('Paid · Confirmed');
  await expect(card.locator('.den-date-stamp.is-paid')).toHaveCount(0);
  await expect(card.locator('.bd-account-amount')).toContainText('$3,420');
+ if(submitted){
+  const older={...pending,id:'older-receipt',reference:'older-ref',receivedAt:'2026-10-28T10:00:00Z',paymentDate:'2026-10-28',paymentAmount:1900};
+  apiState.connections.gmailMessages.push(older);apiState.connections.transactions=[posted];
+  apiState.state.accounts.find(a=>a.id==='lunchflow-bills').balanceUpdated='2026-10-31T16:00:00Z';
+  await page.evaluate(()=>window.BearDen.refreshPaymentEvidence());
+  await expect(noticeRow).toContainText('Payment confirmed');await expect(noticeRow).toContainText('$63.27');
+  await expect(card).not.toContainText('awaiting confirmation',{ignoreCase:true});
+ }
  apiState.connections.gmailMessages.unshift({...pending,id:'later-return',subject:'Payment returned',receivedAt:'2026-10-31T15:00:00Z',paymentStatus:'failed',paymentStage:'failed'});
  await page.reload();await expect(page.locator('#configureHousehold')).toBeEnabled();await menuGo(page,'debts');
  await expect(card).toBeVisible();await expect(noticeRow).toHaveCount(0);
+});
+
+for(const emailOn of ['tracker','issuer'])test(`a mapped card confirms the ${emailOn} receipt from a bank link saved on its other record`,async({page})=>{
+ const {f,planner,apiState}=await setup(page,{reconcile:true});
+ await page.evaluate(()=>window.flushBearDenState());await page.goto('about:blank');
+ const receipt=apiState.connections.gmailMessages.at(-1),tracker='debt:1',issuer='credit:credit-visa';
+ const mailTarget=emailOn==='tracker'?tracker:issuer,bankTarget=emailOn==='tracker'?issuer:tracker;
+ planner.emailLinks={[mailTarget]:emailLink(receipt)};
+ if(emailOn==='tracker')planner.creditCards['credit-visa'].trackerCardId='1';
+ else planner.debtAccountLinks={1:'plaid-visa'};
+ const tx={transaction_id:'opaque-posting',account_id:'lunchflow-bills',itemId:'lunchflow',name:'ACH X193',date:'2026-10-31',amount:50,currency:'USD',pending:false};
+ planner.transactionLinks={[bankTarget]:paymentLink(tx)};
+ apiState.connections.transactions=[tx];apiState.connections.gmailMessages=[receipt];
+ const card=apiState.connections.creditCards[0];card.payments=[{id:'payment',date:tx.date,amount:5000}];
+ for(const a of apiState.state.accounts)a.balanceUpdated='2026-10-31T17:00:00Z';
+ f.tracker.state.values['income-planner']=JSON.stringify(planner);
+ await page.goto('https://bearden.test/');await expect(page.locator('#configureHousehold')).toBeEnabled();await menuGo(page,'debts');
+ const visibleCard=page.locator('#debtAccounts '+(emailOn==='tracker'?'[data-account-id="credit-visa"]':'[data-tracker-account="1"]'));
+ await expect(visibleCard).toContainText('Paid · Confirmed');
+ await expect(visibleCard).not.toContainText(/awaiting confirmation/i);
+ await visibleCard.locator('[data-show-debt-details]').click();
+ await expect(page.locator('#debtProgressDialog')).toContainText('ACH X193');
+});
+
+test('a Capital One receipt confirms after a changed checking debit and Lunch Flow card credit arrive on refresh',async({page})=>{
+ const {f,planner,apiState}=await setup(page);
+ await page.evaluate(()=>window.flushBearDenState());await page.goto('about:blank');
+ const receipt=parseAccountEmail({id:'test-cap-receipt',mailboxId:'m',from:'Capital One <payments@notification.capitalone.com>',subject:'Thanks for making a payment',text:'Card ending in 4242. Payment amount: $38.25. Payment date: October 31, 2026.',receivedAt:'2026-10-31T12:00:00Z'});
+ const debit={transaction_id:'checking-posted',itemId:'bank',account_id:'personal',currency:'USD',amount:38.25,date:'2026-10-31',name:'ACH CAP ONE MOBILE PYMT'};
+ const link=paymentLink({...debit,name:'CAPITAL ONE ONLINE PAYMENT'});
+ const issuer={id:'lunchflow-card',name:'Capital One',type:'credit',currency:'USD',source:'lunchflow',balance:342000,balanceUpdated:'2026-10-31T09:00:00Z'};
+ planner.transactionLinks={'debt:1':link};planner.emailLinks={'debt:1':emailLink(receipt)};
+ planner.debtAccountLinks={1:issuer.id};
+ f.tracker.state.values['income-planner']=JSON.stringify(planner);
+ apiState.state.accounts.push(issuer);apiState.connections.gmailMessages=[receipt];
+ await page.goto('https://bearden.test/');await expect(page.locator('#configureHousehold')).toBeEnabled();await menuGo(page,'debts');
+ const card=page.locator('#debtAccounts [data-tracker-account="1"]');
+ await expect(card).toContainText('Awaiting confirmation');
+ expect((await card.innerText()).match(/awaiting confirmation/gi)).toHaveLength(1);
+ const funding=apiState.state.accounts.find(a=>a.id==='plaid-personal');
+ funding.balance-=3825;funding.balanceUpdated='2026-10-31T16:00:00Z';
+ apiState.connections.transactions=[debit];
+ await page.evaluate(()=>window.BearDen.refreshPaymentEvidence());
+ await expect(card).toContainText('Bank posted · Waiting for receiving account balance');
+ // New spending offset the payment. A refreshed balance and the issuer's actual
+ // posted payment still corroborate settlement on this exact credit account.
+ issuer.balanceUpdated='2026-10-31T17:00:00Z';
+ apiState.connections.transactions.push({...debit,transaction_id:'issuer-posted',itemId:'lunchflow',account_id:issuer.id,source:'lunchflow',amount:-38.25,name:'Payment Received'});
+ await page.evaluate(()=>window.BearDen.refreshPaymentEvidence());
+ await expect(card).toContainText(/paid · confirmed|payment confirmed/i);
+ await expect(card).not.toContainText(/awaiting/i);
+ await card.locator('[data-show-debt-details]').click();
+ await expect(page.locator('#debtProgressDialog')).toContainText(debit.name);
+ expect(JSON.parse(f.tracker.state.values['income-planner']).transactionLinks['debt:1']).toEqual(link);
 });

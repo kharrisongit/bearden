@@ -41,13 +41,16 @@ export const paymentTarget=bill=>bill.source==='tracker-debt'?'debt:'+bill.track
 
 // Recomputed from posted transactions, so a removed/corrected bank transaction
 // cannot leave a permanent paid flag. One transaction can settle only one date.
-export function matchedBillPayments(events,transactions,links,today,{details=false,historyForTarget=null}={}){
+export function matchedBillPayments(events,transactions,links,today,{details=false,historyForTarget=null,receiptCycles=new Map()}={}){
  const paid=new Set(),groups=new Map();
  for(const event of events){const target=paymentTarget(event);if(!links[target]&&!historyForTarget)continue;if(!groups.has(target))groups.set(target,[]);groups.get(target).push(event);}
  for(const [target,bills]of groups){
   const totals=new Map(),dates=new Map();
   for(const transaction of historyForTarget?historyForTarget(target):matchingPayments(transactions,links[target],today,links,target)){
+   // A linked receipt identifies its billing cycle even if the bank posts closer to the next due date.
+   const receiptCycle=receiptCycles.get(transaction.transaction_id);
    const candidates=bills.filter(b=>{
+    if(receiptCycle)return b.key===receiptCycle;
     const early=b.repeat==='weekly'?3:b.source==='tracker-debt'?6:7,late=b.repeat==='weekly'?3:b.source==='tracker-debt'?7:14;
     const start=b.source==='plaid-credit'&&b.statementDate&&b.statementDate<b.date?day(b.statementDate,1):day(b.date,-early);
     return transaction.date>=start&&transaction.date<=day(b.date,late);

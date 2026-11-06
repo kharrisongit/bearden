@@ -1,4 +1,4 @@
-import {paymentMade,reconcilePayment} from './payment-confirmation.mjs?v=payment-stages1';
+import {paymentMade,reconcilePayment,paymentIdentity} from './payment-confirmation.mjs?v=payment-stages1';
 export {rememberPaymentBalances,paymentIdentity} from './payment-confirmation.mjs?v=payment-stages1';
 import {day,occurrences} from './engine.mjs';
 import {paymentTarget} from './transaction-links.mjs?v=plaid-restore1';
@@ -54,7 +54,7 @@ export function emailAccountStatus(messages,link,{now=Date.now(),bankPayments=[]
    if(older){statement[key]=older[key];statement.fieldUpdated[key]=older.receivedAt;}
   }
  }
- const payments=[],usedBank=new Set(),usedMail=new Set(),events=debtStatements.filter(m=>m.paymentStatus);
+ const receipts=[],payments=[],usedBank=new Set(),usedMail=new Set(),events=debtStatements.filter(m=>m.paymentStatus);
  // Newest notice wins for an explicit confirmation number. Without one, pair
  // only an unambiguous amount/date match, so two equal payments stay separate.
  for(const message of events){
@@ -68,16 +68,30 @@ export function emailAccountStatus(messages,link,{now=Date.now(),bankPayments=[]
   const notices=[event,...related].filter(m=>m.paymentStatus==='pending');
   const submittedAt=Math.min(...(notices.length?notices:[event]).map(m=>Date.parse(m.receivedAt)));
   const paymentDate=event.paymentDate||notices.find(m=>m.paymentDate)?.paymentDate;
-  let status=event.paymentStatus,postedDate=null,bank=null;
-  const submitted=paymentDate?Date.parse(paymentDate):Date.parse(new Date(submittedAt).toISOString().slice(0,10));
-  if(status!=='failed'){
-   bank=event.paymentAmount>0&&bankPayments.find(p=>!p.pending&&!usedBank.has(p.id||p.transaction_id)&&p.amount===event.paymentAmount&&Date.parse(p.date)>=submitted-86400000&&Date.parse(p.date)<=submitted+14*86400000&&Date.parse(p.date)<=now);
+  // A later completion/return may omit the amount in the original receipt.
+  // Carry it across only when the notices identify the same payment.
+  const amounts=new Set(related.map(m=>m.paymentAmount).filter(n=>Number.isSafeInteger(n)&&n>0));
+  const paymentAmount=event.paymentAmount??(amounts.size===1?[...amounts][0]:null);
+  receipts.push({...event,paymentAmount,paymentDate,submittedAt:new Date(submittedAt).toISOString()});
+ }
+ // Reserve a still-valid confirmed withdrawal before considering new receipts
+ // for the same amount. Display order remains most recent first.
+ const savedId=r=>confirmations[paymentIdentity(r)]?.bankPaymentId;
+ receipts.sort((a,b)=>Number(!!savedId(b))-Number(!!savedId(a)));
+ for(const receipt of receipts){
+  const {paymentAmount,paymentDate}=receipt;
+  let status=receipt.paymentStatus,postedDate=null,bank=null;
+  const submitted=Date.parse(paymentDate||receipt.submittedAt.slice(0,10));
+  if(status!=='failed'&&paymentAmount>0){
+   const candidates=bankPayments.filter(p=>(p.id||p.transaction_id)&&!p.pending&&!usedBank.has(p.id||p.transaction_id)&&p.amount===paymentAmount&&Date.parse(p.date)>=submitted-86400000&&Date.parse(p.date)<=submitted+14*86400000&&Date.parse(p.date)<=now);
+   const saved=savedId(receipt);
+   bank=candidates.find(p=>(p.id||p.transaction_id)===saved)||candidates.sort((a,b)=>Math.abs(Date.parse(a.date)-submitted)-Math.abs(Date.parse(b.date)-submitted)||a.date.localeCompare(b.date)||String(a.id||a.transaction_id).localeCompare(String(b.id||b.transaction_id)))[0];
    if(bank){status='posted';postedDate=bank.date;usedBank.add(bank.id||bank.transaction_id);}
   }
-  const receipt={...event,paymentDate,submittedAt:new Date(submittedAt).toISOString()};
   const made=status!=='failed'&&(!!bank||paymentMade(receipt))&&(!paymentDate||Date.parse(paymentDate)<=now);
   payments.push({...receipt,status,estimated:false,postedDate,paymentMade:made,...reconcilePayment(receipt,bank,{destinations,balanceHistory,confirmations,now})});
  }
+ payments.sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt));
  return {statement,payments,pending:payments.filter(p=>p.status==='pending').reduce((sum,p)=>sum+(p.paymentAmount||0),0)};
 }
 export const possibleReturn=(payments,receipt)=>payments.some(p=>p.status==='failed'&&(!p.reference||!receipt.reference)&&p.paymentAmount===receipt.paymentAmount&&p.receivedAt>=receipt.receivedAt&&Date.parse(p.receivedAt)-Date.parse(receipt.receivedAt)<=7*86400000);
@@ -101,7 +115,7 @@ export function emailBillPaymentStatuses(events,messages,links,{now=Date.now(),s
  }
  for(const [target,bills]of groups){
   const {payments}=statusForTarget?statusForTarget(target):emailAccountStatus(messages,links[target],{now,creditCard:false});
-  const totals=new Map(),dates=new Map(),confirmed=new Map(),reflected=new Map(),failed=new Set(),seen=new Set();
+  const totals=new Map(),dates=new Map(),confirmed=new Map(),reflected=new Map(),bankPaymentIds=new Map(),failed=new Set(),seen=new Set();
   for(const receipt of payments){
    if(!receipt.paymentMade&&receipt.status!=='failed'||!Number.isSafeInteger(receipt.paymentAmount)||receipt.paymentAmount<=0)continue;
    const date=validDate(receipt.paymentDate)?receipt.paymentDate:localDate(receipt.submittedAt||receipt.receivedAt);
@@ -120,9 +134,13 @@ export function emailBillPaymentStatuses(events,messages,links,{now=Date.now(),s
     .sort((a,b)=>Math.abs(Date.parse(a.date)-Date.parse(date))-Math.abs(Date.parse(b.date)-Date.parse(date))||a.date.localeCompare(b.date));
    const bill=candidates[0];
    if(bill&&receipt.status==='failed'){failed.add(bill.key);continue;}
+   if(bill&&receipt.bankPaymentId){
+    if(!bankPaymentIds.has(bill.key))bankPaymentIds.set(bill.key,[]);
+    bankPaymentIds.get(bill.key).push(receipt.bankPaymentId);
+   }
    if(bill){if(receipt.confirmed)confirmed.set(bill.key,(confirmed.get(bill.key)||0)+receipt.paymentAmount);if(receipt.cashReflected)reflected.set(bill.key,(reflected.get(bill.key)||0)+receipt.paymentAmount);totals.set(bill.key,(totals.get(bill.key)||0)+receipt.paymentAmount);if(!dates.has(bill.key)||dates.get(bill.key)<date)dates.set(bill.key,date);}
   }
-  for(const bill of bills)if(bill.amount>0&&(totals.has(bill.key)||failed.has(bill.key)))paid.set(bill.key,{key:bill.key,dueDate:bill.date,paidDate:dates.get(bill.key),paidAmount:totals.get(bill.key)||0,remaining:Math.max(0,bill.amount-(totals.get(bill.key)||0)),paid:(totals.get(bill.key)||0)>=bill.amount,failed:failed.has(bill.key),confirmed:(confirmed.get(bill.key)||0)>=bill.amount,cashReflectedAmount:Math.min(bill.amount,reflected.get(bill.key)||0)});
+  for(const bill of bills)if(bill.amount>0&&(totals.has(bill.key)||failed.has(bill.key)))paid.set(bill.key,{key:bill.key,dueDate:bill.date,paidDate:dates.get(bill.key),bankPaymentIds:bankPaymentIds.get(bill.key)||[],paidAmount:totals.get(bill.key)||0,remaining:Math.max(0,bill.amount-(totals.get(bill.key)||0)),paid:(totals.get(bill.key)||0)>=bill.amount,failed:failed.has(bill.key),confirmed:(confirmed.get(bill.key)||0)>=bill.amount,cashReflectedAmount:Math.min(bill.amount,reflected.get(bill.key)||0)});
  }
  return [...paid.values()];
 }

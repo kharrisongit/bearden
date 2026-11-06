@@ -105,3 +105,14 @@ test('hiding accounts excludes their provider data and stale issuer records whil
  assert.equal(plan.state.accounts.length,4);
  assert.equal(plan.connections.transactions.length,5);
 });
+
+test('credit and debt evidence can cross only a one-to-one explicit card mapping',async()=>{
+ const {pairedPaymentTarget}=await import('../public/connection-model.mjs');
+ const issuers=[{id:'one',accountId:'a'},{id:'two',accountId:'b'}],planner={debtBackupLinks:{1:'plaid-a'},creditCards:{one:{trackerCardId:'1'}}};
+ assert.equal(pairedPaymentTarget('credit:one',planner,issuers),'debt:1');
+ assert.equal(pairedPaymentTarget('debt:1',planner,issuers),'credit:one');
+ assert.equal(pairedPaymentTarget('credit:two',planner,issuers),null);
+ for(const conflict of [{...planner,debtAccountLinks:{2:'plaid-a'}},{...planner,debtAccountLinks:{1:'plaid-b'}}]){
+  for(const target of ['debt:1','credit:one'])assert.equal(pairedPaymentTarget(target,conflict,issuers),null);
+ }
+});

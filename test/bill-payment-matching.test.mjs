@@ -35,3 +35,14 @@ test('without email a uniquely identified insurance bill can settle from the mat
  const statement={...receipts[1],paymentStatus:null,paymentAmount:null,paymentStage:null,amount:1800,dueDate:'2026-11-01'};
  assert.equal(inferredBillPaymentHistory(events,transactions,{...options,messages:[statement],emailLinks:{'bill:insurance':emailLink(statement)}}).get('bill:insurance').length,1);
 });
+
+test('a payment with an explicit billing date settles one weekly cycle even if the bank posts the following week',()=>{
+ const earlier={...events[1],repeat:'weekly'},later={...earlier,date:'2026-11-08',key:'insurance:2026-11-08'};
+ const receipt={...receipts[1],dueDate:earlier.date,paymentDate:earlier.date};
+ const tx={...transactions[1],date:later.date},target='bill:insurance',links={[target]:emailLink(receipt)};
+ const asOf=Date.parse('2026-11-09T18:00:00Z'),bankPayments=[{id:tx.transaction_id,date:tx.date,amount:earlier.amount,balanceSnapshot:{id:'checking',currency:'USD',balance:50000,updated:asOf}}];
+ const cycles=emailBillPaymentStatuses([earlier,later],[receipt],links,{now:asOf,statusForTarget:()=>emailAccountStatus([receipt],links[target],{now:asOf,creditCard:false,bankPayments})});
+ assert.equal(cycles.length,1);assert.equal(cycles[0].confirmed,true);
+ const receiptCycles=new Map(cycles.flatMap(p=>p.bankPaymentIds.map(id=>[id,p.key])));
+ assert.deepEqual(matchedBillPayments([earlier,later],[tx],{[target]:paymentLink(tx)},'2026-11-09',{receiptCycles}),[earlier.key]);
+});

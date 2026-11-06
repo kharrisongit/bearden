@@ -1,3 +1,5 @@
+import {transactionAccountId} from './transaction-links.mjs';
+
 // Values exposed to the browser are explicit, nullable and expressed in cents.
 const amount=n=>typeof n==='number'&&Number.isFinite(n)&&Number.isSafeInteger(Math.round(n*100))?Math.round(n*100):null;
 const date=s=>{if(typeof s!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(s))return null;const d=new Date(s+'T12:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===s?s:null;};
@@ -22,8 +24,20 @@ export function creditCapacity({card=null,account=null,enteredLimit=null,balance
  const available=reported!==null?Math.max(0,reported):limit!==null&&Number.isSafeInteger(balance)?Math.max(0,limit-balance):null;
  return {limit,providerLimit,available};
 }
+// All bank adapters expose outgoing amounts as positive and incoming credits
+// as negative. Only payment credits on the linked liability can corroborate it.
+function paymentCredits(rows,currency){
+ return rows.filter(t=>t.transaction_id&&!t.pending&&t.currency===currency&&Number.isFinite(t.amount)&&t.amount<0
+  &&!/refund|revers|return|declin|cancel|cash.?back|reward|chargeback|adjustment/i.test(t.name||'')
+  &&(/LOAN_PAYMENTS_CREDIT_CARD_PAYMENT/.test(t.category||'')||/\b(?:payment|pymt|pmt|autopay)\b/i.test(t.name||'')))
+  .map(t=>({id:t.transaction_id,date:t.date,amount:Math.round(-t.amount*100),name:t.name,source:'transaction'}));
+}
+export function debtAccountPayments(account,transactions=[]){
+ if(!['credit','loan'].includes(account?.type))return [];
+ return paymentCredits(transactions.filter(t=>transactionAccountId(t)===account.id),account.currency);
+}
 export function cardPayments(card,transactions=[]){
- const payments=transactions.filter(t=>t.itemId===card.itemId&&t.account_id===card.accountId&&!t.pending&&t.currency===card.currency&&t.amount<0&&!/refund|reversal|cashback|cash back|reward/i.test(t.name||'')&&(/LOAN_PAYMENTS_CREDIT_CARD_PAYMENT/.test(t.category||'')||/\bpayment\b/i.test(t.name||''))).map(t=>({id:t.transaction_id,date:t.date,amount:Math.round(-t.amount*100),name:t.name,source:'transaction'}));
+ const payments=paymentCredits(transactions.filter(t=>t.itemId===card.itemId&&t.account_id===card.accountId),card.currency);
  if(card.lastPayment>0&&card.lastPaymentDate&&!payments.some(p=>p.date===card.lastPaymentDate&&p.amount===card.lastPayment))payments.push({id:'issuer-'+card.lastPaymentDate,date:card.lastPaymentDate,amount:card.lastPayment,name:'Last payment reported by issuer',source:'issuer'});
  return payments.sort((a,b)=>b.date.localeCompare(a.date));
 }
