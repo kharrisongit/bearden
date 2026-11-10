@@ -164,13 +164,13 @@ export function paydayEvents(plan,start,end,{billsOnly=false,debtMode='full',ret
   const row=rows.get(n);if(excludeReceived&&row?.paycheckReceipt)continue;
   const income=cents(row?row.takeHomeThisCheck+row.bonusAmount:(s.paycheckOverrides?.[n]??s.takeHome))+(row?0:cents(s.appliedBonuses?.[n]));
   const budget=row?row.budgetLineItemsThisCheck:(s.budgetItems||[]).map(b=>({...b,amount:s.budgetItemOverrides?.[b.id]?.[n]??(b.everyOtherCheck&&n>=(b.everyOtherFromPaycheck||1)&&(n<(b.everyOtherStartPaycheck||1)||(n-(b.everyOtherStartPaycheck||1))%2!==0)?0:b.amount)}));
-  const extras=row?row.extrasThisCheck:(s.extraExpenses?.[n]||[]);
+  const extras=row?row.extrasThisCheck:(s.extraExpenses?.[n]||[]).filter(e=>!s.paycheckSkippedPayments?.[e.autoFromCardId]?.[n]);
   let debtPayments=(row?.payments||[]).map(cents);
   if(debtMode==='none')debtPayments=[];
   if(debtMode==='minimum')debtPayments=(s.cards||[]).map((card,index)=>{
    card=effectiveDebtTerms(card,plan.syncedDebtTerms?.[card.id],date);
    const interest=Math.round(remaining[index]*Math.max(0,Number(card.apr)||0)/100/26);
-   const owed=remaining[index]+interest,payment=Math.min(owed,Math.max(0,cents(scheduledPayment(card,date,s.startDate,s.debtPaymentSettings).minimum)));
+   const owed=remaining[index]+interest,payment=s.paycheckSkippedPayments?.[card.id]?.[n]?0:Math.min(owed,Math.max(0,cents(scheduledPayment(card,date,s.startDate,s.debtPaymentSettings).minimum)));
    remaining[index]=owed-payment;return payment;
   });
   // A recurring spending allowance stays in checking until it is spent. The

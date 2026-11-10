@@ -45,3 +45,18 @@ test('Income minimum comparison skips the paid cycle and includes the following 
   plan.state.cards[0]={...card,balance:0};
   assert.ok(paydayEvents(plan,'2026-11-06','2026-12-31',{debtMode:'minimum'}).every(p=>p.allocations===0));
 });
+
+test('an explicitly corrected due cycle affects earlier unchecked paydays, never next month or completed history',()=>{
+ const saved={...card,dueDate:'2026-11-09',monthlyMinimum:40,min:20};
+ const planner={debtCycleMinimums:{1:{'2026-11-09':{amount:0,updated:'2026-11-10T12:00Z'}}}};
+ const r=resolveDebtConnections(planner,[],[],[saved],{},[],Date.parse('2026-11-10T13:00Z'))[1];
+ assert.equal(r.monthlyMinimum.value,0);assert.equal(r.forecastMinimum.value,4000);
+ const terms={date:'2026-11-10',cycleMinimums:r.cycleMinimums};
+ for(const mode of ['due-date','every-paycheck']){
+  const current=effectiveDebtTerms(saved,terms,'2026-11-06');
+  assert.equal(scheduledPayment(current,'2026-11-06','2026-11-06',{mode}).minimum,0);
+  assert.ok(scheduledPayment(effectiveDebtTerms(saved,terms,'2026-12-04'),'2026-12-04','2026-11-06',{mode}).minimum>0);
+  assert.ok(scheduledPayment(effectiveDebtTerms(saved,terms,'2026-11-06',true),'2026-11-06','2026-11-06',{mode}).minimum>0);
+ }
+ assert.equal(saved.monthlyMinimum,40);assert.equal(saved.balance,card.balance);
+});

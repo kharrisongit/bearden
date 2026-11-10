@@ -147,3 +147,30 @@ test('canceling the simulation reset preserves every saved choice and does not s
  vm.runInContext(reset+'\nresetCheckedPaychecks()',p);
  assert.deepEqual(values({checks:p.checkedPaychecks,slices:p.paycheckSlices,squashes:p.paycheckSquashes,overrides:p.paycheckOverrides,expenses:p.extraExpenses,schedule:p.result.schedule}),before);
 });
+
+test('skipping a payment pauses its override, automatic shortfall and payoff action until restored',()=>{
+ const p=plan({accountPaymentOverrides:{1:{1:10}},extraExpenses:{1:[{id:1,autoFromCardId:1,amount:10}]}});
+ vm.runInContext('togglePaycheckPayment(1,1)',p);
+ assert.deepEqual(values(p.result.schedule[0].payments),[0,30]);assert.equal(p.result.schedule[0].cashAfterDebt,970);
+ assert.deepEqual(values(p.result.schedule[0].extrasThisCheck),[]);
+ assert.equal(p.accountPaymentOverrides[1][1],10);assert.equal(p.extraExpenses[1].length,1);
+ assert.equal(p.result.schedule[1].payments[0],20);
+ vm.runInContext('togglePaycheckPayment(1,1)',p);
+ assert.equal(p.result.schedule[0].payments[0],10);assert.equal(p.result.schedule[0].cashAfterDebt,950);
+ vm.runInContext('togglePaycheckSquash(1,1); togglePaycheckPayment(1,1)',p);
+ assert.equal(p.result.schedule[0].payments[0],0);
+ vm.runInContext('togglePaycheckSlice(2,1)',p);
+ assert.equal(p.result.schedule[0].payments[0],0);assert.equal(p.result.schedule[0].payments[1],250);
+ p.checkedPaychecks[1]=true;p.window.debtPaymentHistory={1:{1:0,2:250}};
+ vm.runInContext('togglePaycheckPayment(1,1)',p);
+ assert.equal(p.window.paycheckSkippedPayments[1][1],true);
+});
+
+test('automatic payoff strategies do not reinsert a skipped debt',()=>{
+ for(const currentPayoffMethod of ['avalanche','snowball','burn']){
+  const p=plan({currentPayoffMethod});vm.runInContext('togglePaycheckPayment(1,1)',p);
+  assert.equal(p.result.schedule[0].payments[0],0);
+  assert.ok(p.result.schedule[0].payments[1]>0);
+  assert.equal(p.result.schedule[0].extrasThisCheck.length,0);
+ }
+});

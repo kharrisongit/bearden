@@ -1,10 +1,11 @@
 // Ship this manifest with each user-visible update. Never put private report text here.
 export const APP_RELEASE = Object.freeze({
-  id: '2026-11-09-public-information-domain-2',
-  title: 'Privacy pages on BearDen’s domain',
+  id: '2026-11-10-paycheck-skips-zero-due-1',
+  title: 'Flexible paycheck payments',
   notes: [
-    'BearDen’s public information and policies now have links on its own website.',
-    'Settings links to the updated pages, which are available without signing in.'
+    'Skip a debt payment for one paycheck and restore it when your plans change.',
+    'Record $0 due for a single payment cycle without changing later payments.',
+    'Zero-due cycles no longer show payment warnings for their saved due date.'
   ],
   fixedReportIds: []
 });

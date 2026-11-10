@@ -86,6 +86,7 @@ export function resolveDebtDetails({card,primary=null,backup=null,issuers=[],sta
   resolved[key]=(automatic||key==='balance'||key==='creditLimit')&&list.length?list[0]:reviewed[key]||field(manual[key],'Entered manually');
   if(resolved[key].stale)notes.push(key==='balance'?'Using the last reported balance; refresh its connection.':'Some payment details use older saved information.');
  }
+ if(primary?.source==='lunchflow')notes.push('Lunch Flow supplies balances and transactions here. Minimums and due dates come from a linked statement or your saved details.');
  const positive=[...candidates.monthlyMinimum.filter(c=>c.value>0),...pastMinimums].sort((a,b)=>timestamp(b.updated)-timestamp(a.updated));
  const forecastMinimum=resolved.monthlyMinimum.value>0?resolved.monthlyMinimum:cents(futureMinimum)>0?field(futureMinimum,'Saved future estimate'):positive[0]||field(manual.monthlyMinimum>0?manual.monthlyMinimum:card.lastPositiveMonthlyMinimum>0?Math.round(card.lastPositiveMonthlyMinimum*100):null,'Saved payment plan');
  return {...resolved,forecastMinimum,currentCycleMinimum:automatic&&!resolved.monthlyMinimum.reviewed&&resolved.monthlyMinimum.source!=='Entered manually',notes:[...new Set(notes)]};
@@ -98,7 +99,14 @@ export function resolveDebtConnections(planner,accounts,issuers,cards,statements
   const primary=accounts.find(a=>a.id===primaryId)|| (issuer?{id:primaryId,source:'plaid',itemId:issuer.itemId,currency:issuer.currency,balance:issuer.balance,balanceUpdated:issuer.fieldUpdated?.balance||issuer.updated,balanceUnavailable:issuer.stale}:null);
   const preference=issuer?planner.creditCards?.[issuer.id]:null;
   const saved={...card,dueDate:preference?.fallbackDate||card.dueDate||''};
-  return [card.id,resolveDebtDetails({card:saved,primary,backup:accounts.find(a=>a.id===planner.debtBackupLinks?.[card.id]),issuers,statement:statements[card.id],items,manualLimit:planner.debtCreditLimits?.[card.id],futureMinimum:planner.debtFutureMinimums?.[card.id]??preference?.fallbackAmount,automatic:planner.debtAutoDetails?.[card.id]!==false,now})];
+  const details=resolveDebtDetails({card:saved,primary,backup:accounts.find(a=>a.id===planner.debtBackupLinks?.[card.id]),issuers,statement:statements[card.id],items,manualLimit:planner.debtCreditLimits?.[card.id],futureMinimum:planner.debtFutureMinimums?.[card.id]??preference?.fallbackAmount,automatic:planner.debtAutoDetails?.[card.id]!==false,now});
+  const cycleMinimums=Object.fromEntries(Object.entries(planner.debtCycleMinimums?.[card.id]||{}).filter(([date,entry])=>validDueDate(date)&&entry?.amount===0));
+  // Keep a statement's explicit zero on its own due cycle, including an
+  // unchecked paycheck before the day that the statement was refreshed.
+  if(details.currentCycleMinimum&&details.monthlyMinimum.value===0&&details.dueDate.source!=='Entered manually'&&validDueDate(details.dueDate.value))cycleMinimums[details.dueDate.value]??={amount:0};
+  const cycle=cycleMinimums[details.dueDate.value];
+  if(cycle){details.monthlyMinimum=field(0,planner.debtCycleMinimums?.[card.id]?.[details.dueDate.value]?'Confirmed for this cycle':details.monthlyMinimum.source,cycle.updated||details.monthlyMinimum.updated);details.currentCycleMinimum=true;}
+  return [card.id,{...details,cycleMinimums}];
  }));
 }
 

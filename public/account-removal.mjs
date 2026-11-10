@@ -19,7 +19,7 @@ export function removeDebtsFromPlanner(planner,ids,creditCards=[],creditIds=[]){
  let next=structuredClone(planner);const removed=new Set(ids.map(String)),accounts=new Set();
  for(const id of removed){
   for(const key of ['debtAccountLinks','debtBackupLinks'])if(next[key]?.[id])accounts.add(next[key][id]);
-  for(const key of ['debtAccountLinks','debtBackupLinks','debtAutoDetails','debtCreditLimits','debtFutureMinimums'])removeKeys(next[key],[id]);
+  for(const key of ['debtAccountLinks','debtBackupLinks','debtAutoDetails','debtCreditLimits','debtFutureMinimums','debtCycleMinimums'])removeKeys(next[key],[id]);
   removeKeys(next.transactionLinks,[targetKey('debt',id)]);removeKeys(next.emailLinks,[targetKey('debt',id)]);
  }
  const removedCredits=new Set(creditIds);
@@ -41,6 +41,7 @@ export function removeDebtsFromState(state,ids){
  const next=structuredClone(state),removed=new Set(ids.map(String));
  next.cards=(next.cards||[]).filter(c=>!removed.has(String(c.id)));
  removeKeys(next.accountPaymentOverrides,removed);
+ removeKeys(next.paycheckSkippedPayments,removed);
  for(const field of ['paycheckSlices','paycheckSquashes','debtPaymentHistory','debtInterestHistory','debtFeeHistory'])for(const [paycheck,entries]of Object.entries(next[field]||{})){
   removeKeys(entries,removed);if(!Object.keys(entries).length)delete next[field][paycheck];
  }

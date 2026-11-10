@@ -440,3 +440,5 @@ dialog :is(input,select,textarea){min-width:0;max-width:100%;box-sizing:border-b
 
 .debt-payment-notice{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;margin:8px 0;padding:8px 10px;border-left:3px solid var(--accent);border-radius:6px;background:var(--accent-soft);color:var(--ink);font-size:.75rem}
 .debt-payment-notice span{color:var(--muted)}
+
+.paycheck-skip,.paycheck-skipped-row button{font:inherit;font-size:.7rem;min-height:36px;padding:6px 10px;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--accent);cursor:pointer}.paycheck-skip{align-self:flex-start;margin:5px 0}.paycheck-skipped{margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:12px;font-size:.75rem}.paycheck-skipped summary{cursor:pointer;color:var(--muted)}.paycheck-skipped-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:10px}.paycheck-skipped-row span{min-width:0;overflow-wrap:anywhere}.paycheck-skipped-row small{display:block;color:var(--muted);margin-top:4px}.paycheck-skipped-row button{flex-shrink:0}

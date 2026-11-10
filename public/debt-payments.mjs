@@ -18,7 +18,7 @@ export function validDueDate(value){
  return /^\d{4}-\d{2}-\d{2}$/.test(value||'')&&Number.isFinite(Date.parse(value+'T12:00Z'))&&new Date(value+'T12:00Z').toISOString().slice(0,10)===value;
 }
 export function paymentIsLate(timing,payday,today,checked,amount){
- return !checked&&amount>0&&validDueDate(timing?.dueDate)&&timing.dueDate<(payday>today?payday:today);
+ return !checked&&amount>0&&timing?.minimum!==0&&validDueDate(timing?.dueDate)&&timing.dueDate<(payday>today?payday:today);
 }
 // Split a complete monthly requirement across the actual biweekly paydays in
 // (previous due date, current due date]. The last payday receives cent residue.
@@ -44,6 +44,12 @@ export function monthlyPaycheckAllocation(card,payday,startDate){
 // Each monthly due date belongs to the last biweekly payday before its buffer.
 // Calendar arithmetic uses UTC noon so daylight-saving changes cannot move a day.
 export function scheduledPayment(card,payday,startDate,settings={}){
+ const result=scheduledPaymentPlan(card,payday,startDate,settings);
+ const cycle=result.dueDate||monthlyPaycheckAllocation(card,payday,startDate)?.dueDate;
+ if(validDueDate(cycle)&&card.cycleMinimums?.[cycle]?.amount===0)return {...result,minimum:0,monthlyMinimum:0,noPaymentDue:true,estimatedMinimum:false,late:false};
+ return result;
+}
+function scheduledPaymentPlan(card,payday,startDate,settings={}){
  const metadata={estimatedMinimum:!!card.estimatedMinimum,missingFutureMinimum:!!card.missingFutureMinimum,forecastMonthlyMinimum:card.forecastMonthlyMinimum??null};
  const timing=paymentTiming(settings),fallback={...metadata,scheduled:true,minimum:Math.max(0,Number(card.min)||0),dueDate:null,late:false,missingDate:false};
  if(timing.mode!=='due-date'){
@@ -64,7 +70,9 @@ export function scheduledPayment(card,payday,startDate,settings={}){
 
 // Synced terms take effect on upcoming paydays. Checked history stays unchanged.
 export function effectiveDebtTerms(card,terms,payday,checked=false){
- if(checked||!terms||!validDueDate(terms.date)||payday<terms.date)return card;
+ if(checked)return card;
+ if(terms?.cycleMinimums)card={...card,cycleMinimums:terms.cycleMinimums};
+ if(!terms||!validDueDate(terms.date)||payday<terms.date)return card;
  // A provider zero describes one paid statement. User-entered zero stays literal.
  // Future amounts are labeled estimates until a new statement supplies its minimum.
  const afterPaidCycle=terms.monthlyMinimum===0&&terms.currentCycleMinimum&&payday>(validDueDate(terms.currentCycleThrough)?terms.currentCycleThrough:terms.date);
