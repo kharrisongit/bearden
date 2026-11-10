@@ -1,5 +1,6 @@
 import {createBugReportStore} from './bug-reports.mjs';
 import {APP_RELEASE} from './public/app-release.mjs';
+import {SESSION_SECONDS,SESSION_MS,sessionRenewalExpiry,isSessionActivity} from './auth-session.mjs';
 import {retireLegacyBanks,retiredBankAccount,cleanRetiredBankLinks} from './bank-retirement.mjs';
 import {connectLunchflow,publicLunchflow,syncLunchflow,configureLunchflowAccount} from './lunchflow.mjs';
 import {applyPlaidLoanBalances,diagnosePlaid} from './plaid-loans.mjs';
@@ -46,7 +47,18 @@ function cookies(req){return Object.fromEntries((req.headers.cookie||'').split('
 function sessionIdentity(req){const s=cookies(req).bearden;if(!s)return null;const id=hash(s),r=db.prepare('SELECT expires FROM sessions WHERE hash=?').get(id);return r&&r.expires>Date.now()?rawRead('auth-session:'+id,s.startsWith('v2.')?null:users.legacy):null;}
 function authenticated(req){return !!sessionIdentity(req);}
 function cookie(name,value,seconds){return `${name}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${seconds}${secure?'; Secure':''}`;}
-function json(res,status,data){res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));}
+function renewSession(req,res,status){
+ if(status>=400||!isSessionActivity({path:new URL(req.url,origin).pathname,method:req.method,requestOrigin:req.headers.origin,fetchSite:req.headers['sec-fetch-site']},origin))return;
+ try{
+  if(!sessionIdentity(req))return;
+  const token=cookies(req).bearden,id=hash(token),now=Date.now(),session=db.prepare('SELECT expires FROM sessions WHERE hash=?').get(id),expires=sessionRenewalExpiry(session?.expires,now);
+  if(expires){
+   const result=db.prepare('UPDATE sessions SET expires=? WHERE hash=? AND expires>? AND expires=?').run(expires,id,now,session.expires);
+   if(result.changes)res.setHeader('Set-Cookie',cookie('bearden',token,SESSION_SECONDS));
+  }
+ }catch{/* Keep a successful save/read usable if session renewal is temporarily unavailable. */}
+}
+function json(res,status,data){renewSession(res.req,res,status);res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));}
 function redirect(res,path,headers={}){res.writeHead(302,{Location:path,...headers});res.end();}
 async function body(req){let n=0,parts=[];for await(const p of req){n+=p.length;if(n>1000000)throw Error('Request too large');parts.push(p);}return JSON.parse(Buffer.concat(parts).toString()||'{}');}
 const microsoftToken=params=>exchangeMicrosoftToken(request,process.env.MICROSOFT_CLIENT_ID,process.env.MICROSOFT_CLIENT_SECRET,params);
@@ -95,7 +107,7 @@ async function handle(req,res){
    if(!user.email_verified)return json(res,403,{error:'Google must verify your email before signing in.'});
    if(record.gmail){if(!token.scope?.split(' ').includes('https://www.googleapis.com/auth/gmail.readonly')||!token.refresh_token)throw Error('Gmail read-only and offline access were not granted. Reconnect and allow Gmail access.');if(runningSync())await runningSync();const c=connections();connectMailbox(c,user,token.refresh_token,users.current().email);write('connections',c);}
    if(record.gmail)return redirect(res,'/?connected=1',{'Set-Cookie':cookie('bearden_oauth','',0)});
-   db.prepare('DELETE FROM sessions WHERE expires < ?').run(Date.now());const identity=googleIdentity(user,allowed),session='v2.'+random();rawWrite('auth-session:'+hash(session),identity);rawWrite('user-index:'+identity.accountId,{...rawRead('user-index:'+identity.accountId,{lastSync:0}),...identity});db.prepare('INSERT INTO sessions VALUES(?,?)').run(hash(session),Date.now()+7*86400000);return redirect(res,'/?connected=1',{'Set-Cookie':[cookie('bearden',session,7*86400),cookie('bearden_oauth','',0)]});
+   db.prepare('DELETE FROM sessions WHERE expires < ?').run(Date.now());const identity=googleIdentity(user,allowed),session='v2.'+random();rawWrite('auth-session:'+hash(session),identity);rawWrite('user-index:'+identity.accountId,{...rawRead('user-index:'+identity.accountId,{lastSync:0}),...identity});db.prepare('INSERT INTO sessions VALUES(?,?)').run(hash(session),Date.now()+SESSION_MS);return redirect(res,'/?connected=1',{'Set-Cookie':[cookie('bearden',session,SESSION_SECONDS),cookie('bearden_oauth','',0)]});
   }
   if(path==='/auth/microsoft'&&req.method==='GET'){
    if(!microsoftConfigured)return json(res,503,{error:'Microsoft sign-in is not configured yet.'});
@@ -112,7 +124,7 @@ async function handle(req,res){
    if(record.gmail&&(!authenticated(req)||proof.ownerSession!==hash(cookies(req).bearden||'')))return json(res,403,{error:'Sign in to the same BearDen account before connecting this inbox.'});
    const token=await microsoftToken({grant_type:'authorization_code',code:u.searchParams.get('code'),redirect_uri:origin+'/auth/microsoft/callback',code_verifier:proof.verifier}),user=await microsoftUser(request,token);
    if(record.gmail){requireMicrosoftMail(token);if(runningSync())await runningSync();const c=connections();connectMicrosoftMailbox(c,user,token.refresh_token,users.current().email);write('connections',c);return redirect(res,'/?connected=1',{'Set-Cookie':cookie('bearden_microsoft_oauth','',0)});}
-   const identity=microsoftIdentity(user),session='v2.'+random();rawWrite('auth-session:'+hash(session),identity);rawWrite('user-index:'+identity.accountId,{...rawRead('user-index:'+identity.accountId,{lastSync:0}),...identity});db.prepare('DELETE FROM sessions WHERE expires < ?').run(Date.now());db.prepare('INSERT INTO sessions VALUES(?,?)').run(hash(session),Date.now()+7*86400000);return redirect(res,'/?connected=1',{'Set-Cookie':[cookie('bearden',session,7*86400),cookie('bearden_microsoft_oauth','',0)]});
+   const identity=microsoftIdentity(user),session='v2.'+random();rawWrite('auth-session:'+hash(session),identity);rawWrite('user-index:'+identity.accountId,{...rawRead('user-index:'+identity.accountId,{lastSync:0}),...identity});db.prepare('DELETE FROM sessions WHERE expires < ?').run(Date.now());db.prepare('INSERT INTO sessions VALUES(?,?)').run(hash(session),Date.now()+SESSION_MS);return redirect(res,'/?connected=1',{'Set-Cookie':[cookie('bearden',session,SESSION_SECONDS),cookie('bearden_microsoft_oauth','',0)]});
   }
   if(path==='/api/support/reports'||path==='/api/support/reports/status'){
    const bearer=await reports.authorize(req.headers.authorization),ownerSession=authenticated(req)&&users.current().accountId==='owner';

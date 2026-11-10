@@ -1,8 +1,68 @@
 import {googleIdentity} from '../user-scope.mjs';
+import {SESSION_MS,SESSION_SECONDS} from '../auth-session.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import {DatabaseSync} from 'node:sqlite';import {readFileSync} from 'node:fs';import {randomBytes,createHash} from 'node:crypto';
 import worker,{runtime} from '../cloudflare/worker.mjs';import {blank} from '../public/engine.mjs';
 function fixture(fetcher){const db=new DatabaseSync(':memory:');db.exec(readFileSync('cloudflare/schema.sql','utf8'));let queries=0;const env={DATA_KEY:randomBytes(32).toString('base64'),APP_URL:'https://bearden.example',ALLOWED_EMAIL:'owner@example.com',GOOGLE_CLIENT_ID:'test-client',GOOGLE_CLIENT_SECRET:'test-secret',PLAID_CLIENT_ID:'test-plaid',PLAID_SECRET:'test-plaid-secret',DB:{prepare(sql){return {bind(...args){return {async first(){queries++;return db.prepare(sql).get(...args)||null;},async all(){queries++;return {results:db.prepare(sql).all(...args)};},async run(){queries++;const r=db.prepare(sql).run(...args);return {meta:{changes:Number(r.changes)}};}};}};}},ASSETS:{fetch:async()=>new Response('test asset')}};const app=runtime(env,fetcher);const token='test-session';db.prepare('INSERT INTO sessions VALUES(?,?)').run(createHash('sha256').update(token).digest('hex'),Date.now()+60000);return {db,env,app,token,get queries(){return queries;},set(id,data){db.prepare('INSERT OR REPLACE INTO vault VALUES(?,?)').run(id,app.encrypt(data));},get(id){return app.decrypt(db.prepare('SELECT value FROM vault WHERE id=?').get(id).value);},req(path,body,origin=env.APP_URL){return new Request(env.APP_URL+path,{method:body===undefined?'GET':'POST',headers:{Cookie:'bearden='+token,Origin:origin,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});}};}
 test('Worker denies unauthenticated private requests',async()=>{const f=fixture();const r=await f.app.handle(new Request('https://bearden.example/api/state'));assert.equal(r.status,401);f.db.close();});
+test('Worker upgrades an active seven-day sign-in and renews it on later app use',async t=>{
+ const now=Date.parse('2026-11-09T20:00:00Z');t.mock.timers.enable({apis:['Date'],now});
+ const f=fixture();t.after(()=>f.db.close());
+ const id=createHash('sha256').update(f.token).digest('hex'),expiry=()=>f.db.prepare('SELECT expires FROM sessions WHERE hash=?').get(id)?.expires;
+ f.db.prepare('UPDATE sessions SET expires=?').run(now+7*86400000);
+ const first=await f.app.handle(f.req('/api/config'));
+ assert.equal((await first.json()).authenticated,true);
+ assert.equal(expiry(),now+SESSION_MS);
+ assert.match(first.headers.get('set-cookie'),new RegExp('Max-Age='+SESSION_SECONDS));
+ assert.match(first.headers.get('set-cookie'),/HttpOnly; Secure; SameSite=Lax; Path=\//);
+ const second=await f.app.handle(f.req('/api/state'));assert.equal(second.headers.get('set-cookie'),null);assert.equal(expiry(),now+SESSION_MS);
+ t.mock.timers.tick(86400000);
+ const later=await f.app.handle(f.req('/api/classic'));assert.ok(later.headers.get('set-cookie'));assert.equal(expiry(),Date.now()+SESSION_MS);
+ // Returning after the old 7-day limit still works; 90 idle days then expires.
+ t.mock.timers.tick(8*86400000);assert.equal((await(await f.app.handle(f.req('/api/config'))).json()).authenticated,true);
+ t.mock.timers.tick(SESSION_MS);
+ const expired=await f.app.handle(f.req('/api/state'));assert.equal(expired.status,401);assert.equal(expired.headers.get('set-cookie'),null);
+ assert.equal(expiry(),Date.now());
+});
+test('Worker does not renew sessions on rejected, cross-site or background requests',async t=>{
+ const f=fixture();t.after(()=>f.db.close());const expiry=f.db.prepare('SELECT expires FROM sessions').get().expires;
+ const crossSite=f.req('/api/config');crossSite.headers.delete('Origin');crossSite.headers.set('Sec-Fetch-Site','cross-site');
+ for(const req of [f.req('/api/state',undefined,'https://evil.example'),crossSite,f.req('/api/state',{},'https://evil.example'),f.req('/api/not-found'),f.req('/classic.js')]){
+  assert.equal((await f.app.handle(req)).headers.get('set-cookie'),null);
+  assert.equal(f.db.prepare('SELECT expires FROM sessions').get().expires,expiry);
+ }
+ await f.app.syncNextAccount();assert.equal(f.db.prepare('SELECT expires FROM sessions').get().expires,expiry);
+});
+test('Worker logout and unknown or expired cookies cannot recreate a session',async t=>{
+ const f=fixture();t.after(()=>f.db.close());
+ const logout=await f.app.handle(f.req('/api/logout',{}));assert.equal(logout.status,200);assert.match(logout.headers.get('set-cookie'),/bearden=;.*Max-Age=0/);
+ assert.equal(f.db.prepare('SELECT COUNT(*) n FROM sessions').get().n,0);
+ assert.equal((await f.app.handle(f.req('/api/state'))).status,401);
+ const id=createHash('sha256').update(f.token).digest('hex');f.db.prepare('INSERT INTO sessions VALUES(?,?)').run(id,Date.now()-1);
+ const expired=await f.app.handle(f.req('/api/config'));assert.equal((await expired.json()).authenticated,false);assert.equal(expired.headers.get('set-cookie'),null);
+ assert.ok(f.db.prepare('SELECT expires FROM sessions').get().expires<Date.now());
+});
+test('Worker renewal cannot restore a session revoked while a request is finishing',async t=>{
+ const f=fixture();t.after(()=>f.db.close());const prepare=f.env.DB.prepare;
+ f.env.DB.prepare=sql=>{
+  if(sql.startsWith('UPDATE sessions SET expires='))f.db.prepare('DELETE FROM sessions').run();
+  return prepare(sql);
+ };
+ const r=await f.app.handle(f.req('/api/config'));assert.equal(r.status,200);assert.equal(r.headers.get('set-cookie'),null);
+ assert.equal(f.db.prepare('SELECT COUNT(*) n FROM sessions').get().n,0);
+ assert.equal((await f.app.handle(f.req('/api/state'))).status,401);
+});
+test('simultaneous Worker requests renew an existing session only once',async t=>{
+ const f=fixture();t.after(()=>f.db.close());
+ const responses=await Promise.all([f.app.handle(f.req('/api/config')),f.app.handle(f.req('/api/config'))]);
+ assert.equal(responses.filter(r=>r.headers.has('set-cookie')).length,1);
+ assert.ok(f.db.prepare('SELECT expires FROM sessions').get().expires>Date.now()+SESSION_MS-5000);
+});
+test('Worker preserves a successful response when renewal storage is temporarily unavailable',async t=>{
+ const f=fixture();t.after(()=>f.db.close());const prepare=f.env.DB.prepare,expires=f.db.prepare('SELECT expires FROM sessions').get().expires;
+ f.env.DB.prepare=sql=>{if(sql.startsWith('UPDATE sessions SET expires='))throw Error('D1 temporarily unavailable');return prepare(sql);};
+ const r=await f.app.handle(f.req('/api/config'));assert.equal((await r.json()).authenticated,true);assert.equal(r.headers.get('set-cookie'),null);
+ assert.equal(f.db.prepare('SELECT expires FROM sessions').get().expires,expires);
+});
 test('Worker uses persistent encrypted records, checks origin and revision',async()=>{const f=fixture(),s=blank();s.accounts=[{id:'cash',name:'Private bank',balance:12345,include:true}];assert.equal((await f.app.handle(f.req('/api/state',{state:s,revision:0},'https://evil.example'))).status,403);assert.equal((await f.app.handle(f.req('/api/state',{state:s,revision:0}))).status,200);assert.equal((await f.app.handle(f.req('/api/state',{state:s,revision:0}))).status,409);assert.equal((await (await f.app.handle(f.req('/api/state'))).json()).state.accounts[0].balance,12345);assert.ok(!f.db.prepare('SELECT value FROM vault').get().value.includes('Private bank'));f.db.close();});
 test('D1 lock prevents overlapping writes across runtime instances',async()=>{const f=fixture();f.db.prepare('INSERT INTO locks VALUES(?,?,?)').run('sync','other',Date.now()+60000);await assert.rejects(()=>f.app.handle(f.req('/api/state',{state:blank(),revision:0})),/already running/);assert.equal(f.db.prepare('SELECT owner FROM locks').get().owner,'other');f.db.close();});
 test('encryption is authenticated and wrong keys cannot read it',()=>{const f=fixture(),data=f.app.encrypt({secret:'private'}),g=fixture();assert.deepEqual(f.app.decrypt(data),{secret:'private'});assert.throws(()=>g.app.decrypt(data));f.db.close();g.db.close();});
@@ -24,7 +84,7 @@ test('unclear electric emails report status without creating a review list; rece
  f.set('connections',{items:[],transactions:[],candidates:[],gmail:{refreshToken:'refresh'}});await f.app.sync();const data=await (await f.app.handle(f.req('/api/state'))).json();assert.equal(data.state.bills.length,0);assert.equal(data.connections.candidates.length,0);assert.match(data.connections.electricStatus,/unclear/);f.db.close();
 });
 test('OAuth start uses bound state and PKCE; callback rejects incorrect binding',async()=>{const f=fixture(),r=await f.app.handle(f.req('/auth/google'));assert.equal(r.status,302);const url=new URL(r.headers.get('location'));assert.equal(url.searchParams.get('code_challenge_method'),'S256');assert.ok(r.headers.get('set-cookie').includes('HttpOnly; Secure; SameSite=Lax'));const result=await f.app.handle(f.req('/auth/google/callback?state=wrong&code=test'));assert.equal(result.status,400);f.db.close();});
-test('Google callback accepts another verified email into a separate private account',async()=>{const f=fixture(async url=>url.includes('/token')?Response.json({access_token:'a'}):Response.json({email_verified:true,email:'other@example.com',sub:'other-user'}));const r=await f.app.handle(f.req('/auth/google')),state=new URL(r.headers.get('location')).searchParams.get('state');const callback=new Request(f.env.APP_URL+'/auth/google/callback?state='+state+'&code=code',{headers:{Cookie:'bearden_oauth='+state}});const response=await f.app.handle(callback);assert.equal(response.status,302);const session=response.headers.get('set-cookie').match(/bearden=([^;]+)/)[1];const saved=await(await f.app.handle(new Request(f.env.APP_URL+'/api/classic',{headers:{Cookie:'bearden='+session}}))).json();assert.deepEqual(saved.state.values,{});assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM oauth').get().n,0);f.db.close();});
+test('Google callback accepts another verified email into a separate private account',async()=>{const f=fixture(async url=>url.includes('/token')?Response.json({access_token:'a'}):Response.json({email_verified:true,email:'other@example.com',sub:'other-user'}));const r=await f.app.handle(f.req('/auth/google')),state=new URL(r.headers.get('location')).searchParams.get('state');const callback=new Request(f.env.APP_URL+'/auth/google/callback?state='+state+'&code=code',{headers:{Cookie:'bearden_oauth='+state}});const response=await f.app.handle(callback);assert.equal(response.status,302);const session=response.headers.get('set-cookie').match(/bearden=([^;]+)/)[1];assert.match(response.headers.get('set-cookie'),new RegExp('Max-Age='+SESSION_SECONDS));const expires=f.db.prepare('SELECT expires FROM sessions WHERE hash=?').get(createHash('sha256').update(session).digest('hex')).expires;assert.ok(expires>Date.now()+SESSION_MS-5000&&expires<=Date.now()+SESSION_MS);const saved=await(await f.app.handle(new Request(f.env.APP_URL+'/api/classic',{headers:{Cookie:'bearden='+session}}))).json();assert.deepEqual(saved.state.values,{});assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM oauth').get().n,0);f.db.close();});
 test('unconfigured scheduled worker does no provider work',async()=>{let called=false;await worker.scheduled({}, {}, {waitUntil(){called=true;}});assert.equal(called,false);});
 
 test('bank connection returns balances immediately without requesting transaction history',async()=>{
@@ -338,7 +398,7 @@ test('Microsoft-only deployment signs in to an empty private profile without reu
  const f=microsoftFixture(fetcher);delete f.env.GOOGLE_CLIENT_ID;delete f.env.GOOGLE_CLIENT_SECRET;f.app=runtime(f.env,fetcher);
  f.set('classic',{state:{version:1,values:{notes:'private Google budget'}},revision:3});
  const start=await microsoftStart(f);assert.match(start.response.headers.get('set-cookie'),/HttpOnly; Secure; SameSite=Lax/);assert.equal(start.url.searchParams.get('prompt'),'select_account');assert.doesNotMatch(start.url.searchParams.get('scope'),/Mail\./);
- const callback=microsoftCallback(f,start.state),response=await f.app.handle(callback);assert.equal(response.status,302);const session=response.headers.get('set-cookie').match(/bearden=([^;]+)/)[1];
+ const callback=microsoftCallback(f,start.state),response=await f.app.handle(callback);assert.equal(response.status,302);const session=response.headers.get('set-cookie').match(/bearden=([^;]+)/)[1];assert.match(response.headers.get('set-cookie'),new RegExp('Max-Age='+SESSION_SECONDS));const expires=f.db.prepare('SELECT expires FROM sessions WHERE hash=?').get(createHash('sha256').update(session).digest('hex')).expires;assert.ok(expires>Date.now()+SESSION_MS-5000&&expires<=Date.now()+SESSION_MS);
  const req=path=>new Request(f.env.APP_URL+path,{headers:{Cookie:'bearden='+session}}),config=await(await f.app.handle(req('/api/config'))).json();assert.equal(config.microsoftConfigured,true);assert.equal(config.googleConfigured,false);assert.equal(config.authenticated,true);assert.notEqual(config.accountId,'owner');
  const data=await(await f.app.handle(req('/api/classic'))).json();assert.deepEqual(data.state.values,{});assert.equal(f.get('classic').state.values.notes,'private Google budget');assert.equal((await f.app.handle(callback)).status,400);assert.equal(calls.length,2);f.db.close();
 });

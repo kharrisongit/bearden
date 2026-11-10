@@ -1,10 +1,10 @@
 // Ship this manifest with each user-visible update. Never put private report text here.
 export const APP_RELEASE = Object.freeze({
-  id: '2026-11-06-payment-reconciliation-1',
-  title: 'Payment tracking across email and bank accounts',
+  id: '2026-11-09-persistent-sign-in-1',
+  title: 'Stay signed in longer',
   notes: [
-    'Debt cards show one current payment status. Linked receipts can match posted withdrawals even when the bank changes its payment description.',
-    'Payment credits on linked credit cards and loans can confirm settlement alongside refreshed balances. Bills apply a matched withdrawal to the cycle identified by its receipt.'
+    'Google and Microsoft sign-ins now last 90 days and renew automatically as you use BearDen.',
+    'If your previous sign-in already expired, sign in once to start the longer session. Signing out still ends access on this device immediately.'
   ],
   fixedReportIds: []
 });
