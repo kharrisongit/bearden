@@ -28,6 +28,14 @@ let savingsContributionOverrides = {}; // { [goalId]: { [paycheckNum]: amount } 
 let checkedPaychecks = {};
 let bonusInputOpenForPaycheck = null; // which paycheck's inline "add bonus" field is expanded
 let currentPayoffMethod = 'avalanche'; // avalanche, snowball, minimum, or burn
+// The monthly calculator saves its own preferences without changing paycheck allocations.
+let monthlyPayoffPlan = null;
+let monthlyPayoffSavePending = false;
+function normalizeMonthlyPayoffPlan(value){
+  if(!value||typeof value!=='object'||!Number.isFinite(value.monthlyBudget)||value.monthlyBudget<=0||value.monthlyBudget>1e9||!['avalanche','snowball'].includes(value.method))return null;
+  const monthlyBudget=Math.round(value.monthlyBudget*100)/100;
+  return monthlyBudget>0?{monthlyBudget,method:value.method}:null;
+}
 let budgetItemOverrides = {}; // { [itemId]: { [paycheckNum]: amount } } — per-check edits to a budget line item
 let paycheckSquashes = {}; // Full payoff selections, including projected interest for that paycheck.
 let paycheckSlices = {}; // { [paycheck]: { [cardId]: true } }; selections recalculate from that paycheck’s balance
@@ -506,6 +514,7 @@ function gatherAppState(){
     takeHome: document.getElementById('takeHome').value,
     startDate: document.getElementById('startDate').value,
     payoffMethod: currentPayoffMethod,
+    monthlyPayoffPlan: monthlyPayoffPlan ? {...monthlyPayoffPlan} : null,
     debtPaymentSettings: window.debtPaymentSettings || {},
     debtPaymentHistory: window.debtPaymentHistory || {},
     debtInterestHistory: window.debtInterestHistory || {},
@@ -592,6 +601,7 @@ async function loadAppState(){
     if (!result || !result.value) return null;
     const state = JSON.parse(result.value);
     loadedState = state;
+    monthlyPayoffPlan = normalizeMonthlyPayoffPlan(state.monthlyPayoffPlan);
     window.debtPaymentSettings = window.BearDenDebtPayments.paymentTiming(state.debtPaymentSettings);
     window.debtPaymentHistory = state.debtPaymentHistory || {};
     window.debtInterestHistory = state.debtInterestHistory || {};
@@ -7141,6 +7151,27 @@ function addConnectedBill(bill,date){
 
 // Read-only snapshot for the Income overview; the original payoff engine remains authoritative.
 window.getDebtPlan=()=>({state:gatherAppState(),syncedDebtBalances:window.syncedDebtBalances||{},syncedDebtTerms:window.syncedDebtTerms||{},schedule:lastSchedule.map(r=>({...r,date:r.date.getFullYear()+'-'+String(r.date.getMonth()+1).padStart(2,'0')+'-'+String(r.date.getDate()).padStart(2,'0')}))});
+
+window.saveMonthlyPayoffPlan=async function(value){
+ await window.classicReady;
+ const next=normalizeMonthlyPayoffPlan(value);
+ if(!next)throw Error('Enter a monthly amount greater than $0 and choose a payoff method.');
+ if(monthlyPayoffSavePending)throw Error('Your monthly plan is still saving.');
+ monthlyPayoffSavePending=true;
+ const before=monthlyPayoffPlan;
+ clearTimeout(saveDebounceTimer);
+ monthlyPayoffPlan=next;
+ try{
+  const result=await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));
+  if(!result)throw Error('The monthly plan did not save. Try again.');
+  setStorageStatus('Monthly plan saved');
+  window.dispatchEvent(new Event('bearden-plan-changed'));
+  return {...next};
+ }catch(error){
+  if(monthlyPayoffPlan===next)monthlyPayoffPlan=before;
+  throw error;
+ }finally{monthlyPayoffSavePending=false;}
+};
 
 // Save deletion and its account links together, then update the visible plan.
 window.deleteDebtAccounts=async function(ids,nextPlanner){
