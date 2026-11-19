@@ -1,6 +1,6 @@
 // Ship this manifest with each user-visible update. Never put private report text here.
 export const APP_RELEASE = Object.freeze({
-  id: '2026-11-19-monthly-debt-payoff-1',
+  id: '2026-11-19-monthly-debt-payoff-2',
   title: 'Plan your monthly debt payoff',
   notes: [
     'Choose a monthly debt budget and estimate your payoff time and interest.',

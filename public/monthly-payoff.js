@@ -100,7 +100,8 @@ async function mountMonthlyPayoff(){
   $('monthlyPayoffFees').textContent=Number.isFinite(result.totalFees)?(result.totalFees>0?'+ '+money(result.totalFees)+' estimated fees':'No additional fees modeled'):'Interest estimate is incomplete';
   $('monthlyPayoffTotal').textContent=money(result.totalPaid);
   const first=result.rows?.[0],minimum=first?.minimumTotal??(['missing-details','invalid'].includes(result.status)?null:result.minimumRequired);
-  setHTML($('monthlyPayoffSplit'),'<div><span>First month’s minimums</span><strong>'+money(minimum)+'</strong></div><div><span>Extra toward payoff</span><strong>'+money(first?first.payments.reduce((sum,payment)=>sum+payment.extra,0):Number.isFinite(minimum)?Math.max(0,value.monthlyBudget-minimum):null)+'</strong></div>');
+  const initialExtra=result.status==='no-debt'?0:first?first.payments.reduce((sum,payment)=>sum+payment.extra,0):Number.isFinite(minimum)?Math.max(0,value.monthlyBudget-minimum):null;
+  setHTML($('monthlyPayoffSplit'),'<div><span>First month’s minimums</span><strong>'+money(minimum)+'</strong></div><div><span>Extra toward payoff</span><strong>'+money(initialExtra)+'</strong></div>');
   let message='',tone='neutral';
   if(result.status==='no-debt')message='Your tracked debts have no remaining balance. Add another debt to include it here.';
   else if(result.status==='insufficient-budget'){

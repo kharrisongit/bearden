@@ -80,4 +80,11 @@ test('failed save keeps the draft and previous preference; refreshed balances up
  await expect(page.locator('#monthlyPayoffTotal')).toHaveText('$600.00');
  await expect(page.locator('#monthlyPayoffBudget')).toHaveValue('300');
  await expect(page.locator('#monthlyPayoffSaveStatus')).toContainText('Could not save monthly plan');
+ await page.evaluate(()=>{
+  const original=window.getDebtPlan;
+  window.getDebtPlan=()=>({...original(),syncedDebtBalances:{1:{balance:0,date:'2026-10-28'},2:{balance:0,date:'2026-10-28'}}});
+  window.dispatchEvent(new Event('bearden-plan-changed'));
+ });
+ await expect(page.locator('#monthlyPayoffDate')).toHaveText('No debt remaining');
+ await expect(page.locator('#monthlyPayoffSplit').locator('strong')).toHaveText(['$0.00','$0.00']);
 });
