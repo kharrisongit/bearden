@@ -132,7 +132,8 @@ function upcomingBudgetPaycheck(){
   if (!start) return 1;
   const now = new Date(), today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
   let n = Math.max(1, Math.ceil((today - Date.parse(start+'T00:00:00Z')) / 86400000 / 14) + 1);
-  while (checkedPaychecks[n]) n++;
+  // Checkboxes are optional; confirmed deposits also advance the planner.
+  while (checkedPaychecks[n] || window.paycheckReceipts?.[n]) n++;
   return n;
 }
 function budgetStartOptions(item){
@@ -480,6 +481,7 @@ function gatherAppState(){
     cards: cardsData.map(c => ({
       id: c.id, name: c.name,
       balance: c.balance,
+      balanceOverride: Number.isSafeInteger(c.balanceOverride)&&c.balanceOverride>=0?c.balanceOverride:null,
       apr: c.apr,
       min: c.min,
       monthlyMinimum: c.monthlyMinimum,
@@ -1287,9 +1289,7 @@ function daysCounterText(targetDate){
 // so it reflects real progress, not just the original projected schedule.
 function paychecksCounterText(targetPaycheck){
   if (targetPaycheck === null || targetPaycheck === undefined) return '';
-  const checkedNums = Object.keys(checkedPaychecks).filter(k => checkedPaychecks[k]).map(Number);
-  const maxChecked = checkedNums.length ? Math.max(...checkedNums) : 0;
-  const remaining = targetPaycheck - maxChecked;
+  const remaining = targetPaycheck - (upcomingBudgetPaycheck()-1);
   if (remaining <= 0) return 'This paycheck 💰';
   if (remaining === 1) return '1 paycheck to go';
   return `${remaining} paychecks to go`;
@@ -1779,9 +1779,10 @@ function buildAccountDetailHTML(d, idx){
 
     <div class="card-group-title">Edit account</div>
     <div class="field-row">
-      <div class="field-name">Balance</div>
+      <div class="field-name">Plan starting balance</div>
       <input type="number" id="bal_${d.id}" value="${d.balance.toFixed(2)}" step="0.01" data-bd-change="calculate()">
     </div>
+    <p class="subtle">For the displayed balance and debt totals, <button type="button" data-edit-debt="${d.id}">edit current balance</button> separately.</p>
     <div class="field-row">
       <div class="field-name">APR (%)</div>
       <input type="number" id="apr_${d.id}" value="${(d.apr*100).toFixed(2)}" step="0.01" data-bd-change="calculate()">
@@ -2464,19 +2465,10 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
     out.appendChild(preview);
   }
 
-  // Only the very next upcoming paycheck (the first one not yet checked
-  // off) shows by default — everything else lives behind the expand
-  // button, so the page opens focused on just what's coming up next.
-  let visibleIndices = [];
-  for (let i = 0; i < schedule.length; i++) {
-    if (!checkedPaychecks[schedule[i].paycheck]) {
-      visibleIndices.push(i);
-      if (visibleIndices.length >= 1) break;
-    }
-  }
-  if (visibleIndices.length === 0 && schedule.length > 0) {
-    visibleIndices = [schedule.length - 1]; // everything's checked off — show the last one
-  }
+  // Old unchecked plans stay in expanded history, not the next-paycheck slot.
+  const upcomingNumber=upcomingBudgetPaycheck();
+  const nextIndex=schedule.findIndex(row=>row.paycheck>=upcomingNumber&&!checkedPaychecks[row.paycheck]&&!row.paycheckReceipt);
+  const visibleIndices=nextIndex>=0?[nextIndex]:schedule.length?[schedule.length-1]:[];
   const visibleIndexSet = new Set(visibleIndices);
 
   const alreadyDone = new Array(cards.length).fill(false);
@@ -7186,7 +7178,7 @@ window.deleteDebtAccounts=async function(ids,nextPlanner){
  window.debtPaymentHistory=next.debtPaymentHistory||{};window.debtInterestHistory=next.debtInterestHistory||{};
  window.debtFeeHistory=next.debtFeeHistory||{};window.paycheckIncomeHistory=next.paycheckIncomeHistory||{};
  for(const id of ids){if(window.syncedDebtBalances)delete window.syncedDebtBalances[id];if(window.syncedDebtTerms)delete window.syncedDebtTerms[id];}
- currentDetailAccountIdx=null;calculate();clearTimeout(saveDebounceTimer);
+ window.syncedDebtBalances=effectiveDebtBalanceSnapshots();currentDetailAccountIdx=null;calculate();clearTimeout(saveDebounceTimer);
 };
 
 // Reviewed statement terms never supply or rewrite a live account balance.
@@ -7212,6 +7204,8 @@ window.saveDebtTerms=async function(patch){
 window.saveDebtAccount=async function(data){
  await window.classicReady;
  const name=String(data.name||'').trim(),balance=Number(data.balance),apr=Number(data.apr),monthly=Number(data.minimum);
+ const overrideProvided=data.currentBalance!==undefined,entry=String(data.currentBalance??'').trim(),currentBalance=entry===''?null:Number(entry);
+ if(overrideProvided&&entry!==''&&(!Number.isFinite(currentBalance)||currentBalance<0||currentBalance>1e9))throw Error('Enter a valid current balance or choose automatic balance.');
  if(!name||name.length>100||![balance,apr,monthly].every(Number.isFinite)||balance<0||balance>1e9||monthly<0||monthly>1e9||apr<0||apr>100)throw Error('Enter a name, balance, APR, and payment amount.');
  const dueDate=String(data.dueDate||'');if(dueDate&&!window.BearDenDebtPayments.validDueDate(dueDate))throw Error('Enter a valid payment due date.');
  const oldCards=structuredClone(cardsData),oldCounter=cardIdCounter;
@@ -7223,14 +7217,15 @@ window.saveDebtAccount=async function(data){
  const lastPositiveMonthlyMinimum=monthly>0?monthly:card&&window.BearDenDebtPayments.monthlyMinimum(card)>0?window.BearDenDebtPayments.monthlyMinimum(card):card?.lastPositiveMonthlyMinimum;
  if(!card){cardIdCounter=Math.max(cardIdCounter,...cardsData.map(c=>Number(c.id)||0))+1;card={id:cardIdCounter};cardsData.push(card);}
  Object.assign(card,{name,balance,apr,dueDate,...payment,lastPositiveMonthlyMinimum,debtKind:['credit-card','car-loan','loan','other'].includes(data.debtKind)?data.debtKind:'other'});
+ if(overrideProvided)card.balanceOverride=currentBalance===null?null:Math.round(currentBalance*100);
  if(card.termsSource&&manuallyChangedTerms.length){
   const fields={...(card.termsSource.fields||Object.fromEntries(['apr','monthlyMinimum'].map(key=>[key,{asOf:card.termsSource.asOf,label:card.termsSource.label}])))};
   for(const key of manuallyChangedTerms)delete fields[key];
   card.termsSource={...card.termsSource,fields};
  }
  const syncInputs=()=>cardsData.forEach(c=>{for(const [prefix,key]of [['bal','balance'],['apr','apr'],['monthlyMin','monthlyMinimum']]){const input=document.getElementById(prefix+'_'+c.id);if(input)input.value=prefix==='monthlyMin'?window.BearDenDebtPayments.monthlyMinimum(c):c[key];}});
- try{syncInputs();calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));clearTimeout(saveRetryTimer);window.dismissBearToast?.('autosave-error');setStorageStatus('Saved');return card.id;}
- catch(e){cardsData=oldCards;cardIdCounter=oldCounter;syncInputs();calculate();clearTimeout(saveDebounceTimer);throw e;}
+ try{syncInputs();window.syncedDebtBalances=effectiveDebtBalanceSnapshots();calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));clearTimeout(saveRetryTimer);window.dismissBearToast?.('autosave-error');setStorageStatus('Saved');return card.id;}
+ catch(e){cardsData=oldCards;cardIdCounter=oldCounter;window.syncedDebtBalances=effectiveDebtBalanceSnapshots();syncInputs();calculate();clearTimeout(saveDebounceTimer);throw e;}
 };
 
 window.applyIncomePreset=async function(preset){
@@ -7299,10 +7294,19 @@ window.setCarDebtForecast=loans=>{
  window.carDebtForecast=loans;calculate();return true;
 };
 
+let providerDebtBalanceSnapshots={};
+function effectiveDebtBalanceSnapshots(){
+ const values={...providerDebtBalanceSnapshots};
+ const now=new Date(),today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+ for(const card of cardsData)if(Number.isSafeInteger(card.balanceOverride)&&card.balanceOverride>=0)
+  values[card.id]={balance:card.balanceOverride,date:today,source:'Manual current balance',manual:true,stale:false};
+ return values;
+}
 window.setSyncedDebtBalances=snapshots=>{
- const signature=JSON.stringify(snapshots);
- if(signature===JSON.stringify(window.syncedDebtBalances||{}))return false;
- window.syncedDebtBalances=snapshots;calculate();return true;
+ const signature=JSON.stringify(snapshots||{});
+ if(signature===JSON.stringify(providerDebtBalanceSnapshots))return false;
+ providerDebtBalanceSnapshots=snapshots||{};
+ window.syncedDebtBalances=effectiveDebtBalanceSnapshots();calculate();return true;
 };
 
 
