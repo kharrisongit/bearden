@@ -18,7 +18,7 @@ async function mountMonthlyPayoff(){
  if(!debtList||document.getElementById('monthlyPayoffPlanner'))return;
  const panel=document.createElement('section');
  panel.id='monthlyPayoffPlanner';panel.className='income-card monthly-payoff';panel.setAttribute('aria-labelledby','monthlyPayoffTitle');
- panel.innerHTML='<div class="monthly-payoff-heading"><div><span class="chart-eyebrow">Your path to debt-free</span><h3 id="monthlyPayoffTitle">Monthly payoff planner</h3></div><span class="monthly-payoff-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16M6 16v-4m6 4V8m6 8V4M4 8l6-5"/></svg></span></div>'+
+ panel.innerHTML='<button type="button" id="monthlyPayoffToggle" class="monthly-payoff-heading monthly-payoff-toggle" aria-expanded="false" aria-controls="monthlyPayoffBody"><span><span class="chart-eyebrow">Your path to debt-free</span><h3 id="monthlyPayoffTitle">Monthly payoff planner</h3></span><span class="monthly-payoff-chevron" aria-hidden="true">⌄</span></button><p id="monthlyPayoffCollapsedSummary" class="monthly-payoff-collapsed-summary">Tap to plan your monthly debt payments</p><div id="monthlyPayoffBody" class="monthly-payoff-body" hidden>'+
  '<p class="monthly-payoff-intro">Choose one monthly amount. Cover every included debt’s minimum first, then put the rest toward your next payoff. As debts finish, their payments roll into the next one.</p>'+
  '<form id="monthlyPayoffForm" class="monthly-payoff-form">'+
  '<label for="monthlyPayoffBudget">Monthly debt budget ($)<input id="monthlyPayoffBudget" name="monthlyBudget" type="number" inputmode="decimal" min="0" max="1000000000" step="0.01" placeholder="Enter amount" autocomplete="off" required aria-describedby="monthlyPayoffBudgetHelp"></label>'+
@@ -34,10 +34,12 @@ async function mountMonthlyPayoff(){
  '<p id="monthlyPayoffEmbeddedInterest" class="monthly-payoff-help" hidden>Some starting balances already include scheduled interest. The interest figure shows additional interest only; interest already included cannot be itemized from those balances.</p><div class="monthly-payoff-split" id="monthlyPayoffSplit"></div></div>'+
  '<details id="monthlyPayoffScope" class="monthly-payoff-details"><summary id="monthlyPayoffScopeLabel">Included debts</summary><p class="monthly-payoff-help">Tracked payoff debts only. Car payments in Bills and accounts not linked to your payoff plan are separate. The debts listed below make up this estimate.</p><ul id="monthlyPayoffDebtList" class="monthly-payoff-debt-list"></ul></details>'+
  '<section id="monthlyPayoffSchedule" class="monthly-payoff-schedule" aria-labelledby="monthlyPayoffScheduleTitle" hidden><div class="monthly-payoff-schedule-heading"><h4 id="monthlyPayoffScheduleTitle">Monthly payment plan</h4><div class="monthly-payoff-month-nav"><button type="button" id="monthlyPayoffPrevious" aria-label="Previous payoff month">‹</button><label class="monthly-payoff-month-label" for="monthlyPayoffMonth"><span class="monthly-payoff-sr-only">View payoff month</span><select id="monthlyPayoffMonth"></select></label><button type="button" id="monthlyPayoffNext" aria-label="Next payoff month">›</button></div></div><p id="monthlyPayoffMonthNote" class="monthly-payoff-help"></p><div id="monthlyPayoffPayments"></div><div id="monthlyPayoffMonthTotals" class="monthly-payoff-month-totals"></div></section>'+
- '<details class="monthly-payoff-details" id="monthlyPayoffAssumptions"><summary>How the estimate works</summary><p class="monthly-payoff-help">Uses current tracked balances and saved interest and minimum-payment terms. Assumes the same budget each month, no new borrowing, and on-time payments. Payments are modeled once a month, starting one month from today; actual statement dates and payment timing can change interest. Pay each account by its own due date.</p><ul id="monthlyPayoffNotes" class="monthly-payoff-notes"></ul></details>';
+ '<details class="monthly-payoff-details" id="monthlyPayoffAssumptions"><summary>How the estimate works</summary><p class="monthly-payoff-help">Uses current tracked balances and saved interest and minimum-payment terms. Assumes the same budget each month, no new borrowing, and on-time payments. Payments are modeled once a month, starting one month from today; actual statement dates and payment timing can change interest. Pay each account by its own due date.</p><ul id="monthlyPayoffNotes" class="monthly-payoff-notes"></ul></details></div>';
  debtList.before(panel);
  const $=id=>panel.querySelector('#'+id);
  const budgetInput=$('monthlyPayoffBudget'),methodInput=$('monthlyPayoffMethod'),saveButton=$('saveMonthlyPayoff'),saveStatus=$('monthlyPayoffSaveStatus');
+ const toggle=$('monthlyPayoffToggle'),body=$('monthlyPayoffBody');
+ toggle.addEventListener('click',()=>{body.hidden=!body.hidden;toggle.setAttribute('aria-expanded',String(!body.hidden));});
  let initialized=false,dirty=false,saving=false,frame=null,monthIndex=0,result=null,currentCards=[],lastSavedKey='';
 
  function draft(){
@@ -78,6 +80,8 @@ async function mountMonthlyPayoff(){
   const plan=window.getDebtPlan?.();
   if(!plan)return;
   refreshSettings(plan.state.monthlyPayoffPlan||{});
+  const saved=plan.state.monthlyPayoffPlan;
+  $('monthlyPayoffCollapsedSummary').textContent=Number.isFinite(saved?.monthlyBudget)?money(saved.monthlyBudget)+' per month · '+(saved.method==='snowball'?'Snowball':'Avalanche'):'Tap to plan your monthly debt payments';
   currentCards=(plan.state.cards||[]).map(card=>{
    const status=trackerDebtStatus(plan,card.id);
    return {...card,balance:Number.isFinite(status?.balance)?status.balance/100:card.balance,terms:plan.syncedDebtTerms?.[card.id]};

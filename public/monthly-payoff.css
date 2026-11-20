@@ -100,3 +100,12 @@
  .monthly-payoff-payment dt { font-size:.64rem }
  .monthly-payoff-split span { font-size:.7rem }
 }
+
+#monthlyPayoffPlanner .monthly-payoff-toggle {width:100%;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0;border:0;background:transparent;color:var(--ink);text-align:left;cursor:pointer}
+#monthlyPayoffPlanner .monthly-payoff-toggle > span:first-child {min-width:0}
+#monthlyPayoffPlanner .monthly-payoff-toggle h3 {margin:4px 0 0}
+#monthlyPayoffPlanner .monthly-payoff-chevron {font-size:1.5rem;line-height:1;flex:none;transition:transform .2s}
+#monthlyPayoffPlanner .monthly-payoff-toggle[aria-expanded="true"] .monthly-payoff-chevron {transform:rotate(180deg)}
+#monthlyPayoffPlanner .monthly-payoff-collapsed-summary {margin:0;color:var(--muted);font-size:.78rem;line-height:1.4}
+#monthlyPayoffPlanner .monthly-payoff-toggle[aria-expanded="true"] + .monthly-payoff-collapsed-summary {display:none}
+#monthlyPayoffPlanner .monthly-payoff-body {max-height:min(65dvh,600px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:14px 5px 5px 0;min-width:0}
