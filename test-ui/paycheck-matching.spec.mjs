@@ -39,7 +39,10 @@ test('unchecked older plans do not pin next paycheck or the default starting car
  const f=await fixture(page,{ownStart:'2026-10-02'});
  await expect(page.locator('#scheduleOut .paycheck')).toHaveAttribute('id','paycheck-card-3');
  await expect(page.locator('#scheduleRestOut .paycheck').first()).toHaveAttribute('id','paycheck-card-4');
- await expect(page.locator('#paycheck-card-1')).toBeHidden();
+ // The shared slide animation clips its children instead of display:none.
+ await expect(page.locator('#scheduleRestOut')).not.toHaveClass(/\bopen\b/);
+ expect(await page.locator('#scheduleRestOut').evaluate(el=>el.getBoundingClientRect().height)).toBe(0);
+ await expect(page.locator('#scheduleRestOut #paycheck-card-1')).toHaveCount(1);
  await expect(page.locator('#debtIncomeSummary .income-next-payday')).toContainText('Oct 30');
  await page.clock.setFixedTime(new Date('2026-10-31T12:00:00Z'));
  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
@@ -47,7 +50,9 @@ test('unchecked older plans do not pin next paycheck or the default starting car
  await expect(page.locator('#debtIncomeSummary .income-next-payday')).toContainText('Nov 13');
  await expect(page.locator('#denMenu [data-wallet-value="payday"]')).toContainText('Nov 13');
  await menuGo(page,'overview');await page.locator('#scheduleExpandBtn').click();
- await expect(page.locator('#paycheck-card-1')).toBeVisible();
+ await expect(page.locator('#scheduleRestOut')).toHaveClass(/\bopen\b/);
+ await page.locator('#paycheck-card-1').scrollIntoViewIfNeeded();
+ await expect(page.locator('#paycheck-card-1')).toBeInViewport();
  await page.evaluate(()=>window.flushBearDenState());
  const state=JSON.parse(f.tracker.state.values['app-state']);
  expect(state.startDate).toBe('2026-10-02');expect(state.checkedPaychecks).toEqual({});

@@ -102,3 +102,11 @@ test('a balance saved by the released editor migrates on reload and clears when 
  const restored=JSON.parse(f.tracker.state.values['app-state']).cards[0];
  expect(restored.currentBalanceOverride).toBeUndefined();expect(restored.balanceOverride).toBeUndefined();
 });
+
+
+test('mapped issuer cards retain the manual balance source in their Wallet caption',async({page})=>{
+ await setup(page,{issuer:true,legacyBalance:65000});
+ const card=page.locator('[data-account-id="credit-example"]');
+ await expect(card.locator('.bd-amount-caption')).toHaveText('Manual current balance');
+ await expect(page.locator('#debtTotalAmount')).toContainText('$650.00');
+});

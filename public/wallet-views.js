@@ -244,7 +244,9 @@ window.mountWalletViews = ({icon, bear, esc, money, go, queueRefresh}) => {
       const connection=$('.account-connection',card);if(connection){connection.title=connection.textContent;connection.setAttribute('aria-label',connection.textContent);connection.setAttribute('role','img');footer.append(connection);}
       const statuses=$$('.debt-account-status,.account-status,.debt-paid-badge',info);statuses.forEach(n=>footer.append(n));
       const dueLabel=$('.debt-due-date',card);if(dueLabel&&/^Due [A-Z][a-z]{2} \d{1,2}$/.test(dueLabel.textContent))dueLabel.classList.add('bd-plain-due');
-      const originalAmountLabel=amounts?.querySelector('div>span')?.textContent||'';if(/statement|last reported/i.test(originalAmountLabel))$('.bd-amount-caption',amount).textContent=originalAmountLabel;
+      // Preserve balance provenance for both tracker rows and mapped issuer
+      // cards; a manual correction must remain visible in the Wallet layout.
+      const originalAmountLabel=amounts?.querySelector('div>span')?.textContent||'';if(/manual (?:current )?balance|statement|last reported/i.test(originalAmountLabel))$('.bd-amount-caption',amount).textContent=originalAmountLabel;
       const detailsTemplate=$('template',card);
       const preserved=make('div','bd-account-notes');
       if(!bill){for(const child of original)if(!child.matches('.debt-card-header,.debt-key-amounts,.debt-card-estimates,.den-date-stamp,template,.account-card-footer'))preserved.append(child);}
