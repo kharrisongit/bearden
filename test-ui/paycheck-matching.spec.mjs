@@ -51,6 +51,11 @@ test('unchecked older plans do not pin next paycheck or the default starting car
  await expect(page.locator('#denMenu [data-wallet-value="payday"]')).toContainText('Nov 13');
  await menuGo(page,'overview');await page.locator('#scheduleExpandBtn').click();
  await expect(page.locator('#scheduleRestOut')).toHaveClass(/\bopen\b/);
+ // The open class starts a height transition. Scrolling its clipped children
+ // before that transition releases max-height can scroll the container itself
+ // and lose the scroll position when it finishes expanding.
+ await expect(page.locator('#scheduleRestOut')).toHaveCSS('max-height','none');
+ await expect(page.locator('#paycheck-card-1')).toHaveAttribute('data-bd-built','true');
  await page.locator('#paycheck-card-1').scrollIntoViewIfNeeded();
  await expect(page.locator('#paycheck-card-1')).toBeInViewport();
  await page.evaluate(()=>window.flushBearDenState());
