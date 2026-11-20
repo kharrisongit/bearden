@@ -117,6 +117,7 @@ test('an unknown future minimum uses a clear prompt and the debt editor can supp
  await page.locator('#nav-debt').click();await expect(page.locator('#heroDate')).not.toContainText('needed');await expect(page.locator('#heroDate')).not.toContainText('30 years');
 });
 test('timing settings persist, debt due dates edit, and an extra payment can be added to an empty check',async({page})=>{
+ await page.clock.setFixedTime(new Date('2026-10-26T12:00:00Z'));
  const errors=[];page.on('pageerror',e=>errors.push(e.message));const f=await fixture(page);
  await page.locator('#nav-settings').click();await page.locator('#debtPaymentTiming').selectOption('due-date');await expect(page.locator('#featureSettingsStatus')).toHaveText('Debt payment timing saved.');
  await page.locator('#nav-debt').click();await expect(page.locator('#paycheck-card-1')).toContainText('No debt payment scheduled');await page.locator('[data-add-debt-payment="1"]').click();
