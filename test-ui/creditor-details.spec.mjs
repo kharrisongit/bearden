@@ -50,5 +50,7 @@ test('buffer payments stay quiet, overdue payments warn, and checked payments cl
  await fixture(page,{debtOverrides:{balance:500,dueDate:'2026-11-07'},stateOverrides:{debtPaymentSettings:{mode:'due-date',leadDays:3}}});
  const card=page.locator('#paycheck-card-1');await expect(card).not.toContainText('buffer');await expect(card).not.toContainText('payment is late');
  await page.clock.setFixedTime(new Date('2026-11-08T12:00:00Z'));await page.evaluate(()=>window.calculate());await expect(card).toContainText('Visa: payment is late');
+ // Past unchecked plans remain editable in the expanded schedule.
+ await page.evaluate(()=>window.toggleScheduleExpanded());
  await page.locator('#chk-1').check();await expect(card).not.toContainText('payment is late');
 });

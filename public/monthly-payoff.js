@@ -16,10 +16,12 @@ async function mountMonthlyPayoff(){
  await window.classicReady;
  const debtList=document.getElementById('debtListCard');
  if(!debtList||document.getElementById('monthlyPayoffPlanner'))return;
+ let expanded=false;
+ try{expanded=localStorage.getItem('bearden:monthly-payoff:expanded')==='true';}catch{}
  const panel=document.createElement('section');
  panel.id='monthlyPayoffPlanner';panel.className='income-card monthly-payoff';panel.setAttribute('aria-labelledby','monthlyPayoffTitle');
- panel.innerHTML='<button type="button" id="monthlyPayoffToggle" class="monthly-payoff-heading monthly-payoff-toggle" aria-expanded="false" aria-controls="monthlyPayoffBody"><span><span class="chart-eyebrow">Your path to debt-free</span><h3 id="monthlyPayoffTitle">Monthly payoff planner</h3></span><span class="monthly-payoff-chevron" aria-hidden="true">⌄</span></button><p id="monthlyPayoffCollapsedSummary" class="monthly-payoff-collapsed-summary">Tap to plan your monthly debt payments</p><div id="monthlyPayoffBody" class="monthly-payoff-body" hidden>'+
- '<p class="monthly-payoff-intro">Choose one monthly amount. Cover every included debt’s minimum first, then put the rest toward your next payoff. As debts finish, their payments roll into the next one.</p>'+
+ panel.innerHTML='<h3 class="monthly-payoff-heading"><button type="button" id="monthlyPayoffToggle" class="monthly-payoff-toggle" aria-controls="monthlyPayoffBody" aria-expanded="false" aria-label="Expand monthly payoff planner"><span><span class="chart-eyebrow">Your path to debt-free</span><span id="monthlyPayoffTitle">Monthly payoff planner</span></span><span class="monthly-payoff-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span></button></h3><p id="monthlyPayoffCollapsedSummary" class="monthly-payoff-collapsed-summary">Tap to plan your monthly debt payments</p>'+
+ '<div id="monthlyPayoffBody" class="monthly-payoff-body" role="region" aria-labelledby="monthlyPayoffTitle" tabindex="0" hidden><p class="monthly-payoff-intro">Choose one monthly amount. Cover every included debt’s minimum first, then put the rest toward your next payoff. As debts finish, their payments roll into the next one.</p>'+
  '<form id="monthlyPayoffForm" class="monthly-payoff-form">'+
  '<label for="monthlyPayoffBudget">Monthly debt budget ($)<input id="monthlyPayoffBudget" name="monthlyBudget" type="number" inputmode="decimal" min="0" max="1000000000" step="0.01" placeholder="Enter amount" autocomplete="off" required aria-describedby="monthlyPayoffBudgetHelp"></label>'+
  '<label for="monthlyPayoffMethod">Put extra money toward<select id="monthlyPayoffMethod" name="method"><option value="avalanche">Highest interest first · Avalanche</option><option value="snowball">Smallest balance first · Snowball</option></select></label>'+
@@ -37,9 +39,18 @@ async function mountMonthlyPayoff(){
  '<details class="monthly-payoff-details" id="monthlyPayoffAssumptions"><summary>How the estimate works</summary><p class="monthly-payoff-help">Uses current tracked balances and saved interest and minimum-payment terms. Assumes the same budget each month, no new borrowing, and on-time payments. Payments are modeled once a month, starting one month from today; actual statement dates and payment timing can change interest. Pay each account by its own due date.</p><ul id="monthlyPayoffNotes" class="monthly-payoff-notes"></ul></details></div>';
  debtList.before(panel);
  const $=id=>panel.querySelector('#'+id);
- const budgetInput=$('monthlyPayoffBudget'),methodInput=$('monthlyPayoffMethod'),saveButton=$('saveMonthlyPayoff'),saveStatus=$('monthlyPayoffSaveStatus');
  const toggle=$('monthlyPayoffToggle'),body=$('monthlyPayoffBody');
- toggle.addEventListener('click',()=>{body.hidden=!body.hidden;toggle.setAttribute('aria-expanded',String(!body.hidden));});
+ function setExpanded(value){
+  expanded=value;body.hidden=!expanded;$('monthlyPayoffCollapsedSummary').hidden=expanded;
+  toggle.setAttribute('aria-expanded',String(expanded));
+  toggle.setAttribute('aria-label',(expanded?'Collapse':'Expand')+' monthly payoff planner');
+ }
+ setExpanded(expanded);
+ toggle.addEventListener('click',()=>{
+  setExpanded(!expanded);
+  try{localStorage.setItem('bearden:monthly-payoff:expanded',String(expanded));}catch{}
+ });
+ const budgetInput=$('monthlyPayoffBudget'),methodInput=$('monthlyPayoffMethod'),saveButton=$('saveMonthlyPayoff'),saveStatus=$('monthlyPayoffSaveStatus');
  let initialized=false,dirty=false,saving=false,frame=null,monthIndex=0,result=null,currentCards=[],lastSavedKey='';
 
  function draft(){

@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import * as payments from '../public/debt-payments.mjs';
 import * as interest from '../public/debt-interest.mjs';
+import * as connections from '../public/connection-model.mjs';
 import {trackerDebtStatus,trackerDebtForecast} from '../public/income-model.mjs';
 
 const source=readFileSync('public/classic.js','utf8');
@@ -11,7 +12,7 @@ const calculation=source.slice(source.indexOf('function calculate('),source.inde
 function project({card={},snapshots={},checked={},paymentHistory={},interestHistory={},feeHistory={},terms={}}={}){
  const saved={id:1,name:'Example loan',balance:1000,apr:36.5,min:100,interestRules:{profileId:'daily-simple',balanceBasis:'principal'},...card};
  const fields={takeHome:{value:'1000'},startDate:{value:'2026-11-06'}};
- const ctx=vm.createContext({window:{BearDenDebtPayments:payments,BearDenDebtInterest:interest,debtPaymentSettings:{mode:'every-paycheck'},debtPaymentHistory:paymentHistory,debtInterestHistory:interestHistory,debtFeeHistory:feeHistory,syncedDebtTerms:terms,syncedDebtBalances:structuredClone(snapshots),dispatchEvent(){}},document:{getElementById:id=>fields[id]||null},Event,cardsData:[structuredClone(saved)],paycheckSlices:{},paycheckSquashes:{},budgetItems:[],currentPayoffMethod:'minimum',savingsGoals:[],paycheckOverrides:{},appliedBonuses:{},checkedPaychecks:checked,budgetItemOverrides:{},savingsContributionOverrides:{},extraExpenses:{},accountPaymentOverrides:{},queueSaveAppState(){}});
+ const ctx=vm.createContext({window:{BearDenDebtPayments:payments,BearDenDebtInterest:interest,BearDenDebtConnections:connections,debtPaymentSettings:{mode:'every-paycheck'},debtPaymentHistory:paymentHistory,debtInterestHistory:interestHistory,debtFeeHistory:feeHistory,syncedDebtTerms:terms,syncedDebtBalances:structuredClone(snapshots),dispatchEvent(){}},document:{getElementById:id=>fields[id]||null},Event,cardsData:[structuredClone(saved)],paycheckSlices:{},paycheckSquashes:{},budgetItems:[],currentPayoffMethod:'minimum',savingsGoals:[],paycheckOverrides:{},appliedBonuses:{},checkedPaychecks:checked,budgetItemOverrides:{},savingsContributionOverrides:{},extraExpenses:{},accountPaymentOverrides:{},queueSaveAppState(){}});
  ctx.renderResults=(cards,schedule,totalInterest)=>ctx.result={cards,schedule,totalInterest};
  vm.runInContext(calculation+'\ncalculate()',ctx);
  return {result:ctx.result,saved:ctx.cardsData[0],synced:ctx.window.syncedDebtBalances};
@@ -82,4 +83,13 @@ test('account summaries retain checked fees and show unknown loan interest as un
  const plan={state:{cards:[{id:1,balance:100,interestRules:{profileId:'affirm',balanceBasis:'unknown'}}],checkedPaychecks:{1:true}},schedule:[{paycheck:1,date:'2026-11-06',payments:[20],interestByAccount:[3],feesByAccount:[2],balancesAfter:[85]},{paycheck:2,date:'2026-11-20',payments:[85],interestByAccount:[0],feesByAccount:[0],balancesAfter:[0]}]};
  assert.equal(trackerDebtStatus(plan,1).balance,8500);
  assert.deepEqual(trackerDebtForecast(plan,1),{date:null,interest:null,reason:'Loan balance type needed'});
+});
+
+
+test('a manual current snapshot rebases future payments without rewriting or double-counting checked history',()=>{
+ const currentBalanceOverride={balance:65000,date:'2026-11-20',updated:'2026-11-20T12:00:00Z'};
+ const {result,saved}=project({card:{apr:0,currentBalanceOverride},checked:{1:true},paymentHistory:{1:{1:50}},interestHistory:{1:{1:10}},feeHistory:{1:{1:2}},snapshots:{1:{balance:80000,date:'2026-11-20'}}});
+ assert.equal(result.schedule[0].payments[0],50);assert.equal(result.schedule[0].interestByAccount[0],10);assert.equal(result.schedule[0].feesByAccount[0],2);assert.equal(result.schedule[0].balancesAfter[0],962);
+ assert.equal(result.schedule[1].payments[0],100);assert.equal(result.schedule[1].balancesAfter[0],550);
+ assert.equal(saved.balance,1000);assert.deepEqual(saved.currentBalanceOverride,currentBalanceOverride);
 });

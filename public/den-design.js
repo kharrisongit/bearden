@@ -213,8 +213,8 @@
       if(root.dataset.layout!=='den')return;
       const plan = window.getDebtPlan?.(); if(!plan)return;
       const today = new Date(); const day = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
-      const next = plan.schedule.find(row => row.date >= day && !row.paycheckReceipt && !plan.state.checkedPaychecks?.[row.paycheck]);
-      const upcoming = dashboard?.upcoming;
+      const upcoming = window.getUpcomingPaycheck?.();
+      const next = plan.schedule.find(row => 'paycheck-'+row.paycheck === upcoming?.id);
       const totals = new Map();
       for(const item of upcoming?.allocationDetails || [])totals.set(item.kind,(totals.get(item.kind)||0)+item.amount);
       const fixed = next ? (next.accountBillsThisCheck || []).reduce((sum,bill)=>sum+bill.amount,0) : dashboard?.fixedBills || 0;

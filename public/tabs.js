@@ -201,6 +201,18 @@
  window.addEventListener('load',initialize,{once:true});
  window.addEventListener('bearden-connections',()=>{if(ready)renderIncome();});
  window.addEventListener('bearden-plan-changed',()=>{if(ready)renderIncome();});
+ // Reopening a suspended mobile app must advance yesterday's planner, too.
+ let paycheckRenderDay=iso(new Date());
+ function refreshPaycheckDay(){
+  const day=iso(new Date());
+  if(!ready||document.visibilityState==='hidden'||day===paycheckRenderDay)return;
+  paycheckRenderDay=day;window.calculate();
+ }
+ window.addEventListener('focus',refreshPaycheckDay);
+ document.addEventListener('visibilitychange',refreshPaycheckDay);
+ // Both layouts read the same live payday calculation. Do not keep a stale
+ // dashboard copy while an unrelated bill or forecast refresh is still running.
+ window.getUpcomingPaycheck=()=>ready?model.nextPayday(window.getDebtPlan(),iso(new Date())):null;
  function showTransactions(open=true){
   window.selectBearTab('income');window.setIncomePanel(open?'bankActivityCard':null);
  }
@@ -535,11 +547,11 @@
   const cycleBadge=(cycle,notice)=>cycle.confirmed||!notice?badge(paidStage(cycle)):'';
   const connected=linkedCards.filter(c=>accountShown('plaid-'+c.accountId)&&![...Object.values(planner.debtAccountLinks||{}),...Object.values(planner.debtBackupLinks||{})].includes('plaid-'+c.accountId)).map(c=>{
    const p=planner.creditCards[c.id]||{},balance=c.emailBalance?c.balance:accounts.find(a=>a.id==='plaid-'+c.accountId)?.balance??c.balance;
-   const status=model.trackerDebtStatus(plan,p.trackerCardId),paidOff=status?.paidOff||balance!==null&&balance<=0;
-   const displayBalance=status?.paidOff?0:balance;totalBalances.push({name:p.name||c.name,amount:displayBalance,currency:c.currency||'USD',startingBalance:status?Math.round(plan.state.cards[status.index].balance*100):c.history?.[0]?.balance??displayBalance});
+   const status=model.trackerDebtStatus(plan,p.trackerCardId),effectiveBalance=status?.balance??balance,paidOff=effectiveBalance!==null&&effectiveBalance<=0;
+   const displayBalance=effectiveBalance;totalBalances.push({name:p.name||c.name,amount:displayBalance,currency:c.currency||'USD',startingBalance:status?Math.round(plan.state.cards[status.index].balance*100):c.history?.[0]?.balance??displayBalance});
    const forecast=model.trackerDebtForecast(plan,p.trackerCardId);
-   const capacity=model.creditCapacity({card:c,account:accounts.find(a=>a.id==='plaid-'+c.accountId),enteredLimit:p.fallbackLimit??planner.debtCreditLimits?.[p.trackerCardId],balance});
-   const util=balance!==null&&capacity.limit>0?Math.max(0,balance/capacity.limit*100):null;
+   const capacity=model.creditCapacity({card:c,account:accounts.find(a=>a.id==='plaid-'+c.accountId),enteredLimit:p.fallbackLimit??planner.debtCreditLimits?.[p.trackerCardId],balance:displayBalance});
+   const util=displayBalance!==null&&capacity.limit>0?Math.max(0,displayBalance/capacity.limit*100):null;
    const due=payments.find(b=>b.id===c.id),history=c.payments||[],dueDate=c.dueDate||p.fallbackDate;
    const creditTarget='credit:'+c.id,trackerTarget=pairedTarget(creditTarget);
    const emailTarget=cardEmailTarget(creditTarget,trackerTarget);
@@ -555,7 +567,7 @@
    return {sortKey:'credit:'+c.id,sortDate:dueDate,currency:c.currency,amount:displayBalance,name:p.name||c.name,html:'<article class="debt-account connected-debt'+(paidOff?' is-paid-off':'')+'" data-account-id="'+esc(c.id)+'">'+walletDueStamp(c.minimum===0?null:dueDate,paidOff||!!paid)
     +'<div class="debt-card-header"><div class="debt-account-tools">'+action+'<button type="button" class="bill-icon-button" data-show-debt-details="credit:'+esc(c.id)+'" aria-label="Details and progress for '+esc(c.name)+'" aria-haspopup="dialog" aria-controls="debtProgressDialog">'+detailsIcon+'</button><button type="button" class="bill-icon-button account-edit" data-edit-credit="'+esc(c.id)+'" aria-label="Edit '+esc(c.name)+'">'+pencil+'</button></div>'
     +'<div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(p.name||c.name)+'</h4><small>'+esc(c.institution+(c.mask?' · ••'+c.mask:''))+'</small>'+state+'</div></div></div>'
-    +'<div class="debt-key-amounts"><div><span>'+(status?.paidOff?'Remaining in plan':c.emailBalance?'Statement balance · Email':'Current balance')+'</span><strong>'+esc(value(displayBalance,c))+'</strong></div><div class="minimum-due"><span>'+(c.emailMinimum?'Monthly due · Email':c.minimum===null&&p.fallbackAmount!=null?'Est. monthly due':'Monthly due')+'</span><strong>'+esc(value(c.minimum??p.fallbackAmount,c))+'</strong></div></div>'
+    +'<div class="debt-key-amounts"><div><span>'+(plan.syncedDebtBalances?.[p.trackerCardId]?.manual?'Manual current balance':status?.paidOff?'Remaining in plan':c.emailBalance?'Statement balance · Email':'Current balance')+'</span><strong>'+esc(value(displayBalance,c))+'</strong></div><div class="minimum-due"><span>'+(c.emailMinimum?'Monthly due · Email':c.minimum===null&&p.fallbackAmount!=null?'Est. monthly due':'Monthly due')+'</span><strong>'+esc(value(c.minimum??p.fallbackAmount,c))+'</strong></div></div>'
     +notice+debtForecastMarkup(forecast,c.currency||'USD')
     +(c.overdue&&c.minimum!==0&&!paid?'<p class="subtle overdue">Issuer reports overdue</p>':'')+(c.stale?'<p class="subtle">Plaid needs a refresh'+(c.emailBalance||c.emailMinimum||c.emailDue?'; missing details use email.':'; showing last synced details.')+'</p>':'')
     +'<div class="debt-account-footer"><span class="debt-due-date">'+esc(paymentLabel)+'</span></div>'
@@ -585,9 +597,9 @@
    const displayedMinimum=status.paidOff?0:minimumEstimated?Math.round(nextTiming.forecastMonthlyMinimum*100):minimum??Math.round(model.monthlyMinimum(c)*100);
    const starting=Math.round(c.balance*100),progress=starting>0?Math.min(100,Math.max(0,(starting-status.balance)/starting*100)):100;
    return {sortKey:'debt:'+c.id,sortDate:status.paidOff?null:dueDate||next?.date,currency:account?.currency,amount:displayBalance,name:c.name,html:'<article class="debt-account manual-debt'+(status.paidOff?' is-paid-off':'')+'" data-tracker-account="'+esc(c.id)+'">'+walletDueStamp(minimum===0?null:emailCycle?.dueDate||dueDate,status.paidOff||emailCycle?.confirmed)+'<div class="debt-card-header"><div class="debt-account-tools"><button type="button" class="bill-icon-button" data-show-debt-details="debt:'+esc(c.id)+'" aria-label="Details and progress for '+esc(c.name)+'" aria-haspopup="dialog" aria-controls="debtProgressDialog">'+detailsIcon+'</button><button type="button" class="bill-icon-button account-edit" data-edit-debt="'+esc(c.id)+'" aria-label="Edit '+esc(c.name)+'">'+pencil+'</button></div><div class="debt-compact-main"><div class="debt-compact-info"><h4>'+esc(c.name)+'</h4><small>'+esc(debtKinds[c.debtKind]||'Debt')+'</small>'+(status.paidOff?badge('Paid off'):emailCycle?.paid?cycleBadge(emailCycle,notice):emailCycle?.failed?badge('Payment failed / returned'):emailCycle?badge('Partial payment · Email'):status.lastPayment?badge('Payment paid · '+dateLabel(status.lastPayment.date)):bankHistory.length?badge('Bank payment · '+dateLabel(bankHistory[0].date)):'')+'</div></div></div>'
-    +'<div class="debt-key-amounts"><div><span>'+(synced?.manual?'Current balance · Manual':synced?(synced.stale?'Last reported balance':'Current balance'):statement?.balance!=null&&!status.paidOff?'Statement balance · Email':'Remaining balance')+'</span><strong>'+money(displayBalance)+'</strong></div><div class="minimum-due"><span>'+(minimumEstimated?'Est. monthly due':minimum!=null||Number.isFinite(c.monthlyMinimum)?'Monthly due':'Est. monthly due')+'</span><strong>'+money(displayedMinimum)+'</strong></div></div>'
+    +'<div class="debt-key-amounts"><div><span>'+(synced?(synced.manual?'Manual current balance':synced.stale?'Last reported balance':'Current balance'):statement?.balance!=null&&!status.paidOff?'Statement balance · Email':'Remaining balance')+'</span><strong>'+money(displayBalance)+'</strong></div><div class="minimum-due"><span>'+(minimumEstimated?'Est. monthly due':minimum!=null||Number.isFinite(c.monthlyMinimum)?'Monthly due':'Est. monthly due')+'</span><strong>'+money(displayedMinimum)+'</strong></div></div>'
     +notice+debtForecastMarkup(forecast)
-    +'<div class="debt-account-footer"><span class="debt-due-date">'+esc(status.paidOff?'Paid from checked paychecks':minimum===0?'No payment due'+(dueDate?' · '+dateLabel(dueDate)+' cycle':''):emailCycle?.paid?'Due '+dateLabel(emailCycle.dueDate):emailCycle?.failed?'Payment failed / returned':emailCycle?'Email payment '+money(emailCycle.paidAmount)+' · '+money(emailCycle.remaining)+' still due':dueDate?'Due '+dateLabel(dueDate):next?'Next payment '+dateLabel(next.date):'Set up paydays in Income')+'</span></div>'
+    +'<div class="debt-account-footer"><span class="debt-due-date">'+esc(status.paidOff?(synced?.manual?'Paid off · manual balance':'Paid from checked paychecks'):minimum===0?'No payment due'+(dueDate?' · '+dateLabel(dueDate)+' cycle':''):emailCycle?.paid?'Due '+dateLabel(emailCycle.dueDate):emailCycle?.failed?'Payment failed / returned':emailCycle?'Email payment '+money(emailCycle.paidAmount)+' · '+money(emailCycle.remaining)+' still due':dueDate?'Due '+dateLabel(dueDate):next?'Next payment '+dateLabel(next.date):'Set up paydays in Income')+'</span></div>'
     +debtAccountMarkup(c.id)+'<template class="debt-detail-template">'+debtOverviewMarkup({balance:displayBalance,minimum:displayedMinimum,minimumEstimated,dueDate,apr:resolvedDebts[c.id]?.apr.value??c.apr,capacity,forecast,paid:status.paid,progress,trackerId:c.id})
     +bankPaymentHistoryMarkup(bankHistory)
     +detailSection('Other payment records',paymentMarkup(emailTarget,receiptStatus)+'<button type="button" data-debt-history="'+esc(c.id)+'">Checked payment history</button>',true)
@@ -630,12 +642,21 @@
   const limitField=form.elements.creditLimit;
   if(!limitField.readOnly)limitField.dataset.manual=limitField.value;
   const manualLimit=limitField.dataset.manual??'';
-  const manual={...saved,balance:Number(form.elements.balance.value),apr:Number(form.elements.apr.value),monthlyMinimum:Number(form.elements.minimum.value),dueDate:form.elements.dueDate.value,debtKind:form.elements.debtKind.value};
+  const manual={...saved,...(currentBalanceAction==='automatic'?{currentBalanceOverride:undefined}:{}),balance:Number(form.elements.balance.value),apr:Number(form.elements.apr.value),monthlyMinimum:Number(form.elements.minimum.value),dueDate:form.elements.dueDate.value,debtKind:form.elements.debtKind.value};
   const primary=accounts.find(a=>a.id===form.elements.plaidDebtAccount.value),backup=accounts.find(a=>a.id===form.elements.backupDebtAccount.value),draft=emailDrafts.debt;
   const statement=draft?emailStatus(draft.target,draft.link).statement:null;
   const automatic=form.elements.autoDebtDetails.checked,details=model.resolveDebtDetails({card:manual,primary,backup,issuers:connections.creditCards||[],statement,items:connections.items||[],manualLimit:manualLimit!==''?Math.round(Number(manualLimit)*100):null,futureMinimum:form.elements.futureMinimum.value?Math.round(Number(form.elements.futureMinimum.value)*100):null,automatic});
   for(const [key,name]of [['monthlyMinimum','minimum'],['dueDate','dueDate'],['apr','apr']]){const field=form.elements[name],entry=details[key];field.readOnly=automatic&&entry.source!=='Entered manually';if(field.readOnly&&entry.value!==null)field.value=key==='monthlyMinimum'?(entry.value/100).toFixed(2):entry.value;}
   if(editingDebt===null&&details.balance.source!=='Entered manually')form.elements.balance.value=(details.balance.value/100).toFixed(2);
+  if(editingDebt!==null&&currentBalanceAction==='automatic'){
+   let current=details.balance.value;
+   if(details.balance.source==='Entered manually'){
+    const plan=window.getDebtPlan(),withoutOverride={...plan,state:{...plan.state,cards:plan.state.cards.map(c=>String(c.id)===String(editingDebt)?{...c,currentBalanceOverride:undefined}:c)},syncedDebtBalances:{...plan.syncedDebtBalances,[editingDebt]:undefined}};
+    current=model.trackerDebtStatus(withoutOverride,editingDebt).balance;
+   }
+   form.elements.currentBalance.value=(current/100).toFixed(2);
+  }
+  updateDebtCurrentBalanceNote();
   const limit=details.creditLimit;fillCreditLimit(limitField,$('#debtCreditLimitNote'),{providerLimit:limit.source==='Entered manually'?null:limit.value},manualLimit,limit.source);
   $('#debtFutureMinimum').hidden=!(automatic&&details.monthlyMinimum.value===0&&details.currentCycleMinimum);
   if(!form.elements.futureMinimum.value&&details.forecastMinimum.value>0)form.elements.futureMinimum.value=(details.forecastMinimum.value/100).toFixed(2);
@@ -653,29 +674,33 @@
   $('#debtCreditLimit').hidden=form.elements.debtKind.value!=='credit-card'&&account?.type!=='credit';
   fillCreditLimit(field,$('#debtCreditLimitNote'),model.creditCapacity({card:issuer,account}),field.dataset.manual,account?.source==='lunchflow'?'Lunch Flow':'Plaid');
  }
- const currentBalanceField=document.createElement('div');currentBalanceField.className='debt-editor-section';
- currentBalanceField.innerHTML='<label>Current balance ($)<input name="currentBalance" type="number" inputmode="decimal" min="0" max="1000000000" step="0.01" placeholder="Automatic balance"></label><p class="subtle" id="debtCurrentBalanceHelp">Leave blank for automatic balance.</p><button type="button" id="debtUseAutomaticBalance">Use automatic balance</button>';
- const balanceAnchor=$('#debtEditorForm').elements.balance.closest('label')||$('#debtEditorForm').elements.balance;
- balanceAnchor.after(currentBalanceField);
- currentBalanceField.querySelector('#debtUseAutomaticBalance').onclick=()=>{const input=$('#debtEditorForm').elements.currentBalance;input.value='';$('#debtCurrentBalanceHelp').textContent='Automatic balance resumes when saved.';};
  const debtAccountField=document.createElement('div');debtAccountField.className='debt-editor-section';debtAccountField.innerHTML='<h4>Bank connections</h4>'+'<label>Linked bank or card account<select name="plaidDebtAccount"><option value="">No linked account</option></select></label><p class="subtle" id="debtAccountInfo">Choose a connected card or loan.</p><label>Backup for this same debt<select name="backupDebtAccount"><option value="">No backup account</option></select></label><p class="subtle">Use the same account from another provider if the primary is unavailable.</p><label class="check-label"><input type="checkbox" name="autoDebtDetails" checked> Automatically update minimum, due date, and APR</label><p class="subtle">Turn off to enter payment terms yourself. Balances still sync.</p><details class="debt-sources-disclosure"><summary>Information sources</summary><div id="debtSources"></div></details>';
  $('#debtEditorConnections').append(debtAccountField);
  $('#debtEditorForm').elements.plaidDebtAccount.onchange=()=>{
   const id=$('#debtEditorForm').elements.plaidDebtAccount.value,a=(window.BearDen.plan?.state?.accounts||[]).find(a=>a.id===id);
   updateDebtBackupChoices();updateDebtCreditLimit();fillDebtConnectionDetails();
-  $('#debtAccountInfo').textContent=a?connectedAccountName(a)+' · Synced balance '+(a.balanceUnavailable?'Not supplied':money(a.balance,a.currency||'USD'))+'. Future estimates use this balance.':'Choose a connected card or loan.';
+  $('#debtAccountInfo').textContent=a?connectedAccountName(a)+' · Synced balance '+(a.balanceUnavailable?'Not supplied':money(a.balance,a.currency||'USD'))+'. Manual current balances take priority until you choose Use automatic balance.':'Choose a connected card or loan.';
  };
  $('#debtEditorForm').elements.backupDebtAccount.onchange=fillDebtConnectionDetails;
  $('#debtEditorForm').elements.autoDebtDetails.onchange=fillDebtConnectionDetails;
- let editingDebt=null,deletingAccount=false,initialDebtConnections;
+ let editingDebt=null,deletingAccount=false,initialDebtConnections,currentBalanceAction=null;
+ function updateDebtCurrentBalanceNote(){
+  const saved=window.getDebtPlan().state.cards.find(c=>String(c.id)===String(editingDebt));
+  const manual=currentBalanceAction==='manual'||currentBalanceAction!=='automatic'&&!!saved?.currentBalanceOverride;
+  $('#debtCurrentBalanceNote').textContent=manual?'Using your manual current balance for the debt card, totals, and payoff estimates. It stays until you choose Use automatic balance.':currentBalanceAction==='automatic'?'Save debt to resume the automatic balance from your linked account or existing payment history.':'Change this amount to correct the balance used by the debt card, totals, and payoff estimates.';
+  $('#useAutomaticDebtBalance').hidden=!manual;
+ }
+ $('#debtEditorForm').elements.currentBalance.oninput=()=>{currentBalanceAction='manual';updateDebtCurrentBalanceNote();};
+ $('#useAutomaticDebtBalance').onclick=()=>{currentBalanceAction='automatic';fillDebtConnectionDetails();};
  function openDebtEditor(id=null,draft=null){
   const debt=id===null?null:window.getDebtPlan().state.cards.find(c=>String(c.id)===String(id));if(id!==null&&!debt)return;
-  editingDebt=debt?.id??null;const form=$('#debtEditorForm');form.reset();
+  editingDebt=debt?.id??null;currentBalanceAction=null;const form=$('#debtEditorForm');form.reset();
+  $('#debtCurrentBalanceField').hidden=!debt;form.elements.currentBalance.disabled=!debt;form.elements.currentBalance.required=!!debt;form.elements.balance.readOnly=!!debt;
+  form.elements.currentBalance.value=debt?(model.trackerDebtStatus(window.getDebtPlan(),debt.id).balance/100).toFixed(2):'';
+  $('#debtStartingBalanceField').hidden=!!debt;$('#debtStartingBalanceNote').hidden=!debt;
+  $('#debtStartingBalanceNote').textContent=debt?'Original starting balance: '+money(Math.round(debt.balance*100))+'. Kept for your payment history.':'';
   form.elements.name.value=draft?.name||debt?.name||'';form.elements.debtKind.value=draft?.debtKind||debt?.debtKind||'credit-card';
   for(const [field,key]of [['balance','balance'],['apr','apr']])form.elements[field].value=draft?.[field]??debt?.[key]??'';
-  const shown=debt?model.trackerDebtStatus(window.getDebtPlan(),debt.id)?.balance:null;
-  form.elements.currentBalance.value=draft?.currentBalance??(Number.isSafeInteger(debt?.balanceOverride)?(debt.balanceOverride/100).toFixed(2):'');
-  $('#debtCurrentBalanceHelp').textContent=Number.isSafeInteger(debt?.balanceOverride)?'Manual balance is active until you choose automatic.':Number.isFinite(shown)?'Displayed now: '+money(shown)+'. Enter a correction or leave blank for automatic sync.':'Optional. Updates debt cards, totals and payoff estimates.';
   form.elements.dueDate.value=draft?.dueDate??debt?.dueDate??'';
   form.elements.autoDebtDetails.checked=planner.debtAutoDetails?.[debt?.id]!==false;
   form.elements.minimum.value=draft?.minimum??(debt?model.monthlyMinimum(debt):'');
@@ -684,13 +709,14 @@
   form.elements.creditLimit.readOnly=false;form.elements.creditLimit.value=draft?.creditLimit??(planner.debtCreditLimits?.[debt?.id]!=null?planner.debtCreditLimits[debt.id]/100:'');
   form.elements.creditLimit.dataset.manual=form.elements.creditLimit.value;
   $('#debtMinimumNote').hidden=!debt||Number.isFinite(debt.monthlyMinimum);
-  const primaryId=planner.debtAccountLinks?.[debt?.id]||'',backupId=planner.debtBackupLinks?.[debt?.id]||'';
+  const mappedIssuer=debt?(window.BearDen.plan?.connections?.creditCards||[]).find(c=>String(planner.creditCards[c.id]?.trackerCardId)===String(debt.id)):null;
+  const primaryId=planner.debtAccountLinks?.[debt?.id]||(mappedIssuer?'plaid-'+mappedIssuer.accountId:''),backupId=planner.debtBackupLinks?.[debt?.id]||'';
   const accountId=accountShown(primaryId)?primaryId:accountShown(backupId)?backupId:'',debtAccounts=(window.BearDen.plan?.state?.accounts||[]).filter(a=>['plaid','lunchflow'].includes(a.source)&&['credit','loan'].includes(a.type)&&(accountShown(a.id)||a.id===accountId));
   form.elements.plaidDebtAccount.innerHTML='<option value="">No linked account</option>'+debtAccounts.map(a=>'<option value="'+esc(a.id)+'">'+esc(connectedAccountName(a))+' ('+(a.source==='lunchflow'?'Lunch Flow':'Plaid')+') · '+esc((a.balanceUnavailable?'Not supplied':money(a.balance,a.currency||'USD')))+'</option>').join('')+(accountId&&accountShown(accountId)&&!debtAccounts.some(a=>a.id===accountId)?'<option value="'+esc(accountId)+'">Previously linked account (unavailable)</option>':'');form.elements.plaidDebtAccount.value=accountId;updateDebtBackupChoices();form.elements.backupDebtAccount.value=accountId!==backupId&&accountShown(backupId)?backupId:'';
   initialDebtConnections={primaryId,backupId,displayedPrimary:form.elements.plaidDebtAccount.value,displayedBackup:form.elements.backupDebtAccount.value};
   $('#debtEditorTitle').textContent=debt?'Debt details':'Add debt';$('#debtConnectionChoice').hidden=!!debt;$('#debtHistoryButton').hidden=!debt;$('#debtTermsButton').hidden=!debt;$('#deleteDebtAccount').hidden=!debt;
   $('#debtExistingConnections').innerHTML=(window.BearDen.plan?.connections?.items||[]).map(i=>'<button type="button" data-credit-update="'+esc(i.id)+'" data-account-connect>Use '+esc(i.name)+' connection</button>').join('');
-  const start=window.getDebtPlan().state.startDate;$('#debtPlanNote').textContent='Plan starting balance'+(start?' as of '+longDate(start):'')+'. '+(accountId?'Current balance comes from bank sync.':'Payments follow your payday schedule.');
+  const start=window.getDebtPlan().state.startDate;$('#debtPlanNote').textContent=debt?'Current balance corrections keep your original starting balance'+(start?' from '+longDate(start):'')+' and payment history.':'Adds this starting balance to your payoff plan. Payments follow your payday schedule.';
   setEditorLink('debt','debt:'+editingDebt,planner.transactionLinks['debt:'+editingDebt]);form.elements.plaidDebtAccount.onchange();
   $('#debtEditorError').textContent='';$('#debtEditor').showModal();
  }
@@ -788,7 +814,7 @@
   e.preventDefault();if(deletingAccount)return;const form=e.currentTarget,d=new FormData(form),button=form.querySelector('[type=submit]'),snapshot=structuredClone(planner);let debtSaved=false;button.disabled=true;
   try{const fallbackLimit=form.elements.creditLimit.readOnly?planner.debtCreditLimits?.[editingDebt]??null:enteredCreditLimit(form.elements.creditLimit);let accountId=String(d.get('plaidDebtAccount')||''),backupId=String(d.get('backupDebtAccount')||'');
    if(accountId===initialDebtConnections.displayedPrimary&&backupId===initialDebtConnections.displayedBackup&&(!accountShown(initialDebtConnections.primaryId)||!accountShown(initialDebtConnections.backupId))){accountId=initialDebtConnections.primaryId;backupId=initialDebtConnections.backupId;}
-   if(backupId&&backupId===accountId)throw Error('Choose a different provider for the backup.');for(const linkedId of [accountId,backupId].filter(Boolean)){if(Object.entries(planner.debtBackupLinks||{}).some(([id,a])=>a===linkedId&&id!==String(editingDebt))||Object.entries(planner.debtAccountLinks||{}).some(([id,a])=>a===linkedId&&id!==String(editingDebt))||Object.values(planner.loanLinks||{}).includes(linkedId))throw Error('This connected account is already linked to another debt or car payment.');}if(accountId&&Object.entries(planner.debtAccountLinks||{}).some(([id,a])=>a===accountId&&id!==String(editingDebt)))throw Error('This connected account is already linked to another debt.');if(accountId&&Object.values(planner.loanLinks||{}).includes(accountId))throw Error('This loan is already linked to a car-payment bill. Unlink that bill first.');const message=linkError('debt:'+editingDebt,linkDrafts.debt?.link);if(message)throw Error(message);editingDebt=await window.saveDebtAccount({id:editingDebt,...Object.fromEntries(d)});debtSaved=true;planner.debtFutureMinimums??={};const future=Number(form.elements.futureMinimum.value);if(future>0)planner.debtFutureMinimums[editingDebt]=Math.round(future*100);else delete planner.debtFutureMinimums[editingDebt];planner.debtCreditLimits??={};if(fallbackLimit!==null)planner.debtCreditLimits[editingDebt]=fallbackLimit;else delete planner.debtCreditLimits[editingDebt];planner.debtBackupLinks??={};if(backupId)planner.debtBackupLinks[editingDebt]=backupId;else delete planner.debtBackupLinks[editingDebt];planner.debtAutoDetails??={};planner.debtAutoDetails[editingDebt]=d.has('autoDebtDetails');planner.debtAccountLinks??={};if(accountId)planner.debtAccountLinks[editingDebt]=accountId;else delete planner.debtAccountLinks[editingDebt];storeEditorLink('debt','debt:'+editingDebt,String(d.get('name')).trim());await save('Debt saved');$('#debtEditor').close();discoverMail('debt:'+editingDebt,String(d.get('name')));sessionStorage.removeItem('bearden-debt-draft');$('#accountStatus').textContent='Debt saved to your payoff plan.';}
+   if(backupId&&backupId===accountId)throw Error('Choose a different provider for the backup.');for(const linkedId of [accountId,backupId].filter(Boolean)){if(Object.entries(planner.debtBackupLinks||{}).some(([id,a])=>a===linkedId&&id!==String(editingDebt))||Object.entries(planner.debtAccountLinks||{}).some(([id,a])=>a===linkedId&&id!==String(editingDebt))||Object.values(planner.loanLinks||{}).includes(linkedId))throw Error('This connected account is already linked to another debt or car payment.');}if(accountId&&Object.entries(planner.debtAccountLinks||{}).some(([id,a])=>a===accountId&&id!==String(editingDebt)))throw Error('This connected account is already linked to another debt.');if(accountId&&Object.values(planner.loanLinks||{}).includes(accountId))throw Error('This loan is already linked to a car-payment bill. Unlink that bill first.');const message=linkError('debt:'+editingDebt,linkDrafts.debt?.link);if(message)throw Error(message);editingDebt=await window.saveDebtAccount({id:editingDebt,...Object.fromEntries(d),currentBalanceAction});debtSaved=true;planner.debtFutureMinimums??={};const future=Number(form.elements.futureMinimum.value);if(future>0)planner.debtFutureMinimums[editingDebt]=Math.round(future*100);else delete planner.debtFutureMinimums[editingDebt];planner.debtCreditLimits??={};if(fallbackLimit!==null)planner.debtCreditLimits[editingDebt]=fallbackLimit;else delete planner.debtCreditLimits[editingDebt];planner.debtBackupLinks??={};if(backupId)planner.debtBackupLinks[editingDebt]=backupId;else delete planner.debtBackupLinks[editingDebt];planner.debtAutoDetails??={};planner.debtAutoDetails[editingDebt]=d.has('autoDebtDetails');planner.debtAccountLinks??={};if(accountId)planner.debtAccountLinks[editingDebt]=accountId;else delete planner.debtAccountLinks[editingDebt];storeEditorLink('debt','debt:'+editingDebt,String(d.get('name')).trim());await save('Debt saved');$('#debtEditor').close();discoverMail('debt:'+editingDebt,String(d.get('name')));sessionStorage.removeItem('bearden-debt-draft');$('#accountStatus').textContent='Debt saved to your payoff plan.';}
   catch(e){planner=snapshot;$('#debtEditorError').textContent=(debtSaved?'Debt details saved, but the transaction link could not be saved. Retry Save debt. ':'')+e.message;}finally{button.disabled=false;}
  };
  window.prepareDebtConnection=()=>{const draft=Object.fromEntries(new FormData($('#debtEditorForm')));sessionStorage.setItem('bearden-debt-draft',JSON.stringify(draft));$('#debtEditor').close();return {fromAccount:true,draftName:draft.name,beforeCardIds:(window.BearDen.plan?.connections?.creditCards||[]).map(c=>c.id)};};
@@ -800,13 +826,16 @@
  });
  window.addEventListener('bearden-credit-cancelled',e=>{if(!e.detail.options?.fromAccount)return;const draft=JSON.parse(sessionStorage.getItem('bearden-debt-draft')||'null');openDebtEditor(null,draft);$('#debtEditorError').textContent=e.detail.error||'';});
  for(const id of ['accountTypePicker','debtEditor','creditEditor','debtHistoryDialog','debtProgressDialog','debtTermsDialog'])$('#'+id).addEventListener('click',e=>{if(e.target!==e.currentTarget)return;const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close();});
+ const creditBalanceButton=document.createElement('button');creditBalanceButton.type='button';creditBalanceButton.id='creditBalanceButton';creditBalanceButton.textContent='Edit current balance';creditBalanceButton.hidden=true;
+ $('#creditTermsButton').before(creditBalanceButton);
+ creditBalanceButton.onclick=()=>{const id=planner.creditCards[editingCredit?.id]?.trackerCardId;if(id!=null&&id!==''){$('#creditEditor').close();openDebtEditor(id);}};
  let editingCredit=null;
  function openCreditEditor(id,draftName=''){
   const card=window.BearDen.plan?.connections?.creditCards?.find(c=>c.id===id);if(!card)return;editingCredit=card;
   const p=planner.creditCards[card.id]||{},form=$('#creditEditorForm'),cards=window.getDebtPlan().state.cards||[];
   form.reset();form.elements.name.value=draftName||p.name||planner.accountNames?.['plaid-'+card.accountId]||card.name;form.elements.tracking.checked=p.tracking!==false;form.elements.covered.checked=!!p.covered;
   const linkedDebt=cards.find(c=>String(c.id)===String(p.trackerCardId)),future=planner.debtFutureMinimums?.[p.trackerCardId]??p.fallbackAmount;
-  $('#creditTermsButton').hidden=!linkedDebt;
+  $('#creditTermsButton').hidden=!linkedDebt;creditBalanceButton.hidden=!linkedDebt;
   const estimate=future>0?future:card.lastPositiveMinimum?.amount>0?card.lastPositiveMinimum.amount:linkedDebt&&model.monthlyMinimum(linkedDebt)>0?Math.round(model.monthlyMinimum(linkedDebt)*100):linkedDebt?.lastPositiveMonthlyMinimum>0?Math.round(linkedDebt.lastPositiveMonthlyMinimum*100):null;
   const amount=card.minimum===0?estimate:card.minimum??p.fallbackAmount;
   form.elements.amount.value=amount!=null?amount/100:'';form.elements.amount.disabled=card.minimum!==null&&card.minimum>0;
@@ -978,7 +1007,7 @@
    for(const c of debtCards){const issuer=(connections.creditCards||[]).find(i=>'plaid-'+i.accountId===planner.debtAccountLinks?.[c.id]||String(planner.creditCards[i.id]?.trackerCardId)===String(c.id));if(!statements[c.id]&&issuer)statements[c.id]=emailStatus('credit:'+issuer.id).statement;}
    resolvedDebts=model.resolveDebtConnections(planner,accounts,connections.creditCards||[],debtCards,statements,connections.items||[]);
    const observedToday=iso(new Date());
-   window.setSyncedDebtBalances(Object.fromEntries(Object.entries(resolvedDebts).filter(([,r])=>r.balance.source!=='Entered manually').map(([id,r])=>[id,{balance:r.balance.value,date:observedToday,observedAt:r.balance.updated,source:r.balance.source,stale:r.balance.stale}])));
+   window.setSyncedDebtBalances(Object.fromEntries(Object.entries(resolvedDebts).filter(([,r])=>r.balance.source!=='Entered manually').map(([id,r])=>[id,{balance:r.balance.value,date:r.balance.date||observedToday,observedAt:r.balance.updated,source:r.balance.source,stale:r.balance.stale,...(r.balance.manual?{manual:true}:{})}])));
    // Only a reported due date can extend a paid cycle. An estimated date sets
    // future payment timing; it does not confirm that a future bill was already paid.
    window.setSyncedDebtTerms(Object.fromEntries(debtCards.map(c=>{const r=resolvedDebts[c.id],automatic=planner.debtAutoDetails?.[c.id]!==false;return [c.id,{date:observedToday,cycleMinimums:r.cycleMinimums,dueDate:r.dueDate.value||c.dueDate||'',...((automatic||r.monthlyMinimum.source==='Confirmed for this cycle')&&r.currentCycleMinimum?{monthlyMinimum:r.monthlyMinimum.value/100,currentCycleMinimum:true,currentCycleThrough:r.dueDate.source!=='Entered manually'&&r.dueDate.value>observedToday?r.dueDate.value:observedToday,forecastMonthlyMinimum:r.forecastMinimum.value===null?null:r.forecastMinimum.value/100}:{}),...(automatic&&r.apr.source!=='Entered manually'?{apr:r.apr.value}:{})}];})));
@@ -991,7 +1020,7 @@
    const personalChoices=accounts.filter(a=>a.type==='depository'&&(a.subtype==='checking'||/checking/i.test(a.name))&&a.id!==planner.household.billsAccountId&&(accountShown(a.id)||a.id===personalAccount?.id));
    $('#personalSpendingAccount').innerHTML='<option value="">Choose personal checking</option>'+personalChoices.map(a=>'<option value="'+esc(a.id)+'">'+esc(connectedAccountName(a))+'</option>').join('');$('#personalSpendingAccount').value=personalAccount?.id||'';
    const visible=accounts.filter(a=>accountShown(a.id)&&(planner.accountVisibility[a.id]??(a.source==='plaid'&&!connections.lunchflow?.connected&&/^checking(?:\s|$)/i.test(a.name))));
-   const currentDay=iso(new Date()),upcoming=model.paydayEvents(plan,currentDay,modelDay(currentDay,90),{excludeReceived:true})[0];
+   const currentDay=iso(new Date()),upcoming=model.nextPayday(plan,currentDay);
    const usd=visible.filter(a=>(a.currency||'USD')==='USD'&&!['credit','loan'].includes(a.type)&&(!['simplefin','lunchflow'].includes(a.source)||a.type==='depository'));
    const checking=a=>a.type==='depository'&&(a.subtype==='checking'||/checking/i.test(a.name||''))&&a.id!==planner.household.billsAccountId;
    const primary=usd.find(a=>a.id===planner.household.personalAccountId)||usd.find(a=>a.id===personalAccount?.id)||usd.find(a=>checking(a)&&/personal/i.test(connectedAccountName(a)))||usd.find(checking)||usd[0];

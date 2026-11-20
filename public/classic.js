@@ -128,13 +128,8 @@ function removeCard(id){
 
 // ---- Budget items ----
 function upcomingBudgetPaycheck(){
-  const start = document.getElementById('startDate').value;
-  if (!start) return 1;
-  const now = new Date(), today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-  let n = Math.max(1, Math.ceil((today - Date.parse(start+'T00:00:00Z')) / 86400000 / 14) + 1);
-  // Checkboxes are optional; confirmed deposits also advance the planner.
-  while (checkedPaychecks[n] || window.paycheckReceipts?.[n]) n++;
-  return n;
+  const now=new Date(),today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  return window.BearDenPaychecks?.nextPaycheckNumber({startDate:document.getElementById('startDate').value,checkedPaychecks},today,window.paycheckReceipts)||1;
 }
 function budgetStartOptions(item){
   const upcoming = upcomingBudgetPaycheck(), selected = item.everyOtherCheck ? item.everyOtherStartPaycheck || upcoming : upcoming;
@@ -481,7 +476,7 @@ function gatherAppState(){
     cards: cardsData.map(c => ({
       id: c.id, name: c.name,
       balance: c.balance,
-      balanceOverride: Number.isSafeInteger(c.balanceOverride)&&c.balanceOverride>=0?c.balanceOverride:null,
+      currentBalanceOverride: (window.BearDenDebtConnections?.migrateDebtBalanceOverride(c)||c).currentBalanceOverride,
       apr: c.apr,
       min: c.min,
       monthlyMinimum: c.monthlyMinimum,
@@ -610,7 +605,7 @@ async function loadAppState(){
     window.debtFeeHistory = state.debtFeeHistory || {};
     window.paycheckIncomeHistory = state.paycheckIncomeHistory || {};
 
-    if (state.cards && state.cards.length) { cardsData = state.cards; cardIdCounter = state.cardIdCounter || cardIdCounter; }
+    if (state.cards && state.cards.length) { cardsData = state.cards.map(c=>window.BearDenDebtConnections?.migrateDebtBalanceOverride(c)||c); cardIdCounter = state.cardIdCounter || cardIdCounter; }
     if (state.budgetItems) { budgetItems = state.budgetItems; budgetItemIdCounter = state.budgetItemIdCounter || budgetItemIdCounter; }
     if (state.appliedBonuses) appliedBonuses = state.appliedBonuses;
     bonusTaxEstimates = state.bonusTaxEstimates || {};
@@ -671,7 +666,7 @@ async function migrateLegacyKeys(){
 
   loadedState = legacy;
 
-  if (legacy.cards && legacy.cards.length) { cardsData = legacy.cards; cardIdCounter = legacy.cardIdCounter || cardIdCounter; }
+  if (legacy.cards && legacy.cards.length) { cardsData = legacy.cards.map(c=>window.BearDenDebtConnections?.migrateDebtBalanceOverride(c)||c); cardIdCounter = legacy.cardIdCounter || cardIdCounter; }
   if (legacy.budgetItems) { budgetItems = legacy.budgetItems; budgetItemIdCounter = legacy.budgetItemIdCounter || budgetItemIdCounter; }
   if (legacy.appliedBonuses) appliedBonuses = legacy.appliedBonuses;
 
@@ -878,6 +873,13 @@ async function resetAll(){
  clearTimeout(saveDebounceTimer);await window.BearDen.resetSetup(fresh);location.reload();
 }
 
+// A manual snapshot is available immediately after editing and on reload,
+// before the bank connection view has finished rebuilding its snapshots.
+function currentDebtSnapshot(card){
+ const manual=window.BearDenDebtConnections?.manualDebtBalance(card),synced=window.syncedDebtBalances?.[card.id];
+ return manual||(synced?.manual?null:synced);
+}
+
 // ---- Main calculation ----
 function calculate(isInitialLoad){
   // Balance/APR/min inputs only exist in the DOM while that specific
@@ -897,6 +899,7 @@ function calculate(isInitialLoad){
       minimumRules: c.minimumRules,
       termsSource: c.termsSource,
       balance: balEl ? (parseFloat(balEl.value)||0) : c.balance,
+      currentBalanceOverride: (window.BearDenDebtConnections?.migrateDebtBalanceOverride(c)||c).currentBalanceOverride,
       apr: (aprEl ? (parseFloat(aprEl.value)||0) : c.apr)/100,
       ...(minEl&&Number(minEl.value)!==window.BearDenDebtPayments.monthlyMinimum(c)
         ?window.BearDenDebtPayments.monthlyPaymentSettings(c,Number(minEl.value)||0)
@@ -994,7 +997,7 @@ function calculate(isInitialLoad){
     const dateKey=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
     // Rebase only future, unchecked rows; historical checkoffs retain their original math.
     let rebased=false;
-    cards.forEach((card,i)=>{const snapshot=window.syncedDebtBalances?.[card.id];if(snapshot&&!syncedApplied.has(card.id)&&dateKey>=snapshot.date&&!checkedPaychecks[paycheck]){balances[i]=snapshot.balance/100;paidOffAt[i]=null;interestStates[i]=null;lastInterestDates[i]=snapshot.date;syncedApplied.add(card.id);rebased=true;}});
+    cards.forEach((card,i)=>{const supplied=window.syncedDebtBalances?.[card.id],snapshot=window.BearDenDebtConnections?.manualDebtBalance(card)||(supplied?.manual?null:supplied);if(snapshot&&!syncedApplied.has(card.id)&&dateKey>=snapshot.date&&!checkedPaychecks[paycheck]){balances[i]=snapshot.balance/100;paidOffAt[i]=null;interestStates[i]=null;lastInterestDates[i]=snapshot.date;syncedApplied.add(card.id);rebased=true;}});
     if(rebased){prevTotal=balances.reduce((a,b)=>a+b,0);debtFreeDate=null;debtFreePaycheck=null;}
     const accountBillsThisCheck=window.accountBillsForPaycheck?.(dateKey,paycheck)||[];
     expensesThisCheck+=accountBillsThisCheck.reduce((sum,bill)=>sum+bill.amount/100,0);
@@ -1284,9 +1287,8 @@ function daysCounterText(targetDate){
   return `${days} days to go`;
 }
 
-// Counts remaining paychecks to a target milestone (debt-free, or a savings
-// goal reached), based on which paychecks have actually been checked off —
-// so it reflects real progress, not just the original projected schedule.
+// Milestone countdowns follow the same upcoming date and confirmed deposits
+// as the planner. Completing old plans is optional.
 function paychecksCounterText(targetPaycheck){
   if (targetPaycheck === null || targetPaycheck === undefined) return '';
   const remaining = targetPaycheck - (upcomingBudgetPaycheck()-1);
@@ -1823,7 +1825,7 @@ function updateDebtHeroProgress(){
 
   const checkedNums = Object.keys(checkedPaychecks).filter(k => checkedPaychecks[k]).map(Number);
   const row=lastSchedule.find(r=>r.paycheck===Math.max(...checkedNums));
-  const currentBalances=lastCardsForSpending.map((card,i)=>(window.syncedDebtBalances?.[card.id]?window.syncedDebtBalances[card.id].balance/100:row?.balancesAfter[i]??card.balance));
+  const currentBalances=lastCardsForSpending.map((card,i)=>(currentDebtSnapshot(card)?currentDebtSnapshot(card).balance/100:row?.balancesAfter[i]??card.balance));
   const summary=debtAccountSummary;
   const remaining=summary?summary.totals.reduce((sum,t)=>sum+t.amount/100,0):currentBalances.reduce((a,b)=>a+b,0);
   const startTotal=summary?summary.starting/100:lastStartTotal;
@@ -1931,7 +1933,7 @@ function computeAndRenderSpendingTracker(){
         interestPaid += row.interestByAccount ? row.interestByAccount[i] : 0;
       }
     });
-    const remaining = window.syncedDebtBalances?.[c.id]?window.syncedDebtBalances[c.id].balance/100:(maxCheckedRow ? maxCheckedRow.balancesAfter[i] : c.balance);
+    const remaining = currentDebtSnapshot(c)?currentDebtSnapshot(c).balance/100:(maxCheckedRow ? maxCheckedRow.balancesAfter[i] : c.balance);
     const isComplete = remaining <= 0.01;
 
     // Projected date this specific account's balance hits zero, per the
@@ -2363,7 +2365,7 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
   const baseDebtFreeDate=debtFreeDate;
   const uncertainLoans=cards.filter((c,i)=>{
     if(c.interestRules?.balanceBasis!=='unknown')return false;
-    const snapshot=window.syncedDebtBalances?.[c.id];
+    const snapshot=currentDebtSnapshot(c);
     const remaining=Number.isFinite(snapshot?.balance)?snapshot.balance/100:c.balance+schedule.filter(row=>checkedPaychecks[row.paycheck]).reduce((sum,row)=>sum+(row.interestByAccount?.[i]||0)+(row.feesByAccount?.[i]||0)-(row.payments?.[i]||0),0);
     return remaining>0.01;
   }).map(c=>c.name);
@@ -2465,14 +2467,18 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
     out.appendChild(preview);
   }
 
-  // Old unchecked plans stay in expanded history, not the next-paycheck slot.
-  const upcomingNumber=upcomingBudgetPaycheck();
-  const nextIndex=schedule.findIndex(row=>row.paycheck>=upcomingNumber&&!checkedPaychecks[row.paycheck]&&!row.paycheckReceipt);
-  const visibleIndices=nextIndex>=0?[nextIndex]:schedule.length?[schedule.length-1]:[];
+  // Open on the next calendar payday, even when older plans were never
+  // checked off. Early received checks stay available in the full schedule.
+  const nextPaycheck=upcomingBudgetPaycheck();
+  let visibleIndices=schedule.flatMap((row,index)=>row.paycheck===nextPaycheck?[index]:[]);
+  if (visibleIndices.length === 0 && schedule.length > 0) {
+    visibleIndices = [schedule.length - 1]; // everything's checked off — show the last one
+  }
   const visibleIndexSet = new Set(visibleIndices);
 
   const alreadyDone = new Array(cards.length).fill(false);
   const restOutCheckedDivs = [];
+  const restOutPastDivs = [];
 
   schedule.forEach((row, rowIdx) => {
     const periodEnd=new Date(row.date);periodEnd.setDate(periodEnd.getDate()+13);
@@ -2705,14 +2711,16 @@ function renderResults(cards, schedule, totalInterest, savingsEnabled, goalsInfo
       out.appendChild(div);
     } else if (checkedPaychecks[row.paycheck]) {
       restOutCheckedDivs.push(div);
+    } else if (row.paycheck<nextPaycheck) {
+      restOutPastDivs.push(div);
     } else {
       restOut.appendChild(div);
     }
   });
 
-  // Checked-off cards sink to the very bottom of the expanded list instead
-  // of staying interleaved in chronological order — everything above this
-  // point (already appended) is upcoming/unchecked.
+  // Upcoming plans come first; older uncompleted/received plans remain
+  // accessible without being treated as completed financial records.
+  restOutPastDivs.reverse().forEach(d=>restOut.appendChild(d));
   restOutCheckedDivs.forEach(d => restOut.appendChild(d));
 
   // A second "close" button right at the bottom of the expanded list, so
@@ -7081,9 +7089,11 @@ function setupPaycheckBears(){
 
 window.classicReady=(async function init(){
   await window.BearDen.ready;
+  window.BearDenPaychecks=await import('./paycheck-matching.mjs');
   window.BearDenDebtPayments=await import('./debt-payments.mjs?v=credit-rules1');
   window.BearDenDebtInterest=await import('./debt-interest.mjs?v=credit-rules1');
   window.BearDenDebtTerms=await import('./debt-terms.mjs?v=credit-rules1');
+  window.BearDenDebtConnections=await import('./connection-model.mjs?v=current-debt-balance1');
   window.BearDenCarDebt=await import('./car-debt.mjs?v=credit-rules1');
   window.BearDenTaxes=await import('./tax-ui.mjs?v=income-percent1');window.BearDenTaxes.mount();
   applyThemeButtonIcon(); // reflect whatever the early <head> script already applied
@@ -7142,7 +7152,7 @@ function addConnectedBill(bill,date){
 }
 
 // Read-only snapshot for the Income overview; the original payoff engine remains authoritative.
-window.getDebtPlan=()=>({state:gatherAppState(),syncedDebtBalances:window.syncedDebtBalances||{},syncedDebtTerms:window.syncedDebtTerms||{},schedule:lastSchedule.map(r=>({...r,date:r.date.getFullYear()+'-'+String(r.date.getMonth()+1).padStart(2,'0')+'-'+String(r.date.getDate()).padStart(2,'0')}))});
+window.getDebtPlan=()=>({state:gatherAppState(),syncedDebtBalances:Object.fromEntries(cardsData.flatMap(card=>{const snapshot=currentDebtSnapshot(card);return snapshot?[[card.id,snapshot]]:[];})),syncedDebtTerms:window.syncedDebtTerms||{},schedule:lastSchedule.map(r=>({...r,date:r.date.getFullYear()+'-'+String(r.date.getMonth()+1).padStart(2,'0')+'-'+String(r.date.getDate()).padStart(2,'0')}))});
 
 window.saveMonthlyPayoffPlan=async function(value){
  await window.classicReady;
@@ -7178,7 +7188,7 @@ window.deleteDebtAccounts=async function(ids,nextPlanner){
  window.debtPaymentHistory=next.debtPaymentHistory||{};window.debtInterestHistory=next.debtInterestHistory||{};
  window.debtFeeHistory=next.debtFeeHistory||{};window.paycheckIncomeHistory=next.paycheckIncomeHistory||{};
  for(const id of ids){if(window.syncedDebtBalances)delete window.syncedDebtBalances[id];if(window.syncedDebtTerms)delete window.syncedDebtTerms[id];}
- window.syncedDebtBalances=effectiveDebtBalanceSnapshots();currentDetailAccountIdx=null;calculate();clearTimeout(saveDebounceTimer);
+ currentDetailAccountIdx=null;calculate();clearTimeout(saveDebounceTimer);
 };
 
 // Reviewed statement terms never supply or rewrite a live account balance.
@@ -7204,10 +7214,11 @@ window.saveDebtTerms=async function(patch){
 window.saveDebtAccount=async function(data){
  await window.classicReady;
  const name=String(data.name||'').trim(),balance=Number(data.balance),apr=Number(data.apr),monthly=Number(data.minimum);
- const overrideProvided=data.currentBalance!==undefined,entry=String(data.currentBalance??'').trim(),currentBalance=entry===''?null:Number(entry);
- if(overrideProvided&&entry!==''&&(!Number.isFinite(currentBalance)||currentBalance<0||currentBalance>1e9))throw Error('Enter a valid current balance or choose automatic balance.');
  if(!name||name.length>100||![balance,apr,monthly].every(Number.isFinite)||balance<0||balance>1e9||monthly<0||monthly>1e9||apr<0||apr>100)throw Error('Enter a name, balance, APR, and payment amount.');
  const dueDate=String(data.dueDate||'');if(dueDate&&!window.BearDenDebtPayments.validDueDate(dueDate))throw Error('Enter a valid payment due date.');
+ const currentBalanceAction=data.currentBalanceAction;
+ const currentBalance=Number(data.currentBalance);
+ if(currentBalanceAction==='manual'&&(String(data.currentBalance??'').trim()===''||!Number.isFinite(currentBalance)||currentBalance<0||currentBalance>1e9))throw Error('Enter a current balance of $0 or more.');
  const oldCards=structuredClone(cardsData),oldCounter=cardIdCounter;
  let card=data.id===null||data.id===undefined?null:cardsData.find(c=>String(c.id)===String(data.id));
  if(data.id!==null&&data.id!==undefined&&!card)throw Error('That debt no longer exists.');
@@ -7217,15 +7228,20 @@ window.saveDebtAccount=async function(data){
  const lastPositiveMonthlyMinimum=monthly>0?monthly:card&&window.BearDenDebtPayments.monthlyMinimum(card)>0?window.BearDenDebtPayments.monthlyMinimum(card):card?.lastPositiveMonthlyMinimum;
  if(!card){cardIdCounter=Math.max(cardIdCounter,...cardsData.map(c=>Number(c.id)||0))+1;card={id:cardIdCounter};cardsData.push(card);}
  Object.assign(card,{name,balance,apr,dueDate,...payment,lastPositiveMonthlyMinimum,debtKind:['credit-card','car-loan','loan','other'].includes(data.debtKind)?data.debtKind:'other'});
- if(overrideProvided)card.balanceOverride=currentBalance===null?null:Math.round(currentBalance*100);
+ if(currentBalanceAction==='automatic'){delete card.currentBalanceOverride;delete card.balanceOverride;}
+ else if(currentBalanceAction==='manual'){
+  delete card.balanceOverride;
+  const now=new Date(),date=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  card.currentBalanceOverride={balance:Math.round(currentBalance*100),date,updated:now.toISOString()};
+ }
  if(card.termsSource&&manuallyChangedTerms.length){
   const fields={...(card.termsSource.fields||Object.fromEntries(['apr','monthlyMinimum'].map(key=>[key,{asOf:card.termsSource.asOf,label:card.termsSource.label}])))};
   for(const key of manuallyChangedTerms)delete fields[key];
   card.termsSource={...card.termsSource,fields};
  }
  const syncInputs=()=>cardsData.forEach(c=>{for(const [prefix,key]of [['bal','balance'],['apr','apr'],['monthlyMin','monthlyMinimum']]){const input=document.getElementById(prefix+'_'+c.id);if(input)input.value=prefix==='monthlyMin'?window.BearDenDebtPayments.monthlyMinimum(c):c[key];}});
- try{syncInputs();window.syncedDebtBalances=effectiveDebtBalanceSnapshots();calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));clearTimeout(saveRetryTimer);window.dismissBearToast?.('autosave-error');setStorageStatus('Saved');return card.id;}
- catch(e){cardsData=oldCards;cardIdCounter=oldCounter;window.syncedDebtBalances=effectiveDebtBalanceSnapshots();syncInputs();calculate();clearTimeout(saveDebounceTimer);throw e;}
+ try{syncInputs();calculate();clearTimeout(saveDebounceTimer);await storage.set(APP_STATE_KEY,JSON.stringify(gatherAppState()));clearTimeout(saveRetryTimer);window.dismissBearToast?.('autosave-error');setStorageStatus('Saved');return card.id;}
+ catch(e){cardsData=oldCards;cardIdCounter=oldCounter;syncInputs();calculate();clearTimeout(saveDebounceTimer);throw e;}
 };
 
 window.applyIncomePreset=async function(preset){
@@ -7294,19 +7310,10 @@ window.setCarDebtForecast=loans=>{
  window.carDebtForecast=loans;calculate();return true;
 };
 
-let providerDebtBalanceSnapshots={};
-function effectiveDebtBalanceSnapshots(){
- const values={...providerDebtBalanceSnapshots};
- const now=new Date(),today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
- for(const card of cardsData)if(Number.isSafeInteger(card.balanceOverride)&&card.balanceOverride>=0)
-  values[card.id]={balance:card.balanceOverride,date:today,source:'Manual current balance',manual:true,stale:false};
- return values;
-}
 window.setSyncedDebtBalances=snapshots=>{
- const signature=JSON.stringify(snapshots||{});
- if(signature===JSON.stringify(providerDebtBalanceSnapshots))return false;
- providerDebtBalanceSnapshots=snapshots||{};
- window.syncedDebtBalances=effectiveDebtBalanceSnapshots();calculate();return true;
+ const signature=JSON.stringify(snapshots);
+ if(signature===JSON.stringify(window.syncedDebtBalances||{}))return false;
+ window.syncedDebtBalances=snapshots;calculate();return true;
 };
 
 

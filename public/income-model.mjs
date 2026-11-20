@@ -1,8 +1,10 @@
-export {matchPaychecks,postedPaycheck,paycheckOccurrence} from './paycheck-matching.mjs';
+import {nextPaycheckNumber} from './paycheck-matching.mjs';
+export {matchPaychecks,postedPaycheck,paycheckOccurrence,nextPaycheckNumber} from './paycheck-matching.mjs';
 export {removeBillFromPlanner,removeDebtsFromPlanner} from './account-removal.mjs?v=delete-accounts1';
 export {carPaymentLoans} from './car-debt.mjs?v=credit-rules1';
 export {transactionCategories,categorizeTransaction,transactionMerchantKey,setTransactionCategory} from './transaction-categories.mjs?v=auto-categories1';
-export {resolveDebtConnections,resolveDebtDetails,remapConnectedAccountReferences,pairedPaymentTarget} from './connection-model.mjs?v=account-visibility1';
+export {resolveDebtConnections,resolveDebtDetails,remapConnectedAccountReferences,pairedPaymentTarget} from './connection-model.mjs?v=current-debt-balance1';
+import {manualDebtBalance} from './connection-model.mjs?v=current-debt-balance1';
 import {transactionAccountId,matchingPayments,postedPayment} from './transaction-links.mjs?v=plaid-restore1';
 import {transactionKey} from './bank-activity.mjs?v=payment-history1';
 import {scheduledPayment,effectiveDebtTerms} from './debt-payments.mjs?v=credit-rules1';
@@ -26,7 +28,7 @@ export function trackerDebtStatus(plan,id){
  const paid=checked.reduce((sum,r)=>sum+cents(r.payments?.[index]),0);
  const interest=checked.reduce((sum,r)=>sum+cents(r.interestByAccount?.[index]),0);
  const fees=checked.reduce((sum,r)=>sum+cents(r.feesByAccount?.[index]),0);
- const synced=plan.syncedDebtBalances?.[card.id];
+ const synced=manualDebtBalance(card)||plan.syncedDebtBalances?.[card.id];
  const balance=synced? synced.balance : Math.max(0,cents(card.balance)+interest+fees-paid);
  return {index,balance,paid,paidOff:balance<=1,lastPayment:payments.at(-1)||null};
 }
@@ -35,7 +37,7 @@ export function trackerDebtStatus(plan,id){
 export function trackerDebtForecast(plan,id){
  const status=trackerDebtStatus(plan,id);
  if(!status)return {date:null,interest:null,reason:'Link a payoff plan'};
- const card=plan.state.cards[status.index],synced=plan.syncedDebtBalances?.[card.id];
+ const card=plan.state.cards[status.index],synced=manualDebtBalance(card)||plan.syncedDebtBalances?.[card.id];
  const rows=(plan.schedule||[]).filter(r=>r.paycheck>(card.cycleStartPaycheck||0));
  const payoff=rows.find(r=>(!synced?.date||r.date>=synced.date&&!plan.state.checkedPaychecks?.[r.paycheck])&&Number.isFinite(r.balancesAfter?.[status.index])&&r.balancesAfter[status.index]<=.01);
  if(status.paidOff){
@@ -150,6 +152,13 @@ export function accountPaymentRows(events,selected=null){
   if(seen.has(key))continue;seen.add(key);rows.push(event);
  }
  return rows;
+}
+export function nextPayday(plan,today){
+ const receipts=Object.fromEntries((plan.schedule||[]).filter(row=>row.paycheckReceipt).map(row=>[row.paycheck,row.paycheckReceipt]));
+ const n=nextPaycheckNumber(plan.state,today,receipts);
+ if(n===null)return null;
+ const date=day(plan.state.startDate,(n-1)*14);
+ return paydayEvents(plan,date,date,{excludeReceived:true})[0]||null;
 }
 export function paydayEvents(plan,start,end,{billsOnly=false,debtMode='full',retainPersonalBudget=false,excludeReceived=false,bankForecast=false}={}){
  const s=plan.state||{},rows=new Map((plan.schedule||[]).map(r=>[r.paycheck,r]));
@@ -336,6 +345,7 @@ export function accountDebtBalances(planner,accounts,creditCards,cards,today,sta
   if((card.currency||'USD')==='USD'&&Number.isSafeInteger(balance)&&balance>=0)result[id]={balance,date:today};
  }
  for(const card of cards){
+  const override=manualDebtBalance(card);if(override){result[card.id]=override;continue;}
   const balance=statements[card.id]?.balance;
   if(!result[card.id]&&Number.isSafeInteger(balance)&&balance>=0)result[card.id]={balance,date:today};
  }

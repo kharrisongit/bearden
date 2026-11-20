@@ -12,13 +12,19 @@
 }
 #monthlyPayoffPlanner input { font-size:1.1rem;font-weight:650 }
 #monthlyPayoffPlanner select { font-size:.84rem;text-overflow:ellipsis }
-#monthlyPayoffPlanner :is(input,select,button,summary):focus-visible { outline:2px solid var(--accent);outline-offset:3px }
+#monthlyPayoffPlanner :is(input,select,button,summary,.monthly-payoff-body):focus-visible { outline:2px solid var(--accent);outline-offset:3px }
 #monthlyPayoffPlanner button { min-height:44px;border:1px solid var(--line);border-radius:10px;cursor:pointer }
 #monthlyPayoffPlanner button:disabled { opacity:.5;cursor:default }
-.monthly-payoff-heading { display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px }
-#monthlyPayoffPlanner h3 { margin:5px 0 0;font-size:1.35rem;line-height:1.25;letter-spacing:-.025em }
-.monthly-payoff-mark { flex:none;display:grid;place-items:center;width:44px;height:44px;border:1px solid var(--line);border-radius:14px;color:var(--accent);background:var(--surface-inset) }
-.monthly-payoff-mark svg { width:26px;height:26px }
+#monthlyPayoffPlanner h3 { margin:0;font-size:1.35rem;line-height:1.25;letter-spacing:-.025em }
+#monthlyPayoffTitle { display:block;margin-top:5px }
+#monthlyPayoffPlanner .monthly-payoff-toggle { width:100%;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0;border:0;background:transparent;color:var(--ink);text-align:left }
+.monthly-payoff-toggle > span:first-child { min-width:0 }
+.monthly-payoff-chevron { flex:none;display:grid;place-items:center;width:44px;height:44px;border:1px solid var(--line);border-radius:10px;color:var(--accent);background:var(--surface-inset) }
+#monthlyPayoffPlanner .monthly-payoff-collapsed-summary { margin:10px 0 0;color:var(--muted);font-size:.78rem;line-height:1.4 }
+.monthly-payoff-toggle svg { width:24px;height:24px;transition:transform .15s ease }
+.monthly-payoff-toggle[aria-expanded=true] svg { transform:rotate(180deg) }
+.monthly-payoff-body { max-height:65vh;max-height:min(65dvh,600px);min-width:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;scrollbar-gutter:stable;-webkit-overflow-scrolling:touch;margin-top:16px;padding:3px 5px 0 3px }
+@media (prefers-reduced-motion:reduce) { .monthly-payoff-toggle svg { transition:none } }
 .monthly-payoff-intro { color:var(--muted);font-size:.86rem;line-height:1.6;margin-bottom:20px }
 .monthly-payoff-form { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:14px 18px }
 .monthly-payoff-form label { display:block;min-width:0;font-size:.82rem;font-weight:650;line-height:1.4 }
@@ -89,9 +95,8 @@
 }
 @media (max-width:360px) {
  #monthlyPayoffPlanner { padding:16px 12px }
- .monthly-payoff-heading { gap:9px }
+ #monthlyPayoffPlanner .monthly-payoff-toggle { gap:9px }
  #monthlyPayoffPlanner h3 { font-size:1.16rem }
- .monthly-payoff-mark { width:38px;height:38px;border-radius:11px }
  .monthly-payoff-result { padding:12px 10px }
  .monthly-payoff-result > strong { font-size:1.18rem }
  .monthly-payoff-payment-heading { padding:11px }
@@ -100,12 +105,3 @@
  .monthly-payoff-payment dt { font-size:.64rem }
  .monthly-payoff-split span { font-size:.7rem }
 }
-
-#monthlyPayoffPlanner .monthly-payoff-toggle {width:100%;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0;border:0;background:transparent;color:var(--ink);text-align:left;cursor:pointer}
-#monthlyPayoffPlanner .monthly-payoff-toggle > span:first-child {min-width:0}
-#monthlyPayoffPlanner .monthly-payoff-toggle h3 {margin:4px 0 0}
-#monthlyPayoffPlanner .monthly-payoff-chevron {font-size:1.5rem;line-height:1;flex:none;transition:transform .2s}
-#monthlyPayoffPlanner .monthly-payoff-toggle[aria-expanded="true"] .monthly-payoff-chevron {transform:rotate(180deg)}
-#monthlyPayoffPlanner .monthly-payoff-collapsed-summary {margin:0;color:var(--muted);font-size:.78rem;line-height:1.4}
-#monthlyPayoffPlanner .monthly-payoff-toggle[aria-expanded="true"] + .monthly-payoff-collapsed-summary {display:none}
-#monthlyPayoffPlanner .monthly-payoff-body {max-height:min(65dvh,600px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:14px 5px 5px 0;min-width:0}

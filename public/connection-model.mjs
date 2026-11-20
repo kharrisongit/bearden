@@ -22,6 +22,29 @@ const cents=n=>Number.isSafeInteger(n)&&n>=0?n:null;
 const rate=n=>typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=100?n:null;
 const timestamp=value=>Number.isFinite(Date.parse(value))?Date.parse(value):0;
 const field=(value,source,updated=null,stale=false)=>({value,source,updated,stale});
+// A deliberate correction is a current snapshot, separate from the original
+// plan balance. Provider retrieval timestamps do not prove that a delayed bank
+// balance is newer, so only an explicit return to automatic balances clears it.
+const validCurrentBalanceOverride=snapshot=>snapshot&&cents(snapshot.balance)!==null&&validDueDate(snapshot.date)&&timestamp(snapshot.updated);
+// The first released balance editor saved a numeric amount in cents. Preserve
+// those corrections on upgrade, assigning an observation date only once when
+// loading the undated value. Never manufacture a payment or change the start.
+export function migrateDebtBalanceOverride(card,now=Date.now()){
+ if(cents(card?.balanceOverride)===null)return card;
+ const migrated={...card};
+ if(!validCurrentBalanceOverride(card.currentBalanceOverride)){
+  const at=new Date(now);if(!Number.isFinite(at.getTime()))return card;
+  const date=at.getFullYear()+'-'+String(at.getMonth()+1).padStart(2,'0')+'-'+String(at.getDate()).padStart(2,'0');
+  migrated.currentBalanceOverride={balance:card.balanceOverride,date,updated:at.toISOString()};
+ }
+ delete migrated.balanceOverride;
+ return migrated;
+}
+export function manualDebtBalance(card,now=Date.now()){
+ const snapshot=migrateDebtBalanceOverride(card,now)?.currentBalanceOverride;
+ return validCurrentBalanceOverride(snapshot)
+  ?{balance:snapshot.balance,date:snapshot.date,observedAt:snapshot.updated,source:'Manual balance',manual:true,stale:false}:null;
+}
 export function purchaseAPR(card){
  const rows=(card?.aprs||[]).filter(a=>/purchase/i.test(a.type)),rates=[...new Set(rows.map(a=>rate(a.rate)).filter(n=>n!==null))];
  return rates.length===1?rates[0]:null;
@@ -80,12 +103,14 @@ export function resolveDebtDetails({card,primary=null,backup=null,issuers=[],sta
   const newer=candidates[key].some(c=>c.time>=time),paid=key==='monthlyMinimum'&&candidates[key].some(c=>c.value===0&&!c.stale);
   candidates[key].push({...reviewed[key],rank:newer||paid?6:-2,time});
  }
- const resolved={};
+ const resolved={},override=manualDebtBalance(card,now);
  for(const key of Object.keys(candidates)){
   const list=candidates[key].sort((a,b)=>a.rank-b.rank||b.time-a.time);
   resolved[key]=(automatic||key==='balance'||key==='creditLimit')&&list.length?list[0]:reviewed[key]||field(manual[key],'Entered manually');
+  if(key==='balance'&&override)resolved[key]={...field(override.balance,override.source,override.observedAt),date:override.date,manual:true};
   if(resolved[key].stale)notes.push(key==='balance'?'Using the last reported balance; refresh its connection.':'Some payment details use older saved information.');
  }
+ if(override)notes.push('Using your saved current balance. Choose Use automatic balance in Edit to resume bank or statement updates.');
  if(primary?.source==='lunchflow')notes.push('Lunch Flow supplies balances and transactions here. Minimums and due dates come from a linked statement or your saved details.');
  const positive=[...candidates.monthlyMinimum.filter(c=>c.value>0),...pastMinimums].sort((a,b)=>timestamp(b.updated)-timestamp(a.updated));
  const forecastMinimum=resolved.monthlyMinimum.value>0?resolved.monthlyMinimum:cents(futureMinimum)>0?field(futureMinimum,'Saved future estimate'):positive[0]||field(manual.monthlyMinimum>0?manual.monthlyMinimum:card.lastPositiveMonthlyMinimum>0?Math.round(card.lastPositiveMonthlyMinimum*100):null,'Saved payment plan');

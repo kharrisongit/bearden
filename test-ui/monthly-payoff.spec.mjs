@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {fixture,menuGo} from './wallet.fixture.mjs';
 
-async function setup(page,{saved=null}={}){
+async function setup(page,{saved=null,open=true}={}){
  const f=await fixture(page,{empty:true,goals:false,ownStart:'2026-10-02'});
  const state=JSON.parse(f.tracker.state.values['app-state']);
  Object.assign(state,{
@@ -17,6 +17,7 @@ async function setup(page,{saved=null}={}){
  await page.reload();await page.evaluate(()=>window.classicReady);
  await menuGo(page,'debts');
  await expect(page.locator('#monthlyPayoffPlanner')).toBeVisible();
+ if(open)await page.locator('#monthlyPayoffToggle').click();
  return f;
 }
 
@@ -87,4 +88,40 @@ test('failed save keeps the draft and previous preference; refreshed balances up
  });
  await expect(page.locator('#monthlyPayoffDate')).toHaveText('No debt remaining');
  await expect(page.locator('#monthlyPayoffSplit').locator('strong')).toHaveText(['$0.00','$0.00']);
+});
+
+
+test('planner stays compact, scrolls internally, and remembers its collapse state',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ await setup(page,{saved:{monthlyBudget:200,method:'snowball'},open:false});
+ const panel=page.locator('#monthlyPayoffPlanner'),toggle=page.locator('#monthlyPayoffToggle'),body=page.locator('#monthlyPayoffBody');
+ await expect(toggle).toHaveAttribute('aria-expanded','false');
+ await expect(body).toBeHidden();
+ expect((await panel.boundingBox()).height).toBeLessThan(150);
+ await expect(page.locator('#monthlyPayoffCollapsedSummary')).toHaveText('$200.00 per month · Snowball');
+ await expect(page.locator('#monthlyPayoffCollapsedSummary')).toBeVisible();
+ await page.locator('#monthlyPayoffTitle').click();
+ await expect(toggle).toHaveAttribute('aria-expanded','true');
+ await expect(body).toBeVisible();
+ await expect(page.locator('#monthlyPayoffCollapsedSummary')).toBeHidden();
+ await panel.scrollIntoViewIfNeeded();
+ const geometry=await body.evaluate(element=>({height:element.clientHeight,scrollHeight:element.scrollHeight,width:element.clientWidth,scrollWidth:element.scrollWidth,maxHeight:Math.min(innerHeight*.65,600)}));
+ expect(geometry.height).toBeLessThanOrEqual(geometry.maxHeight+1);
+ expect(geometry.scrollHeight).toBeGreaterThan(geometry.height);
+ expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.width);
+ await body.evaluate(element=>{element.scrollTop=element.scrollHeight;});
+ expect(await body.evaluate(element=>element.scrollTop)).toBeGreaterThan(0);
+ await expect(page.locator('#monthlyPayoffAssumptions')).toBeInViewport();
+ await expect(toggle).toBeInViewport();
+ await toggle.click();
+ await page.evaluate(()=>window.dispatchEvent(new Event('bearden-plan-changed')));
+ await expect(toggle).toHaveAttribute('aria-expanded','false');
+ await expect(body).toBeHidden();
+ await page.reload();await page.evaluate(()=>window.classicReady);await menuGo(page,'debts');
+ await expect(toggle).toHaveAttribute('aria-expanded','false');
+ await expect(body).toBeHidden();
+ await toggle.focus();await page.keyboard.press('Enter');
+ await expect(toggle).toHaveAttribute('aria-expanded','true');
+ await expect(page.locator('#monthlyPayoffBudget')).toHaveValue('200');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
