@@ -33,7 +33,7 @@ test('settings preferences retain save, reload and failure recovery behavior',as
  await expect.poll(()=>page.evaluate(()=>window.getDebtPlan().state.debtPaymentSettings.leadDays)).toBe(5);
  await page.locator('#bdDetail-timing .bd-detail-heading button').click();await expect(page.locator('#bdTimingValue')).toHaveText('By due date');
  await page.reload();await page.evaluate(()=>window.classicReady);await menuGo(page,'settings');await expect(page.locator('#payoffControlsToggle')).toBeChecked();await expect(page.locator('#bonusControlsToggle')).not.toBeChecked();
- f.failSavings=true;await page.locator('#savingsTrackerToggle').uncheck();await expect(page.locator('#featureSettingsStatus')).toContainText('Could not save');await expect(page.locator('#savingsTrackerToggle')).toBeChecked();
+ f.failSavings=true;await expect(page.locator('#savingsTrackerToggle')).toBeChecked();await page.locator('#savingsTrackerToggle').click();await expect(page.locator('#featureSettingsStatus')).toContainText('Could not save');await expect(page.locator('#savingsTrackerToggle')).toBeChecked();
  await expect(page.locator('#bdOptions #carPaymentsInDebtToggle')).toBeVisible();await expect(page.locator('#bdOptions #sharedBillsToggle')).toBeVisible();await page.locator('[data-bd-detail=preferences]').click();await expect(page.locator('#openGuidedSetup')).toBeVisible();
 });
 

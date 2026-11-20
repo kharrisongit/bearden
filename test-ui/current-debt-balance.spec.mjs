@@ -38,7 +38,7 @@ test('manual current balance updates every total, survives delayed sync, and can
  await form.locator('[name=currentBalance]').fill('650');
  await form.getByRole('button',{name:'Save debt',exact:true}).click();
  await expect(page.locator('#debtEditor')).toBeHidden();
- await expect(page.locator('[data-tracker-account="1"] .debt-key-amounts strong').first()).toHaveText('$650.00');
+ await expect(page.locator('[data-tracker-account="1"][data-bd-built="true"] .bd-account-amount > strong')).toHaveText('$650');
  await expect(page.locator('#debtTotalAmount')).toContainText('$650.00');
  await expect(page.locator('#heroTotal')).toHaveText('$650.00');
  await expect(page.locator('#monthlyPayoffTotal')).toHaveText('$650.00');
